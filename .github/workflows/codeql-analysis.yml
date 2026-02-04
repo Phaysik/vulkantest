@@ -1,0 +1,143 @@
+# For most projects, this workflow file will not need changing; you simply need
+# to commit it to your repository.
+#
+# You may wish to alter this file to override the set of languages analyzed,
+# or to provide custom queries or build logic.
+#
+# ******** NOTE ********
+# We have attempted to detect the languages in your repository. Please check
+# the `language` matrix defined below to confirm you have the correct set of
+# supported CodeQL languages.
+#
+name: 'CodeQL'
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+    # The branches below must be a subset of the branches above
+    branches: [main]
+  schedule:
+    - cron: '15 8 * * 6'
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['cpp']
+        # CodeQL supports [ 'cpp', 'csharp', 'go', 'java', 'javascript', 'python' ]
+        # Learn more:
+        # https://docs.github.com/en/free-pro-team@latest/github/finding-security-vulnerabilities-and-errors-in-your-code/configuring-code-scanning#changing-the-languages-that-are-analyzed
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Initializes the CodeQL tools for scanning.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # If you wish to specify custom queries, you can do so here or in a config file.
+          # By default, queries listed here will override any specified in a config file.
+          # Prefix the list here with "+" to use these queries and those in the config file.
+          # queries: ./path/to/local/query, your-org/your-repo/queries@main
+
+      # Autobuild attempts to build any compiled languages  (C/C++, C#, or Java).
+      # If this step fails, then you should remove it and run the build manually (see below)
+      # - name: Autobuild
+      #   uses: github/codeql-action/autobuild@v2
+
+      - name: Set up Cache Site
+        run: mkdir -p ./cache
+
+      - name: Set up Apt Cache Site
+        run: |
+          mkdir -p ./cache/apt-packages
+          mkdir -p ./cache/apt-lists
+
+      - name: Set up Google Test Cache Site
+        run: |
+          mkdir -p ./cache/gtest/lib
+          mkdir -p ./cache/gtest/include
+
+      - name: Cache Apt Packages
+        id: cache-apt-packages
+        uses: actions/cache@v3
+        with:
+          path: ./cache/apt-packages
+          key: ${{ runner.os }}-apt-packages-${{ hashFiles('makefileDependencies.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-packages-
+
+      - name: Cache Apt Package Lists
+        id: cache-apt-lists
+        uses: actions/cache@v3
+        with:
+          path: ./cache/apt-lists
+          key: ${{ runner.os }}-apt-lists-${{ hashFiles('makefileDependencies.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-lists-
+
+      - name: Cache Google Test
+        id: cache-google-tests
+        uses: actions/cache@v3
+        with:
+          path: |
+            ./cache/gtest
+          key: ${{ runner.os }}-google-tests-${{ hashFiles('makefileDependencies.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-google-tests-
+
+      - name: Install Apt Packages From Cache
+        if: steps.cache-apt-packages.outputs.cache-hit == 'true'
+        run: sudo cp -r ./cache/apt-packages/* /var/cache/apt
+
+      - name: Install Apt Lists From Cache
+        if: steps.cache-apt-lists.outputs.cache-hit == 'true'
+        run: sudo cp -r ./cache/apt-lists/* /var/lib/apt/lists
+
+      - name: Install Google Test From Cache
+        if: steps.cache-google-tests.outputs.cache-hit == 'true'
+        run: |
+          sudo cp -r ./cache/gtest/lib/* /usr/lib
+          sudo mkdir -p /usr/include/gtest
+          sudo cp -r ./cache/gtest/include/* /usr/include/gtest
+
+      - name: Install dependencies
+        if: steps.cache-apt-packages.outputs.cache-hit != 'true' || steps.cache-apt-lists.outputs.cache-hit != 'true' || steps.cache-google-tests.outputs.cache-hit != 'true'
+        run: ./makefileDependencies.sh a
+
+      - name: Install Google Mock
+        if: steps.cache-apt-packages.outputs.cache-hit == 'true' || steps.cache-apt-lists.outputs.cache-hit == 'true' || steps.cache-google-tests.outputs.cache-hit == 'true'
+        run: sudo apt-get install libgmock-dev -y
+
+      - name: Make project
+        run: make COMPILER_STANDARD=13
+
+      - name: Save Apt Packages Cache
+        run: |
+          sudo cp -r /var/cache/apt ./cache/apt-packages
+
+      - name: Save Apt Lists Cache
+        run: |
+          sudo cp -r /var/lib/apt/lists ./cache/apt-lists
+
+      - name: Save Google Test Cache
+        run: |
+          sudo cp -r /usr/lib/libgtest* ./cache/gtest/lib
+          sudo cp -r /usr/include/gtest/* ./cache/gtest/include
+
+      - name: Give Read Access For Apt Folder
+        run: sudo chown -R $USER:$USER ./cache/apt-packages/apt/archives/lock ./cache/apt-packages/apt/archives/partial ./cache/apt-lists/lists/lock ./cache/apt-lists/lists/partial
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2

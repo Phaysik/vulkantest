@@ -1,0 +1,13 @@
+table.centered-table {
+	text-align: center;
+}
+
+table.evenly-spaced-dependencies th,
+table.evenly-spaced-dependencies td {
+	width: 33.33%;
+}
+
+table.evenly-spaced-descriptions th,
+table.evenly-spaced-descriptions td {
+	width: 50%;
+}

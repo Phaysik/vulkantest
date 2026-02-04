@@ -1,0 +1,84 @@
+#!/bin/sh
+
+main() {
+    # Check for TODO comments
+    echo "Checking for TODO comments..."
+    if find . -path ./src/tracy -prune -o -type f -name '*.cpp' -print | xargs grep -n 'TODO'; then
+        echo "Please remove TODO comments before committing."
+        exit 1
+    fi
+
+    # Check for sensitive keywords
+    if git diff --cached --name-only | grep -vE "^(\\.github|git|hooks)/" | xargs grep -qiE "api_key|secret"; then
+        echo "Sensitive information detected. Please remove it before committing."
+        exit 1
+    fi
+
+    # Ensure scripts have the executable bit set
+    if [ -n "$(find . -name '*.sh' ! -perm -u+x)" ]; then
+        echo "Script files must have execute permissions."
+        exit 1
+    fi
+
+    echo "Running release build..."
+
+    if ! make release; then
+        echo "Release build failed. Please fix the issues before committing."
+        exit 1
+    fi
+
+    echo "Running clang-format..."
+
+    if ! make format; then
+        echo "Linting failed. Please fix the issues before committing."
+        exit 1
+    fi
+
+    echo "Running flawfinder..."
+
+    flawfinder_frag_file="flawfinder_tidy.frag"
+
+    if ! make flawfinder > "$flawfinder_frag_file"; then
+        echo "Flawfinder failed. Please fix the issues found in "$flawfinder_frag_file" before committing."
+        exit 1
+    fi
+
+    rm -rf "$flawfinder_frag_file"
+
+    echo "Running cppcheck..."
+
+    cppcheck_frag_file="cppcheck.frag"
+
+    if ! make check > "$cppcheck_frag_file"; then
+        echo "Cppcheck failed. Please fix the issues found in "$cppcheck_frag_file" before committing."
+        exit 1
+    fi
+
+    rm -rf "$cppcheck_frag_file"
+
+    # Count the number of files in the include/ directory
+    file_count=$(find include/ -type f | wc -l)
+
+    # Check if there is more than one file
+    if [ "$file_count" -gt 1 ]; then
+        # Run unit tests
+        echo "Running unit tests..."
+        if ! make build_tests; then
+            echo "Unit tests failed. Please fix the issues before committing."
+            exit 1
+        fi
+    fi
+
+    echo "Running clang-tidy..."
+
+    tidy_frag_file="clang_tidy.frag"
+
+    if ! make tidy > "$tidy_frag_file"; then
+        echo "Clang-tidy failed. Please fix the issues found in "$tidy_frag_file" before committing."
+        exit 1
+    fi
+
+    rm -rf "$tidy_frag_file"
+}
+
+main "$@"

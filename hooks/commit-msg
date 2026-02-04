@@ -1,0 +1,16 @@
+#!/bin/sh
+
+check_commit_message_format() {
+    commit_message=$(cat "$1")
+    if ! echo "$commit_message" | grep -E '^\[(feature|bugfix|tweak)\] .+'; then
+        echo "Invalid commit message format. Commit message should start with '[feature]', '[tweak]', or '[bugfix]'."
+        exit 1
+    fi
+}
+
+main() {
+    echo "Checking commit message format..."
+    check_commit_message_format $1
+}
+
+main "$@"

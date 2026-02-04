@@ -1,0 +1,183 @@
+name: "Run Google Test Suite"
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Cache Site
+        run: mkdir -p ./cache
+
+      - name: Set up Apt Cache Site
+        run: |
+          mkdir -p ./cache/apt-packages
+          mkdir -p ./cache/apt-lists
+
+      - name: Set up Google Test Cache Site
+        run: |
+          mkdir -p ./cache/gtest/lib
+          mkdir -p ./cache/gtest/include
+
+      - name: Set up Config Cat Cache Site
+        run: |
+          mkdir -p ./cache/configcat/lib
+          mkdir -p ./cache/configcat/include
+
+      - name: Set up Curl Cache Site
+        run: |
+          mkdir -p ./cache/curl/lib
+          mkdir -p ./cache/curl/include
+
+      - name: Set up Hash Library Cache Site
+        run: |
+          mkdir -p ./cache/hash-library/lib
+          mkdir -p ./cache/hash-library/include
+
+      - name: Cache Apt Packages
+        id: cache-apt-packages
+        uses: actions/cache@v3
+        with:
+          path: ./cache/apt-packages
+          key: ${{ runner.os }}-apt-packages-${{ hashFiles('makefileDependencies.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-packages-
+
+      - name: Cache Apt Package Lists
+        id: cache-apt-lists
+        uses: actions/cache@v3
+        with:
+          path: ./cache/apt-lists
+          key: ${{ runner.os }}-apt-lists-${{ hashFiles('makefileDependencies.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-apt-lists-
+
+      - name: Cache Google Test
+        id: cache-google-tests
+        uses: actions/cache@v3
+        with:
+          path: |
+            ./cache/gtest
+          key: ${{ runner.os }}-google-tests-${{ hashFiles('makefileDependencies.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-google-tests-
+
+      - name: Cache Config Cat
+        id: cache-config-cat
+        uses: actions/cache@v3
+        with:
+          path: |
+            ./cache/configcat
+          key: ${{ runner.os }}-config-cat-${{ hashFiles('makefileDependencies.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-config-cat-
+
+      - name: Cache Curl
+        id: cache-curl
+        uses: actions/cache@v3
+        with:
+          path: |
+            ./cache/curl
+          key: ${{ runner.os }}-curl-${{ hashFiles('makefileDependencies.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-curl-
+
+      - name: Cache Hash Library
+        id: cache-hash-library
+        uses: actions/cache@v3
+        with:
+          path: |
+            ./cache/hash-library
+          key: ${{ runner.os }}-hash-library-${{ hashFiles('makefileDependencies.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-hash-library-
+
+      - name: Install Apt Packages From Cache
+        if: steps.cache-apt-packages.outputs.cache-hit == 'true'
+        run: sudo cp -r ./cache/apt-packages/* /var/cache/apt
+
+      - name: Install Apt Lists From Cache
+        if: steps.cache-apt-lists.outputs.cache-hit == 'true'
+        run: sudo cp -r ./cache/apt-lists/* /var/lib/apt/lists
+
+      - name: Install Google Test From Cache
+        if: steps.cache-google-tests.outputs.cache-hit == 'true'
+        run: |
+          sudo cp -r ./cache/gtest/lib/* /usr/lib
+          sudo mkdir -p /usr/include/gtest
+          sudo cp -r ./cache/gtest/include/* /usr/include/gtest
+
+      - name: Install Config Cat From Cache
+        if: steps.cache-config-cat.outputs.cache-hit == 'true'
+        run: |
+          sudo cp ./cache/configcat/lib/* /usr/lib
+          sudo mkdir -p /usr/include/configcat
+          sudo cp ./cache/configcat/include/* /usr/include/configcat/
+
+      - name: Install Curl From Cache
+        if: steps.cache-curl.outputs.cache-hit == 'true'
+        run: |
+          sudo cp ./cache/curl/lib/* /usr/lib
+          sudo mkdir -p /usr/include/curl
+          sudo cp ./cache/curl/include/* /usr/include/curl/
+
+      - name: Install Hash Library From Cache
+        if: steps.cache-hash-library.outputs.cache-hit == 'true'
+        run: |
+          sudo cp ./cache/hash-library/lib/* /usr/lib
+          sudo mkdir -p /usr/include/hash-library
+          sudo cp ./cache/hash-library/include/* /usr/include/hash-library/
+
+      - name: Install dependencies
+        if: steps.cache-apt-packages.outputs.cache-hit != 'true' || steps.cache-apt-lists.outputs.cache-hit != 'true' || steps.cache-google-tests.outputs.cache-hit != 'true' || steps.cache-config-cat.outputs.cache-hit != 'true' || steps.cache-curl.outputs.cache-hit != 'true' || steps.cache-hash-library.outputs.cache-hit != 'true'
+        run: sudo bash $GITHUB_WORKSPACE/makefileDependencies.sh a
+
+      - name: Install Google Mock
+        if: steps.cache-apt-packages.outputs.cache-hit == 'true' || steps.cache-apt-lists.outputs.cache-hit == 'true' || steps.cache-google-tests.outputs.cache-hit == 'true' || steps.cache-config-cat.outputs.cache-hit == 'true' || steps.cache-curl.outputs.cache-hit == 'true' || steps.cache-hash-library.outputs.cache-hit == 'true'
+        run: sudo apt-get install libgmock-dev -y
+
+      - name: Make project
+        run: make build_tests COMPILER_STANDARD=13
+
+      - name: Save Apt Packages Cache
+        run: |
+          sudo cp -r /var/cache/apt ./cache/apt-packages
+
+      - name: Save Apt Lists Cache
+        run: |
+          sudo cp -r /var/lib/apt/lists ./cache/apt-lists
+
+      - name: Save Google Test Cache
+        run: |
+          sudo cp -r /usr/lib/libgtest* ./cache/gtest/lib
+          sudo cp -r /usr/include/gtest/* ./cache/gtest/include
+
+      - name: Save Config Cat Cache
+        run: |
+          sudo cp /usr/lib/libconfigcat.a ./cache/configcat/lib
+          sudo cp /usr/include/configcat/* ./cache/configcat/include
+
+      - name: Save Curl Cache
+        run: |
+          sudo cp /usr/lib/libcurl.a ./cache/curl/lib
+          sudo cp /usr/include/curl/* ./cache/curl/include
+
+      - name: Save Hash Library Cache
+        run: |
+          sudo cp /usr/lib/libhash-library.a ./cache/hash-library/lib
+          sudo cp /usr/include/hash-library/* ./cache/hash-library/include
+
+      - name: Give Read Access For Apt Folder
+        run: sudo chown -R $USER:$USER ./cache/apt-packages/apt/archives/lock ./cache/apt-packages/apt/archives/partial ./cache/apt-lists/lists/lock ./cache/apt-lists/lists/partial

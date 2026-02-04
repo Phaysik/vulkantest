@@ -1,0 +1,71 @@
+---
+AccessModifierOffset: -4
+AlignConsecutiveMacros: Consecutive
+AlignEscapedNewlines: Left
+AlignOperands: AlignAfterOperator
+AlignTrailingComments:
+  Kind: Always
+AllowShortFunctionsOnASingleLine: Empty
+BasedOnStyle: Microsoft
+BraceWrapping:
+  AfterCaseLabel: true
+  AfterClass: true
+  AfterControlStatement: Always
+  AfterEnum: true
+  AfterFunction: true
+  AfterNamespace: true
+  AfterStruct: true
+  BeforeCatch: true
+  BeforeElse: true
+  BeforeLambdaBody: false
+  BeforeWhile: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+  SplitEmptyNamespace: false
+BreakBeforeBinaryOperators: All
+BreakBeforeBraces: Custom
+BreakTemplateDeclarations: Yes
+BreakBeforeTernaryOperators: true
+ColumnLimit: 140
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '<[[:alnum:]._]+>'
+    Priority: 1
+  - Regex: '^"[^"]+/.+"'
+    Priority: 2
+    SortPriority: 2
+    CaseSensitive: true
+  - Regex: '^"(llvm|llvm-c|clang|clang-c)/'
+    Priority: 2
+    SortPriority: 2
+    CaseSensitive: true
+  - Regex: '^((<|\")(gtest|gmock|isl|json)/)'
+    Priority: 3
+  - Regex: '^"[^"]+"'
+    Priority: 4
+    SortPriority: 0
+  - Regex: '.*'
+    Priority: 5
+    SortPriority: 0
+IndentAccessModifiers: true
+IndentCaseBlocks: true
+IndentCaseLabels: true
+IndentWidth: 4
+IndentPPDirectives: BeforeHash
+InsertBraces: true
+IntegerLiteralSeparator:
+  Binary: 4
+  Decimal: 3
+Language: Cpp
+LineEnding: LF
+NamespaceIndentation: All
+PointerAlignment: Right
+QualifierAlignment: Left
+ReferenceAlignment: Right
+SeparateDefinitionBlocks: Always
+SortIncludes: CaseInsensitive
+SortUsingDeclarations: Lexicographic
+SpaceAfterCStyleCast: true
+Standard: Latest
+UseTab: Always
+---

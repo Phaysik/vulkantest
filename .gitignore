@@ -1,0 +1,14 @@
+/docs/sphinx
+/docs/xml
+/docs/html
+/coverage
+/build
+/cppcheck
+/profiling
+*.gcno
+*.gcda
+.vscode/compile_commands.json
+.vscode/settings.json
+.vscode/.cache
+/src/tracy/*
+shaderCompiler/*
