@@ -15,9 +15,11 @@
 
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "attributeMacros.h"
+#include "typedefs.h"
 
 #include <GLFW/glfw3.h>
 
@@ -40,11 +42,47 @@ class HelloTriangleApplication
 		void run();
 
 	private:
+		struct QueueFamilyIndicies
+		{
+				QueueFamilyIndicies() : graphicsFamily({}), presentFamily({}) {}
+
+				std::optional<ui> graphicsFamily;
+				std::optional<ui> presentFamily;
+
+				ATTR_NODISCARD bool isComplete() const
+				{
+					return graphicsFamily.has_value() && presentFamily.has_value();
+				}
+		};
+
+		struct SwapChainSupportDetails
+		{
+				SwapChainSupportDetails() : capabilities({}), formats({}), presentModes({}) {}
+
+				VkSurfaceCapabilitiesKHR capabilities;
+				std::vector<VkSurfaceFormatKHR> formats;
+				std::vector<VkPresentModeKHR> presentModes;
+		};
+
 		void initWindow();
 
 		void initVulkan();
 
 		void setupDebugMessenger();
+
+		void createSurface();
+
+		bool isDeviceSuitable(VkPhysicalDevice device);
+
+		bool checkDeviceExtensionSupport(VkPhysicalDevice device);
+
+		void pickPhysicalDevice();
+
+		void createLogicalDevice();
+
+		QueueFamilyIndicies findQueueFamilies(VkPhysicalDevice device);
+
+		SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
 
 		void mainLoop();
 
@@ -77,8 +115,13 @@ class HelloTriangleApplication
 
 	private:
 		std::unique_ptr<GLFWwindow, decltype(&glfwDestroyWindow)> window;
-		VkInstance instance{};
-		VkDebugUtilsMessengerEXT debugMessenger{};
+		VkInstance mInstance{};
+		VkDebugUtilsMessengerEXT mDebugMessenger{};
+		VkSurfaceKHR mSurface{};
+		VkPhysicalDevice mPhysicalDevice{VK_NULL_HANDLE};
+		VkDevice mDevice{};
+		VkQueue mGraphicsQueue{};
+		VkQueue mPresentQueue{};
 };
 
 #endif
