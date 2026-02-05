@@ -192,6 +192,7 @@ installVulkan() {
 
     sudo mkdir -p shaderCompiler
     sudo tar -xvzf install.tgz -C shaderCompiler --strip-components=1
+    sudo rm -rf install.tgz
     sudo cp shaderCompiler/bin/glslc /usr/bin
     sudo rm -rf shaderCompiler
 

@@ -172,7 +172,7 @@ std::vector<const char *> HelloTriangleApplication::getRequiredExtensions()
 
 bool HelloTriangleApplication::isDeviceSuitable(VkPhysicalDevice device)
 {
-	const QueueFamilyIndicies indices{findQueueFamilies(device)};
+	const QueueFamilyIndices indices{findQueueFamilies(device)};
 
 	const bool extensionsSupported{checkDeviceExtensionSupport(device)};
 	bool swapChainAdequate{false};
@@ -232,7 +232,7 @@ void HelloTriangleApplication::pickPhysicalDevice()
 	}
 }
 
-HelloTriangleApplication::QueueFamilyIndicies HelloTriangleApplication::findQueueFamilies(VkPhysicalDevice device)
+HelloTriangleApplication::QueueFamilyIndices HelloTriangleApplication::findQueueFamilies(VkPhysicalDevice device)
 {
 	ui queueFamilyCount{0};
 	vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
@@ -240,7 +240,7 @@ HelloTriangleApplication::QueueFamilyIndicies HelloTriangleApplication::findQueu
 	std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
 	vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
 
-	QueueFamilyIndicies indices;
+	QueueFamilyIndices indices;
 
 	ui index{0};
 	for (const auto &queueFamily : queueFamilies)
@@ -298,7 +298,7 @@ HelloTriangleApplication::SwapChainSupportDetails HelloTriangleApplication::quer
 
 void HelloTriangleApplication::createLogicalDevice()
 {
-	const QueueFamilyIndicies indices{findQueueFamilies(mPhysicalDevice)};
+	const QueueFamilyIndices indices{findQueueFamilies(mPhysicalDevice)};
 
 	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
 	const std::set<ui> uniqueQueueFamilies = {indices.graphicsFamily.value(), indices.presentFamily.value()};

@@ -42,9 +42,9 @@ class HelloTriangleApplication
 		void run();
 
 	private:
-		struct QueueFamilyIndicies
+		struct QueueFamilyIndices
 		{
-				QueueFamilyIndicies() : graphicsFamily({}), presentFamily({}) {}
+				QueueFamilyIndices() : graphicsFamily({}), presentFamily({}) {}
 
 				std::optional<ui> graphicsFamily;
 				std::optional<ui> presentFamily;
@@ -80,7 +80,7 @@ class HelloTriangleApplication
 
 		void createLogicalDevice();
 
-		QueueFamilyIndicies findQueueFamilies(VkPhysicalDevice device);
+		QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
 
 		SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
 
@@ -115,11 +115,14 @@ class HelloTriangleApplication
 
 	private:
 		std::unique_ptr<GLFWwindow, decltype(&glfwDestroyWindow)> window;
+
 		VkInstance mInstance{};
 		VkDebugUtilsMessengerEXT mDebugMessenger{};
 		VkSurfaceKHR mSurface{};
+
 		VkPhysicalDevice mPhysicalDevice{VK_NULL_HANDLE};
 		VkDevice mDevice{};
+
 		VkQueue mGraphicsQueue{};
 		VkQueue mPresentQueue{};
 };
