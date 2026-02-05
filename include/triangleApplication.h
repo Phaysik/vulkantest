@@ -13,6 +13,8 @@
 	#define GLFW_INCLUDE_VULKAN
 #endif
 
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -31,7 +33,7 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 class HelloTriangleApplication
 {
 	public:
-		HelloTriangleApplication() noexcept : window(nullptr, glfwDestroyWindow), mSwapChainImages({}) {}
+		HelloTriangleApplication() noexcept : mWindow(nullptr, glfwDestroyWindow), mSwapChainImages({}), mSwapChainImageViews({}) {}
 
 		HelloTriangleApplication(const HelloTriangleApplication &) = delete;
 		HelloTriangleApplication &operator=(const HelloTriangleApplication &) = delete;
@@ -86,6 +88,12 @@ class HelloTriangleApplication
 
 		void createSwapChain();
 
+		void createImageViews();
+
+		void createRenderPass();
+
+		void createGraphicsPipeline();
+
 		QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
 
 		SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
@@ -95,6 +103,8 @@ class HelloTriangleApplication
 		VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR> &availablePresentModes);
 
 		VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities);
+
+		VkShaderModule createShaderModule(const std::vector<char> &code);
 
 		void mainLoop();
 
@@ -125,8 +135,28 @@ class HelloTriangleApplication
 			return VK_FALSE;
 		}
 
+		static std::vector<char> readFile(const std::filesystem::path &path)
+		{
+			std::ifstream file{path, std::ios::ate | std::ios::binary};
+
+			if (!file.is_open())
+			{
+				throw std::runtime_error("Failed to open file!");
+			}
+
+			const si fileSize{sc<si>(file.tellg())};
+			std::vector<char> buffer(sc<std::size_t>(fileSize));
+
+			file.seekg(0);
+			file.read(buffer.data(), fileSize);
+
+			file.close();
+
+			return buffer;
+		}
+
 	private:
-		std::unique_ptr<GLFWwindow, decltype(&glfwDestroyWindow)> window;
+		std::unique_ptr<GLFWwindow, decltype(&glfwDestroyWindow)> mWindow;
 
 		VkInstance mInstance{};
 		VkDebugUtilsMessengerEXT mDebugMessenger{};
@@ -143,6 +173,13 @@ class HelloTriangleApplication
 
 		VkFormat mSwapChainImageFormat{};
 		VkExtent2D mSwapChainExtent{};
+
+		std::vector<VkImageView> mSwapChainImageViews;
+
+		VkRenderPass mRenderPass{};
+		VkPipelineLayout mPipelineLayout{};
+
+		VkPipeline mGraphicsPipeline{};
 };
 
 #endif

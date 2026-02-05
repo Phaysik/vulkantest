@@ -11,4 +11,4 @@
 .vscode/settings.json
 .vscode/.cache
 /src/tracy/*
-shaderCompiler/*
+*.spv
