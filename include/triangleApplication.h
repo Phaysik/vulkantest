@@ -33,7 +33,9 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 class HelloTriangleApplication
 {
 	public:
-		HelloTriangleApplication() noexcept : mWindow(nullptr, glfwDestroyWindow), mSwapChainImages({}), mSwapChainImageViews({}) {}
+		HelloTriangleApplication() noexcept
+			: mWindow(nullptr, glfwDestroyWindow), mSwapChainImages({}), mSwapChainImageViews({}), mSwapChainFramebuffers({})
+		{}
 
 		HelloTriangleApplication(const HelloTriangleApplication &) = delete;
 		HelloTriangleApplication &operator=(const HelloTriangleApplication &) = delete;
@@ -94,6 +96,14 @@ class HelloTriangleApplication
 
 		void createGraphicsPipeline();
 
+		void createFramebuffers();
+
+		void createCommandPool();
+
+		void createCommandBuffer();
+
+		void createSyncObjects();
+
 		QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
 
 		SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
@@ -106,7 +116,11 @@ class HelloTriangleApplication
 
 		VkShaderModule createShaderModule(const std::vector<char> &code);
 
+		void recordCommandBuffer(VkCommandBuffer commandBuffer, ui imageIndex);
+
 		void mainLoop();
+
+		void drawFrame();
 
 		void cleanup();
 
@@ -180,6 +194,15 @@ class HelloTriangleApplication
 		VkPipelineLayout mPipelineLayout{};
 
 		VkPipeline mGraphicsPipeline{};
+
+		std::vector<VkFramebuffer> mSwapChainFramebuffers;
+
+		VkCommandPool mCommandPool{};
+		VkCommandBuffer mCommandBuffer{};
+
+		VkSemaphore mImageAvailableSemaphore{};
+		VkSemaphore mRenderFinishedSemaphore{};
+		VkFence mInFlightFence{};
 };
 
 #endif
