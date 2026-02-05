@@ -31,11 +31,13 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 class HelloTriangleApplication
 {
 	public:
-		HelloTriangleApplication() noexcept : window(nullptr, glfwDestroyWindow) {}
+		HelloTriangleApplication() noexcept : window(nullptr, glfwDestroyWindow), mSwapChainImages({}) {}
 
 		HelloTriangleApplication(const HelloTriangleApplication &) = delete;
 		HelloTriangleApplication &operator=(const HelloTriangleApplication &) = delete;
-		~HelloTriangleApplication() = default;
+
+		~HelloTriangleApplication() {}
+
 		HelloTriangleApplication(HelloTriangleApplication &&) = default;
 		HelloTriangleApplication &operator=(HelloTriangleApplication &&) = default;
 
@@ -59,6 +61,8 @@ class HelloTriangleApplication
 		{
 				SwapChainSupportDetails() : capabilities({}), formats({}), presentModes({}) {}
 
+				~SwapChainSupportDetails() {}
+
 				VkSurfaceCapabilitiesKHR capabilities;
 				std::vector<VkSurfaceFormatKHR> formats;
 				std::vector<VkPresentModeKHR> presentModes;
@@ -80,9 +84,17 @@ class HelloTriangleApplication
 
 		void createLogicalDevice();
 
+		void createSwapChain();
+
 		QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
 
 		SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
+
+		VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &availableFormats);
+
+		VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR> &availablePresentModes);
+
+		VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities);
 
 		void mainLoop();
 
@@ -125,6 +137,12 @@ class HelloTriangleApplication
 
 		VkQueue mGraphicsQueue{};
 		VkQueue mPresentQueue{};
+
+		VkSwapchainKHR mSwapChain{};
+		std::vector<VkImage> mSwapChainImages;
+
+		VkFormat mSwapChainImageFormat{};
+		VkExtent2D mSwapChainExtent{};
 };
 
 #endif
