@@ -9,25 +9,34 @@
 #ifndef INCLUDE_CONSTANTS_H
 #define INCLUDE_CONSTANTS_H
 
-#ifndef GLFW_INCLUDE_VULKAN
-	#define GLFW_INCLUDE_VULKAN
-#endif
 #include <array>
 
 #include "typedefs.h"
 
+#ifndef VULKAN_HPP_NO_CONSTRUCTORS
+	#define VULKAN_HPP_NO_CONSTRUCTORS
+#endif
+
+#ifndef VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
+	#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
+#endif
+#include <vulkan/vulkan_raii.hpp>
+
+#ifndef GLFW_INCLUDE_VULKAN
+	#define GLFW_INCLUDE_VULKAN
+#endif
 #include <GLFW/glfw3.h>
 
-const ui WIDTH{800};
-const ui HEIGHT{600};
+constexpr ui WIDTH{800};
+constexpr ui HEIGHT{600};
 
 constexpr std::array<const char *, 1> validationLayers{"VK_LAYER_KHRONOS_validation"};
-constexpr std::array<const char *, 1> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+constexpr std::array<const char *, 2> requiredDeviceExtensions = {vk::KHRSwapchainExtensionName, vk::KHRShaderDrawParametersExtensionName};
 
 #ifdef NDEBUG
-const bool enableValidationLayers{false};
+constexpr bool enableValidationLayers{false};
 #else
-const bool enableValidationLayers{true};
+constexpr bool enableValidationLayers{true};
 #endif
 
 #endif

@@ -3,13 +3,14 @@
 #include <iostream>
 
 #include "attributeMacros.h"
+#include "triangleApplication.h"
 
 ATTR_CONST int main()
 {
-	HelloTriangleApplication app;
 
 	try
 	{
+		VulkanApplication app;
 		app.run();
 	}
 	catch (const std::exception &e)
