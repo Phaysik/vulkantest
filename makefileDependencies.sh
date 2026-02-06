@@ -203,7 +203,7 @@ installVulkan() {
     sudo apt-get install -y libxxf86vm-dev libxi-dev
 
     echo "Installing Vulkan packages..."
-    sudo apt-get install -y libvulkan1 mesa-vulkan-drivers vulkan-tools
+    sudo apt-get install -y libvulkan1
 
     echo "Removing any previous Vulkan SDK installation in ~/vulkansdk"
     sudo rm -rf ~/vulkansdk
@@ -217,10 +217,10 @@ installVulkan() {
 
     cd ~/vulkansdk
 
-    sudo ln -s $1 default
-
     sudo cp -r ~/vulkansdk/default/x86_64/lib/* /usr/lib/
     sudo cp -r ~/vulkansdk/default/x86_64/include/* /usr/include/
+    sudo cp -r ~/vulkansdk/default/x86_64/bin/* /usr/bin/
+    sudo cp -r ~/vulkansdk/default/x86_64/share/* /usr/share/
 
     echo "Add the following to ~/.zshrc:"
     echo "source ~/vulkansdk/default/setup-env.sh"

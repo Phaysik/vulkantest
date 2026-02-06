@@ -3,7 +3,6 @@
 #include <iostream>
 
 #include "attributeMacros.h"
-#include "triangleApplication.h"
 
 ATTR_CONST int main()
 {
