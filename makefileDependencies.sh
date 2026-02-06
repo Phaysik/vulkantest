@@ -177,28 +177,57 @@ setUpConfigCat() {
 }
 
 installVulkan() {
-    echo "Installing Vulkan System Packages..."
+    echo "Installing build essentials..."
+    sudo apt-get update
+    sudo apt-get install -y build-essential cmake ninja-build
 
-    sudo apt-get install vulkan-tools libvulkan-dev vulkan-validationlayers spirv-tools -y
+    echo "Installing GLFW..."
+    sudo apt-get install -y libglfw3-dev
 
-    echo "Installing math and rendering libraries..."
+    echo "Installing GLM..."
+    sudo apt-get install -y libglm-dev
 
-    sudo apt-get install libglfw3-dev libglm-dev -y
+    echo "Installing tinyobjloader..."
+    sudo apt-get install -y libtinyobjloader-dev || echo "tinyobjloader not found in apt, will need to be installed manually or via CMake FetchContent"
 
-    echo "Installing shader compiler..."
+    echo "Installing stb..."
+    sudo apt-get install -y libstb-dev || echo "stb not found in apt, will need to be installed manually or via CMake FetchContent"
 
-    downloadUrl=`sudo curl -s https://storage.googleapis.com/shaderc/badges/build_link_linux_gcc_release.html | grep -oP '(?<=url=)[^"]+'`
-    sudo wget $downloadUrl
+    echo "Installing tinygltf..."
+    sudo apt-get install -y libtinygltf-dev || echo "tinygltf not found in apt, will need to be installed manually or via CMake FetchContent"
 
-    sudo mkdir -p shaderCompiler
-    sudo tar -xvzf install.tgz -C shaderCompiler --strip-components=1
-    sudo rm -rf install.tgz
-    sudo cp shaderCompiler/bin/glslc /usr/bin
-    sudo rm -rf shaderCompiler
+    echo "Installing nlohmann-json..."
+    sudo apt-get install -y nlohmann-json3-dev || echo "nlohmann-json not found in apt, will need to be installed manually or via CMake FetchContent"
 
-    echo "Installing remaining dependencies..."
+    echo "Installing X Window System dependencies..."
+    sudo apt-get install -y libxxf86vm-dev libxi-dev
 
-    sudo apt-get install libxxf86vm-dev libxi-dev -y
+    echo "Installing Vulkan packages..."
+    sudo apt-get install -y libvulkan1 mesa-vulkan-drivers vulkan-tools
+
+    echo "Removing any previous Vulkan SDK installation in ~/vulkansdk"
+    sudo rm -rf ~/vulkansdk
+
+    sudo mkdir -p ~/vulkansdk
+    sudo wget https://sdk.lunarg.com/sdk/download/$1/linux/vulkansdk-linux-x86_64-$1.tar.xz
+
+    sudo tar -xvf vulkansdk-linux-x86_64-$1.tar.xz -C ~/vulkansdk
+
+    sudo rm -rf vulkansdk-linux-x86_64-$1.tar.xz
+
+    cd ~/vulkansdk
+
+    sudo ln -s $1 default
+
+    sudo cp -r ~/vulkansdk/default/x86_64/lib/* /usr/lib/
+    sudo cp -r ~/vulkansdk/default/x86_64/include/* /usr/include/
+
+    echo "Add the following to ~/.zshrc:"
+    echo "source ~/vulkansdk/default/setup-env.sh"
+    echo ""
+    echo "Run: source ~/.zshrc"
+    echo ""
+    echo "Verify installation by running: vkcube"
 }
 
 main() {
@@ -309,6 +338,21 @@ main() {
                 echo "Tracy-Server already exists"
             else
                 setUpTracy $gpp_priortiy
+            fi
+
+            vulkan_desired_version="1.4.341.1"
+            if [ -x "$(command -v vkcube)" ]; then
+                echo "vkcube already exists"
+
+                vulkan_version=$(vulkaninfo 2>/dev/null | grep -m1 'Vulkan Instance Version' | cut -d: -f2 | xargs)
+
+                if [[ "$vulkan_version" == "$vulkan_desired_version" ]]; then
+                    echo "vulkan version $vulkan_desired_version already exists"
+                else
+                    installVulkan $vulkan_desired_version
+                fi
+            else
+                installVulkan $vulkan_desired_version
             fi
         fi
     else

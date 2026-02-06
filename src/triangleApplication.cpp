@@ -538,6 +538,17 @@ void HelloTriangleApplication::createRenderPass()
 	renderPassInfo.subpassCount = 1;
 	renderPassInfo.pSubpasses = &subpass;
 
+	VkSubpassDependency dependency{};
+	dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+	dependency.dstSubpass = 0;
+	dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependency.srcAccessMask = 0;
+	dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+	renderPassInfo.dependencyCount = 1;
+	renderPassInfo.pDependencies = &dependency;
+
 	if (vkCreateRenderPass(mDevice, &renderPassInfo, nullptr, &mRenderPass) != VK_SUCCESS)
 	{
 		throw std::runtime_error("Failed to create render pass!");
@@ -843,6 +854,8 @@ void HelloTriangleApplication::mainLoop()
 		glfwPollEvents();
 		drawFrame();
 	}
+
+	vkDeviceWaitIdle(mDevice);
 }
 
 void HelloTriangleApplication::drawFrame()
@@ -877,6 +890,20 @@ void HelloTriangleApplication::drawFrame()
 	{
 		throw std::runtime_error("Failed to submit draw command buffer!");
 	}
+
+	VkPresentInfoKHR presentInfo{};
+	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+
+	presentInfo.waitSemaphoreCount = 1;
+	presentInfo.pWaitSemaphores = signalSemaphores.data();
+
+	const std::array<VkSwapchainKHR, 1> swapChains{mSwapChain};
+	presentInfo.swapchainCount = 1;
+	presentInfo.pSwapchains = swapChains.data();
+	presentInfo.pImageIndices = &imageIndex;
+	presentInfo.pResults = nullptr; // Optional
+
+	vkQueuePresentKHR(mPresentQueue, &presentInfo);
 }
 
 void HelloTriangleApplication::cleanup()
