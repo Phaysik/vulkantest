@@ -14,7 +14,7 @@ DEBUG_WARNINGS = -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointe
 INCLUDE_FOLDER = include
 INCLUDE_ARGUMENT = -I${INCLUDE_FOLDER}
 LIBRARIES = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
-RESOURCES_FOLDER = .\/resources
+RESOURCES_FOLDER = resources
 
 SOURCE_FOLDER = src
 SOURCES = $(shell find ${SOURCE_FOLDER} -type f -not -path '*/tracy/*.cpp' -name '*.cpp')
@@ -127,7 +127,19 @@ else ifeq ($(TEST_OPTIONS), unit)
 	OBJECTS_TEST_USING = $(OBJECTS_TEST_UNITS_ALL)
 endif
 
+SHADER_DIR = ${RESOURCES_FOLDER}/shaders
+SHADERS = $(wildcard ${SHADER_DIR}/*.slang)
+SPV_FILES = ${SHADERS:.slang=.spv}
+
+SLANG_COMPILER = slangc
+SLANG_FLAGS = -target spirv -profile spirv_1_4 -emit-spirv-directly -fvk-use-entrypoint-name
+
 default: compile
+
+$(SHADER_DIR)/%.spv: $(SHADER_DIR)/%.slang
+	${SLANG_COMPILER} $< ${SLANG_FLAGS} -entry vertMain -entry fragMain -o $@
+
+shaders: $(SPV_FILES)
 
 ${OUTPUT_FOLDER_RELEASE}/%.o: ${SOURCE_FOLDER}/%.cpp
 	@dir=$(dir $@); \
@@ -136,7 +148,7 @@ ${OUTPUT_FOLDER_RELEASE}/%.o: ${SOURCE_FOLDER}/%.cpp
 
 -include $(DEPS_RELEASE)
 
-compile: $(OBJECTS_RELEASE)
+compile: shaders $(OBJECTS_RELEASE)
 	${COMPILER} ${COMPILER_FLAGS_RELEASE} ${OBJECTS_RELEASE} ${LIBRARIES} ${RELEASE_WARNINGS} -o ${OUTPUT_FOLDER_RELEASE}/${OUTPUT_FILE_RELEASE}
 	if [ -d ${RESOURCES_FOLDER} ]; then \
 		cp -r ${RESOURCES_FOLDER} ${OUTPUT_FOLDER_RELEASE}; \
@@ -152,7 +164,7 @@ ${OUTPUT_FOLDER_DEV}/%.o: ${SOURCE_FOLDER}/%.cpp
 
 -include $(DEPS_DEV)
 
-debug: $(OBJECTS_DEV)
+debug: shaders $(OBJECTS_DEV)
 	${COMPILER} ${COMPILER_FLAGS_DEV} ${OBJECTS_DEV} ${LIBRARIES} ${DEBUG_WARNINGS} -o ${OUTPUT_FOLDER_DEV}/${OUTPUT_FILE_DEV}
 	if [ -d ${RESOURCES_FOLDER} ]; then \
 		cp -r ${RESOURCES_FOLDER} ${OUTPUT_FOLDER_DEV}; \
@@ -169,7 +181,7 @@ ${OUTPUT_FOLDER_VALGRIND}/%.o: ${SOURCE_FOLDER}/%.cpp
 
 -include $(DEPS_VALGRIND)
 
-val: $(OBJECTS_VALGRIND)
+val: shaders $(OBJECTS_VALGRIND)
 	${COMPILER} ${COMPILER_FLAGS_VALGRIND} ${OBJECTS_VALGRIND} ${LIBRARIES} -o ${OUTPUT_FOLDER_VALGRIND}/${OUTPUT_FILE_VALGRIND}
 	if [ -d ${RESOURCES_FOLDER} ]; then \
 		cp -r ${RESOURCES_FOLDER} ${OUTPUT_FOLDER_VALGRIND}; \

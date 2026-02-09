@@ -7,7 +7,6 @@
 
 ATTR_CONST int main()
 {
-
 	try
 	{
 		VulkanApplication app;
