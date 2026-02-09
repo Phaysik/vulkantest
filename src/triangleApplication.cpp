@@ -47,6 +47,7 @@ void VulkanApplication::initWindow()
 	glfwInit();
 
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
 	mWindow = std::unique_ptr<GLFWwindow, decltype(&glfwDestroyWindow)>(glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr),
 																		glfwDestroyWindow);
@@ -185,8 +186,7 @@ void VulkanApplication::pickPhysicalDevice()
 		auto features{physicalDevice.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features,
 														   vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>()};
 		const bool supportsRequiredFeatures{
-			features.template get<vk::PhysicalDeviceVulkan13Features>().synchronization2
-			&& features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering
+			features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering
 			&& features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState};
 
 		return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
@@ -504,25 +504,12 @@ void VulkanApplication::recreateSwapChain()
 
 	createSwapChain();
 	createImageViews();
-
-	// Recreate command buffers and sync objects so they match the new swapchain
-	createCommandBuffers();
-	createSyncObjects();
 }
 
 void VulkanApplication::cleanupSwapChain()
 {
-	// Ensure the device is idle before destroying swapchain-dependent resources
-	mDevice.waitIdle();
-
-	mCommandBuffers.clear();
 	mSwapChainImageViews.clear();
 	mSwapChain = nullptr;
-
-	// Destroy and clear synchronization primitives so they can be recreated
-	mRenderCompleteSemaphores.clear();
-	mPresentCompleteSemaphores.clear();
-	mInFlightFences.clear();
 }
 
 void VulkanApplication::mainLoop()
@@ -605,8 +592,6 @@ void VulkanApplication::drawFrame()
 
 void VulkanApplication::cleanup()
 {
-	cleanupSwapChain();
-
 	glfwDestroyWindow(mWindow.get());
 
 	glfwTerminate();
