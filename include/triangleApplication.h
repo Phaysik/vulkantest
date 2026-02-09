@@ -169,6 +169,16 @@ class HelloTriangleApplication
 			return buffer;
 		}
 
+		void recreateSwapChain();
+
+		void cleanupSwapChain();
+
+		static void framebufferResizeCallback(GLFWwindow *window, ATTR_MAYBE_UNUSED si width, ATTR_MAYBE_UNUSED si height)
+		{
+			auto *app = reinterpret_cast<HelloTriangleApplication *>(glfwGetWindowUserPointer(window));
+			app->mFramebufferResized = true;
+		}
+
 	private:
 		std::unique_ptr<GLFWwindow, decltype(&glfwDestroyWindow)> mWindow;
 
@@ -200,9 +210,12 @@ class HelloTriangleApplication
 		VkCommandPool mCommandPool{};
 		VkCommandBuffer mCommandBuffer{};
 
-		VkSemaphore mImageAvailableSemaphore{};
-		VkSemaphore mRenderFinishedSemaphore{};
-		VkFence mInFlightFence{};
+		std::vector<VkSemaphore> mImageAvailableSemaphores{};
+		std::vector<VkSemaphore> mRenderFinishedSemaphores{};
+		std::vector<VkFence> mInFlightFences{};
+		ui mCurrentFrame{0};
+
+		bool mFramebufferResized{false};
 };
 
 #endif

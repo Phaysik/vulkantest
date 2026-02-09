@@ -24,6 +24,8 @@ const ui HEIGHT{600};
 constexpr std::array<const char *, 1> validationLayers{"VK_LAYER_KHRONOS_validation"};
 constexpr std::array<const char *, 1> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
+constexpr ui MAX_FRAMES_IN_FLIGHT{2};
+
 #ifdef NDEBUG
 const bool enableValidationLayers{false};
 #else
