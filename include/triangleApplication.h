@@ -62,6 +62,12 @@ class VulkanApplication
 
 		void createGraphicsPipeline();
 
+		void createCommandPool();
+
+		void createCommandBuffers();
+
+		void createSyncObjects();
+
 		static std::vector<const char *> getRequiredExtensions()
 		{
 			ui glfwExtensionCount{0};
@@ -122,7 +128,19 @@ class VulkanApplication
 
 		ATTR_NODISCARD vk::raii::ShaderModule createShaderModule(const std::vector<char> &code) const;
 
+		void recordCommandBuffer(ui imageIndex);
+
+		void transition_image_layout(ui imageIndex, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, vk::AccessFlags2 srcAccessMask,
+									 vk::AccessFlags2 dstAccessMask, vk::PipelineStageFlags2 srcStageMask,
+									 vk::PipelineStageFlags2 dstStageMask);
+
+		void recreateSwapChain();
+
+		void cleanupSwapChain();
+
 		void mainLoop();
+
+		void drawFrame();
 
 		void cleanup();
 
@@ -162,6 +180,12 @@ class VulkanApplication
 			return buffer;
 		}
 
+		static void framebufferResizeCallback(GLFWwindow *window, ATTR_MAYBE_UNUSED si width, ATTR_MAYBE_UNUSED si height)
+		{
+			auto *app = reinterpret_cast<VulkanApplication *>(glfwGetWindowUserPointer(window));
+			app->mFramebufferResized = true;
+		}
+
 	private:
 		std::unique_ptr<GLFWwindow, decltype(&glfwDestroyWindow)> mWindow{nullptr, glfwDestroyWindow};
 
@@ -174,6 +198,7 @@ class VulkanApplication
 
 		vk::raii::PhysicalDevice mPhysicalDevice{nullptr};
 
+		si mQueueIndex{-1};
 		vk::raii::Device mDevice{nullptr};
 
 		vk::raii::Queue mPresentQueue{nullptr};
@@ -186,6 +211,16 @@ class VulkanApplication
 
 		vk::raii::PipelineLayout mPipelineLayout{nullptr};
 		vk::raii::Pipeline mGraphicsPipeline{nullptr};
+
+		vk::raii::CommandPool mCommandPool{nullptr};
+		std::vector<vk::raii::CommandBuffer> mCommandBuffers{};
+
+		std::vector<vk::raii::Semaphore> mPresentCompleteSemaphores{};
+		std::vector<vk::raii::Semaphore> mRenderCompleteSemaphores{};
+		std::vector<vk::raii::Fence> mInFlightFences{};
+
+		ui mFrameIndex{0};
+		bool mFramebufferResized{false};
 };
 
 #endif

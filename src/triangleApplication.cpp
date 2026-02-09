@@ -47,10 +47,12 @@ void VulkanApplication::initWindow()
 	glfwInit();
 
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 	mWindow = std::unique_ptr<GLFWwindow, decltype(&glfwDestroyWindow)>(glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr),
 																		glfwDestroyWindow);
+
+	glfwSetWindowUserPointer(mWindow.get(), this);
+	glfwSetFramebufferSizeCallback(mWindow.get(), framebufferResizeCallback);
 }
 
 void VulkanApplication::initVulkan()
@@ -63,6 +65,9 @@ void VulkanApplication::initVulkan()
 	createSwapChain();
 	createImageViews();
 	createGraphicsPipeline();
+	createCommandPool();
+	createCommandBuffers();
+	createSyncObjects();
 }
 
 void VulkanApplication::createInstance()
@@ -180,7 +185,8 @@ void VulkanApplication::pickPhysicalDevice()
 		auto features{physicalDevice.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features,
 														   vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>()};
 		const bool supportsRequiredFeatures{
-			features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering
+			features.template get<vk::PhysicalDeviceVulkan13Features>().synchronization2
+			&& features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering
 			&& features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState};
 
 		return supportsVulkan1_3 && supportsGraphics && supportsAllRequiredExtensions && supportsRequiredFeatures;
@@ -202,18 +208,17 @@ void VulkanApplication::createLogicalDevice()
 	const std::vector<vk::QueueFamilyProperties> queueFamilyProperties{mPhysicalDevice.getQueueFamilyProperties()};
 
 	// Get the first index into queueFamilyProperties which supports both graphics and present
-	si queueIndex{-1};
 	for (ui qfpIndex = 0; qfpIndex < queueFamilyProperties.size(); qfpIndex++)
 	{
 		if ((queueFamilyProperties.at(qfpIndex).queueFlags & vk::QueueFlagBits::eGraphics)
 			&& mPhysicalDevice.getSurfaceSupportKHR(qfpIndex, *mSurface) == VK_TRUE)
 		{
 			// found a queue family that supports both graphics and present
-			queueIndex = sc<si>(qfpIndex);
+			mQueueIndex = sc<si>(qfpIndex);
 			break;
 		}
 	}
-	if (queueIndex == -1)
+	if (mQueueIndex == -1)
 	{
 		throw std::runtime_error("Could not find a queue for graphics and present -> terminating");
 	}
@@ -222,15 +227,15 @@ void VulkanApplication::createLogicalDevice()
 	const vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features,
 							 vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>
 		featureChain{
-			{},								  // vk::PhysicalDeviceFeatures2 (empty for now)
-			{.dynamicRendering = VK_TRUE},	  // Enable dynamic rendering from Vulkan 1.3
-			{.extendedDynamicState = VK_TRUE} // Enable extended dynamic state from the extension
+			{},															// vk::PhysicalDeviceFeatures2 (empty for now)
+			{.synchronization2 = VK_TRUE, .dynamicRendering = VK_TRUE}, // Enable synchronization and dynamic rendering from Vulkan 1.3
+			{.extendedDynamicState = VK_TRUE}							// Enable extended dynamic state from the extension
 		};
 
 	// Create a device
 	constexpr float queuePriority{0.5F};
 	const vk::DeviceQueueCreateInfo deviceQueueCreateInfo{
-		.queueFamilyIndex = sc<ui>(queueIndex), .queueCount = 1, .pQueuePriorities = &queuePriority};
+		.queueFamilyIndex = sc<ui>(mQueueIndex), .queueCount = 1, .pQueuePriorities = &queuePriority};
 
 	const vk::DeviceCreateInfo deviceCreateInfo{.pNext = &featureChain.get<vk::PhysicalDeviceFeatures2>(),
 												.queueCreateInfoCount = 1,
@@ -239,7 +244,7 @@ void VulkanApplication::createLogicalDevice()
 												.ppEnabledExtensionNames = requiredDeviceExtensions.data()};
 
 	mDevice = vk::raii::Device(mPhysicalDevice, deviceCreateInfo);
-	mPresentQueue = vk::raii::Queue(mDevice, sc<ui>(queueIndex), 0);
+	mPresentQueue = vk::raii::Queue(mDevice, sc<ui>(mQueueIndex), 0);
 }
 
 void VulkanApplication::createSwapChain()
@@ -347,13 +352,37 @@ void VulkanApplication::createGraphicsPipeline()
 	mGraphicsPipeline = vk::raii::Pipeline(mDevice, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
 }
 
-ATTR_NODISCARD vk::raii::ShaderModule VulkanApplication::createShaderModule(const std::vector<char> &code) const
+void VulkanApplication::createCommandPool()
 {
-	const vk::ShaderModuleCreateInfo createInfo{.codeSize = code.size() * sizeof(char), .pCode = reinterpret_cast<const ui *>(code.data())};
+	const vk::CommandPoolCreateInfo poolInfo{.flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+											 .queueFamilyIndex = sc<ui>(mQueueIndex)};
 
-	vk::raii::ShaderModule shaderModule{mDevice, createInfo};
+	mCommandPool = vk::raii::CommandPool(mDevice, poolInfo);
+}
 
-	return shaderModule;
+void VulkanApplication::createCommandBuffers()
+{
+	mCommandBuffers.clear();
+	const vk::CommandBufferAllocateInfo allocInfo{
+		.commandPool = mCommandPool, .level = vk::CommandBufferLevel::ePrimary, .commandBufferCount = MAX_FRAMES_IN_FLIGHT};
+
+	mCommandBuffers = std::move(vk::raii::CommandBuffers(mDevice, allocInfo));
+}
+
+void VulkanApplication::createSyncObjects()
+{
+	assert(mPresentCompleteSemaphores.empty() && mRenderCompleteSemaphores.empty() && mInFlightFences.empty());
+
+	for (size_t i = 0; i < mSwapChainImages.size(); i++)
+	{
+		mRenderCompleteSemaphores.emplace_back(mDevice, vk::SemaphoreCreateInfo());
+	}
+
+	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+	{
+		mPresentCompleteSemaphores.emplace_back(mDevice, vk::SemaphoreCreateInfo());
+		mInFlightFences.emplace_back(mDevice, vk::FenceCreateInfo{.flags = vk::FenceCreateFlagBits::eSignaled});
+	}
 }
 
 vk::Extent2D VulkanApplication::chooseSwapExtent(const vk::SurfaceCapabilitiesKHR &capabilities)
@@ -371,16 +400,213 @@ vk::Extent2D VulkanApplication::chooseSwapExtent(const vk::SurfaceCapabilitiesKH
 			.height = std::clamp<ui>(sc<ui>(height), capabilities.minImageExtent.height, capabilities.maxImageExtent.height)};
 }
 
+ATTR_NODISCARD vk::raii::ShaderModule VulkanApplication::createShaderModule(const std::vector<char> &code) const
+{
+	const vk::ShaderModuleCreateInfo createInfo{.codeSize = code.size() * sizeof(char), .pCode = reinterpret_cast<const ui *>(code.data())};
+
+	vk::raii::ShaderModule shaderModule{mDevice, createInfo};
+
+	return shaderModule;
+}
+
+void VulkanApplication::recordCommandBuffer(ui imageIndex)
+{
+	const vk::raii::CommandBuffer &commandBuffer = mCommandBuffers.at(mFrameIndex);
+	commandBuffer.begin({});
+
+	// Before starting rendering, transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL
+	transition_image_layout(imageIndex, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal,
+							{},													// srcAccessMask (no need to wait for previous operations)
+							vk::AccessFlagBits2::eColorAttachmentWrite,			// dstAccessMask
+							vk::PipelineStageFlagBits2::eColorAttachmentOutput, // srcStage
+							vk::PipelineStageFlagBits2::eColorAttachmentOutput	// dstStage
+	);
+
+	const vk::ClearValue clearColor{vk::ClearColorValue(std::array<float, 4>{0.0F, 0.0F, 0.0F, 1.0F})};
+	const vk::RenderingAttachmentInfo attachmentInfo{
+		.imageView = mSwapChainImageViews.at(imageIndex),
+		.imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+		.loadOp = vk::AttachmentLoadOp::eClear,
+		.storeOp = vk::AttachmentStoreOp::eStore,
+		.clearValue = clearColor,
+	};
+
+	const vk::RenderingInfo renderingInfo = {.renderArea = {.offset = {.x = 0, .y = 0}, .extent = mSwapChainExtent},
+											 .layerCount = 1,
+											 .colorAttachmentCount = 1,
+											 .pColorAttachments = &attachmentInfo};
+
+	commandBuffer.beginRendering(renderingInfo);
+	commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, mGraphicsPipeline);
+	commandBuffer.setViewport(0, vk::Viewport{.x = 0.0F,
+											  .y = 0.0F,
+											  .width = sc<float>(mSwapChainExtent.width),
+											  .height = sc<float>(mSwapChainExtent.height),
+											  .minDepth = 0.0F,
+											  .maxDepth = 1.0F});
+	commandBuffer.setScissor(0, vk::Rect2D{.offset = {.x = 0, .y = 0}, .extent = mSwapChainExtent});
+	commandBuffer.draw(3, 1, 0, 0);
+	commandBuffer.endRendering();
+
+	// After rendering, transition the swapchain image to PRESENT_SRC
+	transition_image_layout(imageIndex, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::ePresentSrcKHR,
+							vk::AccessFlagBits2::eColorAttachmentWrite,			// srcAccessMask
+							{},													// dstAccessMask
+							vk::PipelineStageFlagBits2::eColorAttachmentOutput, // srcStage
+							vk::PipelineStageFlagBits2::eBottomOfPipe			// dstStage
+	);
+
+	commandBuffer.end();
+}
+
+void VulkanApplication::transition_image_layout(ui imageIndex, vk::ImageLayout oldLayout, vk::ImageLayout newLayout,
+												vk::AccessFlags2 srcAccessMask, vk::AccessFlags2 dstAccessMask,
+												vk::PipelineStageFlags2 srcStageMask, vk::PipelineStageFlags2 dstStageMask)
+{
+	const vk::ImageMemoryBarrier2 barrier{
+		.srcStageMask = srcStageMask,
+		.srcAccessMask = srcAccessMask,
+		.dstStageMask = dstStageMask,
+		.dstAccessMask = dstAccessMask,
+		.oldLayout = oldLayout,
+		.newLayout = newLayout,
+		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.image = mSwapChainImages.at(imageIndex),
+		.subresourceRange
+		= {.aspectMask = vk::ImageAspectFlagBits::eColor, .baseMipLevel = 0, .levelCount = 1, .baseArrayLayer = 0, .layerCount = 1},
+	};
+
+	const vk::DependencyInfo dependencyInfo{
+		.dependencyFlags = {},
+		.imageMemoryBarrierCount = 1,
+		.pImageMemoryBarriers = &barrier,
+	};
+
+	mCommandBuffers.at(mFrameIndex).pipelineBarrier2(dependencyInfo);
+}
+
+void VulkanApplication::recreateSwapChain()
+{
+	si width{0};
+	si height{0};
+	glfwGetFramebufferSize(mWindow.get(), &width, &height);
+
+	while (width == 0 || height == 0)
+	{
+		glfwGetFramebufferSize(mWindow.get(), &width, &height);
+		glfwWaitEvents();
+	}
+
+	mDevice.waitIdle();
+
+	cleanupSwapChain();
+
+	createSwapChain();
+	createImageViews();
+
+	// Recreate command buffers and sync objects so they match the new swapchain
+	createCommandBuffers();
+	createSyncObjects();
+}
+
+void VulkanApplication::cleanupSwapChain()
+{
+	// Ensure the device is idle before destroying swapchain-dependent resources
+	mDevice.waitIdle();
+
+	mCommandBuffers.clear();
+	mSwapChainImageViews.clear();
+	mSwapChain = nullptr;
+
+	// Destroy and clear synchronization primitives so they can be recreated
+	mRenderCompleteSemaphores.clear();
+	mPresentCompleteSemaphores.clear();
+	mInFlightFences.clear();
+}
+
 void VulkanApplication::mainLoop()
 {
 	while (glfwWindowShouldClose(mWindow.get()) == 0)
 	{
 		glfwPollEvents();
+		drawFrame();
 	}
+
+	mDevice.waitIdle();
+}
+
+void VulkanApplication::drawFrame()
+{
+	// Note: inFlightFences, presentCompleteSemaphores, and commandBuffers are indexed by frameIndex, while renderFinishedSemaphores is
+	// indexed by imageIndex
+
+	const vk::Result fenceResult = mDevice.waitForFences(*mInFlightFences.at(mFrameIndex), vk::True, std::numeric_limits<ul>::max());
+
+	if (fenceResult != vk::Result::eSuccess)
+	{
+		throw std::runtime_error("Failed to wait for in-flight fence!");
+	}
+
+	auto [result, imageIndex]
+		= mSwapChain.acquireNextImage(std::numeric_limits<ul>::max(), *mPresentCompleteSemaphores.at(mFrameIndex), nullptr);
+
+	if (result == vk::Result::eErrorOutOfDateKHR)
+	{
+		recreateSwapChain();
+		return;
+	}
+
+	if (result != vk::Result::eSuccess && result != vk::Result::eSuboptimalKHR)
+	{
+		assert(result == vk::Result::eTimeout || result == vk::Result::eNotReady);
+		throw std::runtime_error("Failed to acquire swap chain image!");
+	}
+
+	mDevice.resetFences(*mInFlightFences.at(mFrameIndex));
+
+	mCommandBuffers.at(mFrameIndex).reset();
+
+	recordCommandBuffer(imageIndex);
+
+	const vk::PipelineStageFlags waitDestinationStageMask(vk::PipelineStageFlagBits::eColorAttachmentOutput);
+	const vk::SubmitInfo submitInfo{.waitSemaphoreCount = 1,
+									.pWaitSemaphores = &*mPresentCompleteSemaphores.at(mFrameIndex),
+									.pWaitDstStageMask = &waitDestinationStageMask,
+									.commandBufferCount = 1,
+									.pCommandBuffers = &*mCommandBuffers.at(mFrameIndex),
+									.signalSemaphoreCount = 1,
+									.pSignalSemaphores = &*mRenderCompleteSemaphores.at(imageIndex)};
+
+	mPresentQueue.submit(submitInfo, *mInFlightFences.at(mFrameIndex));
+
+	const vk::PresentInfoKHR presentInfo{.waitSemaphoreCount = 1,
+										 .pWaitSemaphores = &*mRenderCompleteSemaphores.at(imageIndex),
+										 .swapchainCount = 1,
+										 .pSwapchains = &*mSwapChain,
+										 .pImageIndices = &imageIndex};
+	result = mPresentQueue.presentKHR(presentInfo);
+
+	// Due to VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS being defined, eErrorOutOfDateKHR can be checked as a result
+	// here and does not need to be caught by an exception.
+	if ((result == vk::Result::eSuboptimalKHR) || (result == vk::Result::eErrorOutOfDateKHR) || mFramebufferResized)
+	{
+		mFramebufferResized = false;
+		recreateSwapChain();
+	}
+	else
+	{
+		// There are no other success codes than eSuccess; on any error code, presentKHR already threw an exception.
+		assert(result == vk::Result::eSuccess);
+	}
+
+	mFrameIndex = (mFrameIndex + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
 void VulkanApplication::cleanup()
 {
+	cleanupSwapChain();
+
 	glfwDestroyWindow(mWindow.get());
 
 	glfwTerminate();

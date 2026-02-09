@@ -33,6 +33,8 @@ constexpr ui HEIGHT{600};
 constexpr std::array<const char *, 1> validationLayers{"VK_LAYER_KHRONOS_validation"};
 constexpr std::array<const char *, 2> requiredDeviceExtensions = {vk::KHRSwapchainExtensionName, vk::KHRShaderDrawParametersExtensionName};
 
+constexpr ui MAX_FRAMES_IN_FLIGHT{2};
+
 #ifdef NDEBUG
 constexpr bool enableValidationLayers{false};
 #else
