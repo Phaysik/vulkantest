@@ -102,7 +102,7 @@ class VulkanApplication
 
 		void cleanupSwapChain();
 
-		ui findMemoryType(const ui typeFilter, vk::MemoryPropertyFlags properties);
+		ATTR_NODISCARD ui findMemoryType(const ui typeFilter, vk::MemoryPropertyFlags properties) const;
 
 		void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Buffer &buffer,
 						  vk::raii::DeviceMemory &bufferMemory);
@@ -111,18 +111,21 @@ class VulkanApplication
 
 		void updateUniformBuffer(ui currentImage);
 
-		void createImage(ui width, ui height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage,
-						 vk::MemoryPropertyFlags properties, vk::raii::Image &image, vk::raii::DeviceMemory &imageMemory);
+		void createImage(ui width, ui height, ui mipLevels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage,
+						 vk::MemoryPropertyFlags properties, vk::raii::Image &image, vk::raii::DeviceMemory &imageMemory) const;
 
-		std::unique_ptr<vk::raii::CommandBuffer> beginSingleTimeCommands();
+		ATTR_NODISCARD std::unique_ptr<vk::raii::CommandBuffer> beginSingleTimeCommands() const;
 
-		void endSingleTimeCommands(vk::raii::CommandBuffer &commandBuffer);
+		void endSingleTimeCommands(vk::raii::CommandBuffer &commandBuffer) const;
 
 		void copyBufferToImage(const vk::raii::Buffer &buffer, vk::raii::Image &image, uint32_t width, uint32_t height);
 
-		void transitionImageLayout(const vk::raii::Image &image, vk::ImageLayout oldLayout, vk::ImageLayout newLayout);
+		void transitionImageLayout(const vk::raii::Image &image, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, ui mipLevels) const;
 
-		vk::raii::ImageView createImageView(vk::raii::Image &image, vk::Format format, vk::ImageAspectFlags aspectFlags);
+		ATTR_NODISCARD vk::raii::ImageView createImageView(vk::raii::Image &image, vk::Format format, vk::ImageAspectFlags aspectFlags,
+														   ui mipLevels) const;
+
+		void generateMipmaps(vk::raii::Image &image, vk::Format imageFormat, ui width, ui height, ui mipLevels);
 
 		void mainLoop();
 
@@ -293,6 +296,7 @@ class VulkanApplication
 		vk::raii::Buffer mStagingBuffer{nullptr};
 		vk::raii::DeviceMemory mStagingBufferMemory{nullptr};
 
+		ui mMipLevels{};
 		vk::raii::Image mTextureImage{nullptr};
 		vk::raii::DeviceMemory mTextureImageMemory{nullptr};
 		vk::raii::ImageView mTextureImageView{nullptr};
