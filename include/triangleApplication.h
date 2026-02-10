@@ -18,6 +18,7 @@
 #include "attributeMacros.h"
 #include "constants.h"
 #include "typedefs.h"
+#include "vertex.h"
 
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -70,6 +71,8 @@ class VulkanApplication
 		void createTextureImageView();
 
 		void createTextureSampler();
+
+		void loadModel();
 
 		void createVertexBuffer();
 
@@ -273,6 +276,9 @@ class VulkanApplication
 
 		ui mFrameIndex{0};
 		bool mFramebufferResized{false};
+
+		std::vector<Vertex> mVertices{};
+		std::vector<ui> mIndices{};
 
 		vk::raii::Buffer mVertexBuffer{nullptr};
 		vk::raii::DeviceMemory mVertexBufferMemory{nullptr};

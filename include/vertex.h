@@ -5,12 +5,14 @@
 	\since 0.0.1
 	\author Matthew Moore
 */
+
+#ifndef INCLUDE_VERTEX_H
+#define INCLUDE_VERTEX_H
+
 #include <array>
 
-#include "attributeMacros.h"
-#include "typedefs.h"
-
 #include <glm/glm.hpp>
+#include <glm/gtx/hash.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
 struct Vertex
@@ -30,17 +32,21 @@ struct Vertex
 					vk::VertexInputAttributeDescription(1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, color)),
 					vk::VertexInputAttributeDescription(2, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, texCoord))};
 		}
+
+		bool operator==(const Vertex &other) const
+		{
+			return pos == other.pos && color == other.color && texCoord == other.texCoord;
+		}
 };
 
-ATTR_MAYBE_UNUSED constexpr std::array<Vertex, 8> vertices
-	= {{{.pos = {-0.5F, -0.5F, 0.0F}, .color = {1.0F, 0.0F, 0.0F}, .texCoord = {0.0F, 0.0F}},
-		{.pos = {0.5F, -0.5F, 0.0F}, .color = {0.0F, 1.0F, 0.0F}, .texCoord = {1.0F, 0.0F}},
-		{.pos = {0.5F, 0.5F, 0.0F}, .color = {0.0F, 0.0F, 1.0F}, .texCoord = {1.0F, 1.0F}},
-		{.pos = {-0.5F, 0.5F, 0.0F}, .color = {1.0F, 1.0F, 1.0F}, .texCoord = {0.0F, 1.0F}},
+template <>
+struct std::hash<Vertex>
+{
+		size_t operator()(const Vertex &vertex) const noexcept
+		{
+			return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.color) << 1U)) >> 1U)
+				 ^ (hash<glm::vec2>()(vertex.texCoord) << 1U);
+		}
+};
 
-		{.pos = {-0.5F, -0.5F, -0.5F}, .color = {1.0F, 0.0F, 0.0F}, .texCoord = {0.0F, 0.0F}},
-		{.pos = {0.5F, -0.5F, -0.5F}, .color = {0.0F, 1.0F, 0.0F}, .texCoord = {1.0F, 0.0F}},
-		{.pos = {0.5F, 0.5F, -0.5F}, .color = {0.0F, 0.0F, 1.0F}, .texCoord = {1.0F, 1.0F}},
-		{.pos = {-0.5F, 0.5F, -0.5F}, .color = {1.0F, 1.0F, 1.0F}, .texCoord = {0.0F, 1.0F}}}};
-
-ATTR_MAYBE_UNUSED constexpr std::array<us, 12> indices = {0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4};
+#endif

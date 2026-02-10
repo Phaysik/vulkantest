@@ -16,6 +16,8 @@
 #include <memory>
 #include <stb_image.h>
 #include <string>
+#include <tiny_obj_loader.h>
+#include <unordered_map>
 #include <vector>
 
 #include "vulkan/vulkan.hpp"
@@ -68,6 +70,7 @@ void VulkanApplication::initVulkan()
 	createTextureImage();
 	createTextureImageView();
 	createTextureSampler();
+	loadModel();
 	createVertexBuffer();
 	createIndexBuffer();
 	createUniformBuffers();
@@ -405,7 +408,7 @@ void VulkanApplication::createTextureImage()
 	si texHeight{};
 	si texChannels{};
 
-	stbi_uc *pixels{stbi_load("resources/textures/statue.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha)};
+	stbi_uc *pixels{stbi_load(TEXTURE_PATH.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha)};
 
 	const vk::DeviceSize imageSize{sc<vk::DeviceSize>(texWidth * texHeight * 4)};
 
@@ -457,9 +460,50 @@ void VulkanApplication::createTextureSampler()
 	mTextureSampler = vk::raii::Sampler(mDevice, samplerInfo);
 }
 
+void VulkanApplication::loadModel()
+{
+	tinyobj::attrib_t attrib;
+	std::vector<tinyobj::shape_t> shapes;
+	std::vector<tinyobj::material_t> materials;
+	std::string warn;
+	std::string err;
+
+	if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, MODEL_PATH.c_str()))
+	{
+		throw std::runtime_error(warn + err);
+	}
+
+	std::unordered_map<Vertex, ui> uniqueVertices{};
+
+	for (const tinyobj::shape_t &shape : shapes)
+	{
+		for (const tinyobj::index_t &index : shape.mesh.indices)
+		{
+			Vertex vertex{};
+
+			vertex.pos = {attrib.vertices.at(sc<std::size_t>((3 * index.vertex_index) + 0)),
+						  attrib.vertices.at(sc<std::size_t>((3 * index.vertex_index) + 1)),
+						  attrib.vertices.at(sc<std::size_t>((3 * index.vertex_index) + 2))};
+
+			vertex.texCoord = {attrib.texcoords.at(sc<std::size_t>((2 * index.texcoord_index) + 0)),
+							   1.0F - attrib.texcoords.at(sc<std::size_t>((2 * index.texcoord_index) + 1))};
+
+			vertex.color = {1.0F, 1.0F, 1.0F};
+
+			if (!uniqueVertices.contains(vertex))
+			{
+				uniqueVertices[vertex] = sc<ui>(mVertices.size());
+				mVertices.push_back(vertex);
+			}
+
+			mIndices.push_back(uniqueVertices[vertex]);
+		}
+	}
+}
+
 void VulkanApplication::createVertexBuffer()
 {
-	const vk::DeviceSize bufferSize{sizeof(vertices.at(0)) * vertices.size()};
+	const vk::DeviceSize bufferSize{sizeof(mVertices.at(0)) * mVertices.size()};
 	vk::raii::Buffer stagingBuffer({});
 	vk::raii::DeviceMemory stagingBufferMemory({});
 
@@ -467,7 +511,7 @@ void VulkanApplication::createVertexBuffer()
 				 vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
 
 	void *dataStaging = stagingBufferMemory.mapMemory(0, bufferSize);
-	memcpy(dataStaging, vertices.data(), bufferSize);
+	memcpy(dataStaging, mVertices.data(), bufferSize);
 	stagingBufferMemory.unmapMemory();
 
 	createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
@@ -478,7 +522,7 @@ void VulkanApplication::createVertexBuffer()
 
 void VulkanApplication::createIndexBuffer()
 {
-	const vk::DeviceSize bufferSize{sizeof(indices.at(0)) * indices.size()};
+	const vk::DeviceSize bufferSize{sizeof(mIndices.at(0)) * mIndices.size()};
 
 	vk::raii::Buffer stagingBuffer({});
 	vk::raii::DeviceMemory stagingBufferMemory({});
@@ -487,7 +531,7 @@ void VulkanApplication::createIndexBuffer()
 				 vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
 
 	void *dataStaging = stagingBufferMemory.mapMemory(0, bufferSize);
-	memcpy(dataStaging, indices.data(), bufferSize);
+	memcpy(dataStaging, mIndices.data(), bufferSize);
 	stagingBufferMemory.unmapMemory();
 
 	createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
@@ -667,9 +711,9 @@ void VulkanApplication::recordCommandBuffer(ui imageIndex)
 											  .maxDepth = 1.0F});
 	commandBuffer.setScissor(0, vk::Rect2D{.offset = {.x = 0, .y = 0}, .extent = mSwapChainExtent});
 	commandBuffer.bindVertexBuffers(0, *mVertexBuffer, {0});
-	commandBuffer.bindIndexBuffer(*mIndexBuffer, 0, vk::IndexType::eUint16);
+	commandBuffer.bindIndexBuffer(*mIndexBuffer, 0, vk::IndexType::eUint32);
 	commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, mPipelineLayout, 0, *mDescriptorSets.at(mFrameIndex), nullptr);
-	commandBuffer.drawIndexed(indices.size(), 1, 0, 0, 0);
+	commandBuffer.drawIndexed(sc<ui>(mIndices.size()), 1, 0, 0, 0);
 	commandBuffer.endRendering();
 
 	// After rendering, transition the swapchain image to PRESENT_SRC

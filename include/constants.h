@@ -10,6 +10,7 @@
 #define INCLUDE_CONSTANTS_H
 
 #include <array>
+#include <string>
 
 #include "attributeMacros.h"
 #include "typedefs.h"
@@ -25,6 +26,9 @@ ATTR_MAYBE_UNUSED constexpr std::array<const char *, 2> requiredDeviceExtensions
 	= {vk::KHRSwapchainExtensionName, vk::KHRShaderDrawParametersExtensionName};
 
 ATTR_MAYBE_UNUSED constexpr ui MAX_FRAMES_IN_FLIGHT{2};
+
+const std::string MODEL_PATH{"resources/models/viking_room.obj"};
+const std::string TEXTURE_PATH{"resources/textures/viking_room.png"};
 
 #ifdef NDEBUG
 constexpr bool enableValidationLayers{false};
