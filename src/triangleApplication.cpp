@@ -10,17 +10,22 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstring>
 #include <limits>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "vulkan/vulkan.hpp"
+
 #include "attributeMacros.h"
 #include "constants.h"
 #include "typedefs.h"
 
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
 void VulkanApplication::run()
@@ -54,10 +59,14 @@ void VulkanApplication::initVulkan()
 	createLogicalDevice();
 	createSwapChain();
 	createImageViews();
+	createDescriptorSetLayout();
 	createGraphicsPipeline();
 	createCommandPool();
 	createVertexBuffer();
 	createIndexBuffer();
+	createUniformBuffers();
+	createDescriptorPool();
+	createDescriptorSets();
 	createCommandBuffers();
 	createSyncObjects();
 }
@@ -280,6 +289,14 @@ void VulkanApplication::createImageViews()
 	}
 }
 
+void VulkanApplication::createDescriptorSetLayout()
+{
+	const vk::DescriptorSetLayoutBinding uboLayoutBinding(0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex,
+														  nullptr);
+	const vk::DescriptorSetLayoutCreateInfo layoutInfo{.bindingCount = 1, .pBindings = &uboLayoutBinding};
+	mDescriptorSetLayout = vk::raii::DescriptorSetLayout(mDevice, layoutInfo);
+}
+
 void VulkanApplication::createGraphicsPipeline()
 {
 	const vk::raii::ShaderModule shaderModule{createShaderModule(readFile("resources/shaders/triangle.spv"))};
@@ -304,7 +321,7 @@ void VulkanApplication::createGraphicsPipeline()
 															  .rasterizerDiscardEnable = vk::False,
 															  .polygonMode = vk::PolygonMode::eFill,
 															  .cullMode = vk::CullModeFlagBits::eBack,
-															  .frontFace = vk::FrontFace::eClockwise,
+															  .frontFace = vk::FrontFace::eCounterClockwise,
 															  .depthBiasEnable = vk::False,
 															  .depthBiasSlopeFactor = 1.0F,
 															  .lineWidth = 1.0F};
@@ -324,7 +341,8 @@ void VulkanApplication::createGraphicsPipeline()
 	const vk::PipelineDynamicStateCreateInfo dynamicState{.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()),
 														  .pDynamicStates = dynamicStates.data()};
 
-	const vk::PipelineLayoutCreateInfo pipelineLayoutInfo{.setLayoutCount = 0, .pushConstantRangeCount = 0};
+	const vk::PipelineLayoutCreateInfo pipelineLayoutInfo{
+		.setLayoutCount = 1, .pSetLayouts = &*mDescriptorSetLayout, .pushConstantRangeCount = 0};
 
 	mPipelineLayout = vk::raii::PipelineLayout(mDevice, pipelineLayoutInfo);
 
@@ -395,6 +413,59 @@ void VulkanApplication::createIndexBuffer()
 	copyBuffer(stagingBuffer, mIndexBuffer, bufferSize);
 }
 
+void VulkanApplication::createUniformBuffers()
+{
+	mUniformBuffers.clear();
+	mUniformBuffersMemory.clear();
+	mUniformBuffersMapped.clear();
+
+	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+	{
+		const vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
+		vk::raii::Buffer buffer({});
+		vk::raii::DeviceMemory bufferMem({});
+		createBuffer(bufferSize, vk::BufferUsageFlagBits::eUniformBuffer,
+					 vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, buffer, bufferMem);
+
+		mUniformBuffers.emplace_back(std::move(buffer));
+		mUniformBuffersMemory.emplace_back(std::move(bufferMem));
+		mUniformBuffersMapped.emplace_back(mUniformBuffersMemory.at(i).mapMemory(0, bufferSize));
+	}
+}
+
+void VulkanApplication::createDescriptorPool()
+{
+	const vk::DescriptorPoolSize poolSize(vk::DescriptorType::eUniformBuffer, MAX_FRAMES_IN_FLIGHT);
+	const vk::DescriptorPoolCreateInfo poolInfo{.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+												.maxSets = MAX_FRAMES_IN_FLIGHT,
+												.poolSizeCount = 1,
+												.pPoolSizes = &poolSize};
+
+	mDescriptorPool = vk::raii::DescriptorPool(mDevice, poolInfo);
+}
+
+void VulkanApplication::createDescriptorSets()
+{
+	std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, *mDescriptorSetLayout);
+	const vk::DescriptorSetAllocateInfo allocInfo{
+		.descriptorPool = mDescriptorPool, .descriptorSetCount = sc<ui>(layouts.size()), .pSetLayouts = layouts.data()};
+
+	mDescriptorSets = mDevice.allocateDescriptorSets(allocInfo);
+
+	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+	{
+		const vk::DescriptorBufferInfo bufferInfo{.buffer = mUniformBuffers.at(i), .offset = 0, .range = sizeof(UniformBufferObject)};
+		const vk::WriteDescriptorSet descriptorWrite{.dstSet = mDescriptorSets.at(i),
+													 .dstBinding = 0,
+													 .dstArrayElement = 0,
+													 .descriptorCount = 1,
+													 .descriptorType = vk::DescriptorType::eUniformBuffer,
+													 .pBufferInfo = &bufferInfo};
+
+		mDevice.updateDescriptorSets(descriptorWrite, {});
+	}
+}
+
 void VulkanApplication::createCommandBuffers()
 {
 	mCommandBuffers.clear();
@@ -449,7 +520,7 @@ void VulkanApplication::recordCommandBuffer(ui imageIndex)
 	const vk::raii::CommandBuffer &commandBuffer = mCommandBuffers.at(mFrameIndex);
 	commandBuffer.begin({});
 
-	// Before starting rendering, transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL
+	// Before starting rendering, transition the swapchain image to COLOR_ATTACHMENT_OPTIMALT
 	transition_image_layout(imageIndex, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal,
 							{},													// srcAccessMask (no need to wait for previous operations)
 							vk::AccessFlagBits2::eColorAttachmentWrite,			// dstAccessMask
@@ -482,6 +553,7 @@ void VulkanApplication::recordCommandBuffer(ui imageIndex)
 	commandBuffer.setScissor(0, vk::Rect2D{.offset = {.x = 0, .y = 0}, .extent = mSwapChainExtent});
 	commandBuffer.bindVertexBuffers(0, *mVertexBuffer, {0});
 	commandBuffer.bindIndexBuffer(*mIndexBuffer, 0, vk::IndexType::eUint16);
+	commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, mPipelineLayout, 0, *mDescriptorSets.at(mFrameIndex), nullptr);
 	commandBuffer.drawIndexed(indices.size(), 1, 0, 0, 0);
 	commandBuffer.endRendering();
 
@@ -593,6 +665,23 @@ void VulkanApplication::copyBuffer(vk::raii::Buffer &srcBuffer, vk::raii::Buffer
 	mPresentQueue.waitIdle();
 }
 
+void VulkanApplication::updateUniformBuffer(ui currentImage)
+{
+	static auto startTime = std::chrono::high_resolution_clock::now();
+
+	auto currentTime = std::chrono::high_resolution_clock::now();
+	const float time = std::chrono::duration<float>(currentTime - startTime).count();
+
+	UniformBufferObject ubo{};
+	ubo.model = rotate(glm::mat4(1.0F), time * glm::radians(90.0F), glm::vec3(0.0F, 0.0F, 1.0F));
+	ubo.view = lookAt(glm::vec3(2.0F, 2.0F, 2.0F), glm::vec3(0.0F, 0.0F, 0.0F), glm::vec3(0.0F, 0.0F, 1.0F));
+	ubo.proj = glm::perspective(glm::radians(45.0F), sc<float>(mSwapChainExtent.width) / sc<float>(mSwapChainExtent.height), 0.1F, 10.0F);
+
+	ubo.proj[1][1] *= -1;
+
+	memcpy(mUniformBuffersMapped.at(currentImage), &ubo, sizeof(ubo));
+}
+
 void VulkanApplication::mainLoop()
 {
 	while (glfwWindowShouldClose(mWindow.get()) == 0)
@@ -629,6 +718,8 @@ void VulkanApplication::drawFrame()
 		assert(result == vk::Result::eTimeout || result == vk::Result::eNotReady);
 		throw std::runtime_error("Failed to acquire swap chain image!");
 	}
+
+	updateUniformBuffer(mFrameIndex);
 
 	mDevice.resetFences(*mInFlightFences.at(mFrameIndex));
 

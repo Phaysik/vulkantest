@@ -19,10 +19,9 @@
 #include "constants.h"
 #include "typedefs.h"
 
-#include <vulkan/vulkan_raii.hpp>
-
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
+#include <vulkan/vulkan_raii.hpp>
 
 struct Vertex
 {
@@ -47,6 +46,13 @@ constexpr std::array<Vertex, 4> vertices = {{{.pos = {-0.5F, -0.5F}, .color = {1
 											 {.pos = {-0.5F, 0.5F}, .color = {1.0F, 1.0F, 1.0F}}}};
 
 constexpr std::array<us, 6> indices = {0, 1, 2, 2, 3, 0};
+
+struct UniformBufferObject
+{
+		glm::mat4 model;
+		glm::mat4 view;
+		glm::mat4 proj;
+};
 
 class VulkanApplication
 {
@@ -75,6 +81,8 @@ class VulkanApplication
 
 		void createImageViews();
 
+		void createDescriptorSetLayout();
+
 		void createGraphicsPipeline();
 
 		void createCommandPool();
@@ -82,6 +90,12 @@ class VulkanApplication
 		void createVertexBuffer();
 
 		void createIndexBuffer();
+
+		void createUniformBuffers();
+
+		void createDescriptorPool();
+
+		void createDescriptorSets();
 
 		void createCommandBuffers();
 
@@ -164,6 +178,8 @@ class VulkanApplication
 
 		void copyBuffer(vk::raii::Buffer &srcBuffer, vk::raii::Buffer &dstBuffer, vk::DeviceSize size);
 
+		void updateUniformBuffer(ui currentImage);
+
 		void mainLoop();
 
 		void drawFrame();
@@ -235,6 +251,10 @@ class VulkanApplication
 		vk::Extent2D mSwapChainExtent{};
 		std::vector<vk::raii::ImageView> mSwapChainImageViews{};
 
+		vk::raii::DescriptorSetLayout mDescriptorSetLayout{nullptr};
+		vk::raii::DescriptorPool mDescriptorPool{nullptr};
+		std::vector<vk::raii::DescriptorSet> mDescriptorSets{};
+
 		vk::raii::PipelineLayout mPipelineLayout{nullptr};
 		vk::raii::Pipeline mGraphicsPipeline{nullptr};
 
@@ -253,6 +273,10 @@ class VulkanApplication
 
 		vk::raii::Buffer mIndexBuffer{nullptr};
 		vk::raii::DeviceMemory mIndexBufferMemory{nullptr};
+
+		std::vector<vk::raii::Buffer> mUniformBuffers{};
+		std::vector<vk::raii::DeviceMemory> mUniformBuffersMemory{};
+		std::vector<void *> mUniformBuffersMapped{};
 };
 
 #endif
