@@ -21,11 +21,15 @@
 #include "typedefs.h"
 
 #ifndef VULKAN_HPP_NO_CONSTRUCTORS
-	#define VULKAN_HPP_NO_CONSTRUCTORS true
+	#define VULKAN_HPP_NO_CONSTRUCTORS
 #endif
 
 #ifndef VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
-	#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS true
+	#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
+#endif
+
+#ifndef VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS
+	#define VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS
 #endif
 #include <vulkan/vulkan_raii.hpp>
 
@@ -67,6 +71,8 @@ void VulkanApplication::initVulkan()
 	createImageViews();
 	createGraphicsPipeline();
 	createCommandPool();
+	createVertexBuffer();
+	createIndexBuffer();
 	createCommandBuffers();
 	createSyncObjects();
 }
@@ -300,7 +306,12 @@ void VulkanApplication::createGraphicsPipeline()
 
 	ATTR_MAYBE_UNUSED const std::array<vk::PipelineShaderStageCreateInfo, 2> shaderStages{vertShaderStageInfo, fragShaderStageInfo};
 
-	const vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
+	const vk::VertexInputBindingDescription bindingDescription{Vertex::getBindingDescription()};
+	const std::array<vk::VertexInputAttributeDescription, 2> attributeDescriptions{Vertex::getAttributeDescriptions()};
+	const vk::PipelineVertexInputStateCreateInfo vertexInputInfo{.vertexBindingDescriptionCount = 1,
+																 .pVertexBindingDescriptions = &bindingDescription,
+																 .vertexAttributeDescriptionCount = sc<ui>(attributeDescriptions.size()),
+																 .pVertexAttributeDescriptions = attributeDescriptions.data()};
 	const vk::PipelineInputAssemblyStateCreateInfo inputAssembly{.topology = vk::PrimitiveTopology::eTriangleList};
 	const vk::PipelineViewportStateCreateInfo viewportState{.viewportCount = 1, .scissorCount = 1};
 
@@ -358,6 +369,45 @@ void VulkanApplication::createCommandPool()
 											 .queueFamilyIndex = sc<ui>(mQueueIndex)};
 
 	mCommandPool = vk::raii::CommandPool(mDevice, poolInfo);
+}
+
+void VulkanApplication::createVertexBuffer()
+{
+	const vk::DeviceSize bufferSize{sizeof(vertices.at(0)) * vertices.size()};
+	vk::raii::Buffer stagingBuffer({});
+	vk::raii::DeviceMemory stagingBufferMemory({});
+
+	createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferSrc,
+				 vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
+
+	void *dataStaging = stagingBufferMemory.mapMemory(0, bufferSize);
+	memcpy(dataStaging, vertices.data(), bufferSize);
+	stagingBufferMemory.unmapMemory();
+
+	createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eVertexBuffer,
+				 vk::MemoryPropertyFlagBits::eDeviceLocal, mVertexBuffer, mVertexBufferMemory);
+
+	copyBuffer(stagingBuffer, mVertexBuffer, bufferSize);
+}
+
+void VulkanApplication::createIndexBuffer()
+{
+	const vk::DeviceSize bufferSize{sizeof(indices.at(0)) * indices.size()};
+
+	vk::raii::Buffer stagingBuffer({});
+	vk::raii::DeviceMemory stagingBufferMemory({});
+
+	createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferSrc,
+				 vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
+
+	void *dataStaging = stagingBufferMemory.mapMemory(0, bufferSize);
+	memcpy(dataStaging, indices.data(), bufferSize);
+	stagingBufferMemory.unmapMemory();
+
+	createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferDst | vk::BufferUsageFlagBits::eIndexBuffer,
+				 vk::MemoryPropertyFlagBits::eDeviceLocal, mIndexBuffer, mIndexBufferMemory);
+
+	copyBuffer(stagingBuffer, mIndexBuffer, bufferSize);
 }
 
 void VulkanApplication::createCommandBuffers()
@@ -437,7 +487,7 @@ void VulkanApplication::recordCommandBuffer(ui imageIndex)
 											 .pColorAttachments = &attachmentInfo};
 
 	commandBuffer.beginRendering(renderingInfo);
-	commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, mGraphicsPipeline);
+	commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *mGraphicsPipeline);
 	commandBuffer.setViewport(0, vk::Viewport{.x = 0.0F,
 											  .y = 0.0F,
 											  .width = sc<float>(mSwapChainExtent.width),
@@ -445,7 +495,9 @@ void VulkanApplication::recordCommandBuffer(ui imageIndex)
 											  .minDepth = 0.0F,
 											  .maxDepth = 1.0F});
 	commandBuffer.setScissor(0, vk::Rect2D{.offset = {.x = 0, .y = 0}, .extent = mSwapChainExtent});
-	commandBuffer.draw(3, 1, 0, 0);
+	commandBuffer.bindVertexBuffers(0, *mVertexBuffer, {0});
+	commandBuffer.bindIndexBuffer(*mIndexBuffer, 0, vk::IndexType::eUint16);
+	commandBuffer.drawIndexed(indices.size(), 1, 0, 0, 0);
 	commandBuffer.endRendering();
 
 	// After rendering, transition the swapchain image to PRESENT_SRC
@@ -512,6 +564,50 @@ void VulkanApplication::cleanupSwapChain()
 	mSwapChain = nullptr;
 }
 
+ui VulkanApplication::findMemoryType(const ui typeFilter, vk::MemoryPropertyFlags properties)
+{
+	vk::PhysicalDeviceMemoryProperties memProperties{mPhysicalDevice.getMemoryProperties()};
+
+	for (ui i = 0; i < memProperties.memoryTypeCount; i++)
+	{
+		if ((typeFilter & (1U << i)) == 1 && (memProperties.memoryTypes.at(i).propertyFlags & properties) == properties)
+		{
+			return i;
+		}
+	}
+
+	throw std::runtime_error("Failed to find suitable memory type!");
+}
+
+void VulkanApplication::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties,
+									 vk::raii::Buffer &buffer, vk::raii::DeviceMemory &bufferMemory)
+{
+	const vk::BufferCreateInfo bufferInfo{.size = size, .usage = usage, .sharingMode = vk::SharingMode::eExclusive};
+	buffer = vk::raii::Buffer(mDevice, bufferInfo);
+
+	const vk::MemoryRequirements memoryRequirements{buffer.getMemoryRequirements()};
+	const vk::MemoryAllocateInfo memoryAllocateInfo{.allocationSize = memoryRequirements.size,
+													.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits, properties)};
+
+	bufferMemory = vk::raii::DeviceMemory(mDevice, memoryAllocateInfo);
+	buffer.bindMemory(*bufferMemory, 0);
+}
+
+void VulkanApplication::copyBuffer(vk::raii::Buffer &srcBuffer, vk::raii::Buffer &dstBuffer, vk::DeviceSize size)
+{
+	const vk::CommandBufferAllocateInfo allocInfo{
+		.commandPool = mCommandPool, .level = vk::CommandBufferLevel::ePrimary, .commandBufferCount = 1};
+
+	const vk::raii::CommandBuffer commandCopyBuffer{std::move(mDevice.allocateCommandBuffers(allocInfo).front())};
+
+	commandCopyBuffer.begin({.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit});
+	commandCopyBuffer.copyBuffer(*srcBuffer, *dstBuffer, vk::BufferCopy(0, 0, size));
+	commandCopyBuffer.end();
+
+	mPresentQueue.submit(vk::SubmitInfo{.commandBufferCount = 1, .pCommandBuffers = &*commandCopyBuffer}, nullptr);
+	mPresentQueue.waitIdle();
+}
+
 void VulkanApplication::mainLoop()
 {
 	while (glfwWindowShouldClose(mWindow.get()) == 0)
@@ -527,7 +623,6 @@ void VulkanApplication::drawFrame()
 {
 	// Note: inFlightFences, presentCompleteSemaphores, and commandBuffers are indexed by frameIndex, while renderFinishedSemaphores is
 	// indexed by imageIndex
-
 	const vk::Result fenceResult = mDevice.waitForFences(*mInFlightFences.at(mFrameIndex), vk::True, std::numeric_limits<ul>::max());
 
 	if (fenceResult != vk::Result::eSuccess)

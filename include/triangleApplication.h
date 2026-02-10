@@ -26,12 +26,41 @@
 #ifndef VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
 	#define VULKAN_HPP_NO_STRUCT_CONSTRUCTORS
 #endif
+
+#ifndef VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS
+	#define VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS
+#endif
 #include <vulkan/vulkan_raii.hpp>
 
 #ifndef GLFW_INCLUDE_VULKAN
 	#define GLFW_INCLUDE_VULKAN
 #endif
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+
+struct Vertex
+{
+		glm::vec2 pos;
+		glm::vec3 color;
+
+		static vk::VertexInputBindingDescription getBindingDescription()
+		{
+			return vk::VertexInputBindingDescription{.binding = 0, .stride = sizeof(Vertex), .inputRate = vk::VertexInputRate::eVertex};
+		}
+
+		static std::array<vk::VertexInputAttributeDescription, 2> getAttributeDescriptions()
+		{
+			return {vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, pos)),
+					vk::VertexInputAttributeDescription(1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, color))};
+		}
+};
+
+constexpr std::array<Vertex, 4> vertices = {{{.pos = {-0.5F, -0.5F}, .color = {1.0F, 0.0F, 0.0F}},
+											 {.pos = {0.5F, -0.5F}, .color = {0.0F, 1.0F, 0.0F}},
+											 {.pos = {0.5F, 0.5F}, .color = {0.0F, 0.0F, 1.0F}},
+											 {.pos = {-0.5F, 0.5F}, .color = {1.0F, 1.0F, 1.0F}}}};
+
+constexpr std::array<us, 6> indices = {0, 1, 2, 2, 3, 0};
 
 class VulkanApplication
 {
@@ -63,6 +92,10 @@ class VulkanApplication
 		void createGraphicsPipeline();
 
 		void createCommandPool();
+
+		void createVertexBuffer();
+
+		void createIndexBuffer();
 
 		void createCommandBuffers();
 
@@ -137,6 +170,13 @@ class VulkanApplication
 		void recreateSwapChain();
 
 		void cleanupSwapChain();
+
+		ui findMemoryType(const ui typeFilter, vk::MemoryPropertyFlags properties);
+
+		void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Buffer &buffer,
+						  vk::raii::DeviceMemory &bufferMemory);
+
+		void copyBuffer(vk::raii::Buffer &srcBuffer, vk::raii::Buffer &dstBuffer, vk::DeviceSize size);
 
 		void mainLoop();
 
@@ -221,6 +261,12 @@ class VulkanApplication
 
 		ui mFrameIndex{0};
 		bool mFramebufferResized{false};
+
+		vk::raii::Buffer mVertexBuffer{nullptr};
+		vk::raii::DeviceMemory mVertexBufferMemory{nullptr};
+
+		vk::raii::Buffer mIndexBuffer{nullptr};
+		vk::raii::DeviceMemory mIndexBufferMemory{nullptr};
 };
 
 #endif
