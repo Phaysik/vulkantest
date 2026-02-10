@@ -27,23 +27,25 @@ struct Vertex
 {
 		glm::vec2 pos;
 		glm::vec3 color;
+		glm::vec2 texCoord;
 
 		static vk::VertexInputBindingDescription getBindingDescription()
 		{
 			return vk::VertexInputBindingDescription{.binding = 0, .stride = sizeof(Vertex), .inputRate = vk::VertexInputRate::eVertex};
 		}
 
-		static std::array<vk::VertexInputAttributeDescription, 2> getAttributeDescriptions()
+		static std::array<vk::VertexInputAttributeDescription, 3> getAttributeDescriptions()
 		{
 			return {vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, pos)),
-					vk::VertexInputAttributeDescription(1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, color))};
+					vk::VertexInputAttributeDescription(1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, color)),
+					vk::VertexInputAttributeDescription(2, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, texCoord))};
 		}
 };
 
-constexpr std::array<Vertex, 4> vertices = {{{.pos = {-0.5F, -0.5F}, .color = {1.0F, 0.0F, 0.0F}},
-											 {.pos = {0.5F, -0.5F}, .color = {0.0F, 1.0F, 0.0F}},
-											 {.pos = {0.5F, 0.5F}, .color = {0.0F, 0.0F, 1.0F}},
-											 {.pos = {-0.5F, 0.5F}, .color = {1.0F, 1.0F, 1.0F}}}};
+constexpr std::array<Vertex, 4> vertices = {{{.pos = {-0.5F, -0.5F}, .color = {1.0F, 0.0F, 0.0F}, .texCoord = {1.0F, 0.0F}},
+											 {.pos = {0.5F, -0.5F}, .color = {0.0F, 1.0F, 0.0F}, .texCoord = {0.0F, 0.0F}},
+											 {.pos = {0.5F, 0.5F}, .color = {0.0F, 0.0F, 1.0F}, .texCoord = {0.0F, 1.0F}},
+											 {.pos = {-0.5F, 0.5F}, .color = {1.0F, 1.0F, 1.0F}, .texCoord = {1.0F, 1.0F}}}};
 
 constexpr std::array<us, 6> indices = {0, 1, 2, 2, 3, 0};
 
@@ -86,6 +88,12 @@ class VulkanApplication
 		void createGraphicsPipeline();
 
 		void createCommandPool();
+
+		void createTextureImage();
+
+		void createTextureImageView();
+
+		void createTextureSampler();
 
 		void createVertexBuffer();
 
@@ -179,6 +187,19 @@ class VulkanApplication
 		void copyBuffer(vk::raii::Buffer &srcBuffer, vk::raii::Buffer &dstBuffer, vk::DeviceSize size);
 
 		void updateUniformBuffer(ui currentImage);
+
+		void createImage(ui width, ui height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage,
+						 vk::MemoryPropertyFlags properties, vk::raii::Image &image, vk::raii::DeviceMemory &imageMemory);
+
+		std::unique_ptr<vk::raii::CommandBuffer> beginSingleTimeCommands();
+
+		void endSingleTimeCommands(vk::raii::CommandBuffer &commandBuffer);
+
+		void copyBufferToImage(const vk::raii::Buffer &buffer, vk::raii::Image &image, uint32_t width, uint32_t height);
+
+		void transitionImageLayout(const vk::raii::Image &image, vk::ImageLayout oldLayout, vk::ImageLayout newLayout);
+
+		vk::raii::ImageView createImageView(vk::raii::Image &image, vk::Format format);
 
 		void mainLoop();
 
@@ -277,6 +298,15 @@ class VulkanApplication
 		std::vector<vk::raii::Buffer> mUniformBuffers{};
 		std::vector<vk::raii::DeviceMemory> mUniformBuffersMemory{};
 		std::vector<void *> mUniformBuffersMapped{};
+
+		vk::raii::Buffer mStagingBuffer{nullptr};
+		vk::raii::DeviceMemory mStagingBufferMemory{nullptr};
+
+		vk::raii::Image mTextureImage{nullptr};
+		vk::raii::DeviceMemory mTextureImageMemory{nullptr};
+		vk::raii::ImageView mTextureImageView{nullptr};
+
+		vk::raii::Sampler mTextureSampler{nullptr};
 };
 
 #endif
