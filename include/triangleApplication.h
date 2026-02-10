@@ -23,32 +23,6 @@
 #include <glm/glm.hpp>
 #include <vulkan/vulkan_raii.hpp>
 
-struct Vertex
-{
-		glm::vec2 pos;
-		glm::vec3 color;
-		glm::vec2 texCoord;
-
-		static vk::VertexInputBindingDescription getBindingDescription()
-		{
-			return vk::VertexInputBindingDescription{.binding = 0, .stride = sizeof(Vertex), .inputRate = vk::VertexInputRate::eVertex};
-		}
-
-		static std::array<vk::VertexInputAttributeDescription, 3> getAttributeDescriptions()
-		{
-			return {vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, pos)),
-					vk::VertexInputAttributeDescription(1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, color)),
-					vk::VertexInputAttributeDescription(2, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, texCoord))};
-		}
-};
-
-constexpr std::array<Vertex, 4> vertices = {{{.pos = {-0.5F, -0.5F}, .color = {1.0F, 0.0F, 0.0F}, .texCoord = {1.0F, 0.0F}},
-											 {.pos = {0.5F, -0.5F}, .color = {0.0F, 1.0F, 0.0F}, .texCoord = {0.0F, 0.0F}},
-											 {.pos = {0.5F, 0.5F}, .color = {0.0F, 0.0F, 1.0F}, .texCoord = {0.0F, 1.0F}},
-											 {.pos = {-0.5F, 0.5F}, .color = {1.0F, 1.0F, 1.0F}, .texCoord = {1.0F, 1.0F}}}};
-
-constexpr std::array<us, 6> indices = {0, 1, 2, 2, 3, 0};
-
 struct UniformBufferObject
 {
 		glm::mat4 model;
@@ -89,6 +63,8 @@ class VulkanApplication
 
 		void createCommandPool();
 
+		void createDepthResources();
+
 		void createTextureImage();
 
 		void createTextureImageView();
@@ -108,6 +84,48 @@ class VulkanApplication
 		void createCommandBuffers();
 
 		void createSyncObjects();
+
+		vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR &capabilities);
+
+		ATTR_NODISCARD vk::raii::ShaderModule createShaderModule(const std::vector<char> &code) const;
+
+		void recordCommandBuffer(ui imageIndex);
+
+		void transition_image_layout(vk::Image image, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, vk::AccessFlags2 srcAccessMask,
+									 vk::AccessFlags2 dstAccessMask, vk::PipelineStageFlags2 srcStageMask,
+									 vk::PipelineStageFlags2 dstStageMask, vk::ImageAspectFlags aspectFlags);
+
+		void recreateSwapChain();
+
+		void cleanupSwapChain();
+
+		ui findMemoryType(const ui typeFilter, vk::MemoryPropertyFlags properties);
+
+		void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Buffer &buffer,
+						  vk::raii::DeviceMemory &bufferMemory);
+
+		void copyBuffer(vk::raii::Buffer &srcBuffer, vk::raii::Buffer &dstBuffer, vk::DeviceSize size);
+
+		void updateUniformBuffer(ui currentImage);
+
+		void createImage(ui width, ui height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage,
+						 vk::MemoryPropertyFlags properties, vk::raii::Image &image, vk::raii::DeviceMemory &imageMemory);
+
+		std::unique_ptr<vk::raii::CommandBuffer> beginSingleTimeCommands();
+
+		void endSingleTimeCommands(vk::raii::CommandBuffer &commandBuffer);
+
+		void copyBufferToImage(const vk::raii::Buffer &buffer, vk::raii::Image &image, uint32_t width, uint32_t height);
+
+		void transitionImageLayout(const vk::raii::Image &image, vk::ImageLayout oldLayout, vk::ImageLayout newLayout);
+
+		vk::raii::ImageView createImageView(vk::raii::Image &image, vk::Format format, vk::ImageAspectFlags aspectFlags);
+
+		void mainLoop();
+
+		void drawFrame();
+
+		void cleanup();
 
 		static std::vector<const char *> getRequiredExtensions()
 		{
@@ -165,47 +183,14 @@ class VulkanApplication
 			return minImageCount;
 		}
 
-		vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR &capabilities);
+		static bool hasStencilComponent(vk::Format format)
+		{
+			return format == vk::Format::eD32SfloatS8Uint || format == vk::Format::eD24UnormS8Uint;
+		}
 
-		ATTR_NODISCARD vk::raii::ShaderModule createShaderModule(const std::vector<char> &code) const;
+		vk::Format findSupportedFormat(const std::vector<vk::Format> &candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features);
 
-		void recordCommandBuffer(ui imageIndex);
-
-		void transition_image_layout(ui imageIndex, vk::ImageLayout oldLayout, vk::ImageLayout newLayout, vk::AccessFlags2 srcAccessMask,
-									 vk::AccessFlags2 dstAccessMask, vk::PipelineStageFlags2 srcStageMask,
-									 vk::PipelineStageFlags2 dstStageMask);
-
-		void recreateSwapChain();
-
-		void cleanupSwapChain();
-
-		ui findMemoryType(const ui typeFilter, vk::MemoryPropertyFlags properties);
-
-		void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Buffer &buffer,
-						  vk::raii::DeviceMemory &bufferMemory);
-
-		void copyBuffer(vk::raii::Buffer &srcBuffer, vk::raii::Buffer &dstBuffer, vk::DeviceSize size);
-
-		void updateUniformBuffer(ui currentImage);
-
-		void createImage(ui width, ui height, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage,
-						 vk::MemoryPropertyFlags properties, vk::raii::Image &image, vk::raii::DeviceMemory &imageMemory);
-
-		std::unique_ptr<vk::raii::CommandBuffer> beginSingleTimeCommands();
-
-		void endSingleTimeCommands(vk::raii::CommandBuffer &commandBuffer);
-
-		void copyBufferToImage(const vk::raii::Buffer &buffer, vk::raii::Image &image, uint32_t width, uint32_t height);
-
-		void transitionImageLayout(const vk::raii::Image &image, vk::ImageLayout oldLayout, vk::ImageLayout newLayout);
-
-		vk::raii::ImageView createImageView(vk::raii::Image &image, vk::Format format);
-
-		void mainLoop();
-
-		void drawFrame();
-
-		void cleanup();
+		vk::Format findDepthFormat();
 
 		static VKAPI_ATTR vk::Bool32 VKAPI_CALL debugCallback(vk::DebugUtilsMessageSeverityFlagBitsEXT severity,
 															  vk::DebugUtilsMessageTypeFlagsEXT type,
@@ -307,6 +292,10 @@ class VulkanApplication
 		vk::raii::ImageView mTextureImageView{nullptr};
 
 		vk::raii::Sampler mTextureSampler{nullptr};
+
+		vk::raii::Image mDepthImage{nullptr};
+		vk::raii::DeviceMemory mDepthImageMemory{nullptr};
+		vk::raii::ImageView mDepthImageView{nullptr};
 };
 
 #endif

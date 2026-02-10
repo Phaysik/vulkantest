@@ -11,18 +11,20 @@
 
 #include <array>
 
+#include "attributeMacros.h"
 #include "typedefs.h"
 
 #include <GLFW/glfw3.h>
 #include <vulkan/vulkan_raii.hpp>
 
-constexpr ui WIDTH{800};
-constexpr ui HEIGHT{600};
+ATTR_MAYBE_UNUSED constexpr ui WIDTH{800};
+ATTR_MAYBE_UNUSED constexpr ui HEIGHT{600};
 
-constexpr std::array<const char *, 1> validationLayers{"VK_LAYER_KHRONOS_validation"};
-constexpr std::array<const char *, 2> requiredDeviceExtensions = {vk::KHRSwapchainExtensionName, vk::KHRShaderDrawParametersExtensionName};
+ATTR_MAYBE_UNUSED constexpr std::array<const char *, 1> validationLayers{"VK_LAYER_KHRONOS_validation"};
+ATTR_MAYBE_UNUSED constexpr std::array<const char *, 2> requiredDeviceExtensions
+	= {vk::KHRSwapchainExtensionName, vk::KHRShaderDrawParametersExtensionName};
 
-constexpr ui MAX_FRAMES_IN_FLIGHT{2};
+ATTR_MAYBE_UNUSED constexpr ui MAX_FRAMES_IN_FLIGHT{2};
 
 #ifdef NDEBUG
 constexpr bool enableValidationLayers{false};
