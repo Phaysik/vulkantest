@@ -61,12 +61,14 @@ void VulkanApplication::initVulkan()
 	setupDebugMessenger();
 	createSurface();
 	pickPhysicalDevice();
+	mMsaaSamples = getMaxUsableSampleCount();
 	createLogicalDevice();
 	createSwapChain();
 	createImageViews();
 	createDescriptorSetLayout();
 	createGraphicsPipeline();
 	createCommandPool();
+	createColorResources();
 	createDepthResources();
 	createTextureImage();
 	createTextureImageView();
@@ -302,9 +304,9 @@ void VulkanApplication::createImageViews()
 
 void VulkanApplication::createDescriptorSetLayout()
 {
-	const std::array<vk::DescriptorSetLayoutBinding, 2> bindings
-		= {vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr),
-		   vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment, nullptr)};
+	const std::array<vk::DescriptorSetLayoutBinding, 2> bindings{
+		vk::DescriptorSetLayoutBinding(0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex, nullptr),
+		vk::DescriptorSetLayoutBinding(1, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment, nullptr)};
 
 	const vk::DescriptorSetLayoutCreateInfo layoutInfo{.bindingCount = sc<ui>(bindings.size()), .pBindings = bindings.data()};
 	mDescriptorSetLayout = vk::raii::DescriptorSetLayout(mDevice, layoutInfo);
@@ -318,8 +320,7 @@ void VulkanApplication::createGraphicsPipeline()
 		.stage = vk::ShaderStageFlagBits::eVertex, .module = shaderModule, .pName = "vertMain"};
 	const vk::PipelineShaderStageCreateInfo fragShaderStageInfo{
 		.stage = vk::ShaderStageFlagBits::eFragment, .module = shaderModule, .pName = "fragMain"};
-
-	ATTR_MAYBE_UNUSED const std::array<vk::PipelineShaderStageCreateInfo, 2> shaderStages{vertShaderStageInfo, fragShaderStageInfo};
+	const std::array<vk::PipelineShaderStageCreateInfo, 2> shaderStages{vertShaderStageInfo, fragShaderStageInfo};
 
 	const vk::VertexInputBindingDescription bindingDescription{Vertex::getBindingDescription()};
 	const std::array<vk::VertexInputAttributeDescription, 3> attributeDescriptions{Vertex::getAttributeDescriptions()};
@@ -327,37 +328,30 @@ void VulkanApplication::createGraphicsPipeline()
 																 .pVertexBindingDescriptions = &bindingDescription,
 																 .vertexAttributeDescriptionCount = sc<ui>(attributeDescriptions.size()),
 																 .pVertexAttributeDescriptions = attributeDescriptions.data()};
-	const vk::PipelineInputAssemblyStateCreateInfo inputAssembly{.topology = vk::PrimitiveTopology::eTriangleList};
+	const vk::PipelineInputAssemblyStateCreateInfo inputAssembly{.topology = vk::PrimitiveTopology::eTriangleList,
+																 .primitiveRestartEnable = vk::False};
 	const vk::PipelineViewportStateCreateInfo viewportState{.viewportCount = 1, .scissorCount = 1};
-
 	const vk::PipelineRasterizationStateCreateInfo rasterizer{.depthClampEnable = vk::False,
 															  .rasterizerDiscardEnable = vk::False,
 															  .polygonMode = vk::PolygonMode::eFill,
 															  .cullMode = vk::CullModeFlagBits::eBack,
 															  .frontFace = vk::FrontFace::eCounterClockwise,
 															  .depthBiasEnable = vk::False,
-															  .depthBiasSlopeFactor = 1.0F,
 															  .lineWidth = 1.0F};
-
-	const vk::PipelineMultisampleStateCreateInfo multisampling{.rasterizationSamples = vk::SampleCountFlagBits::e1,
-															   .sampleShadingEnable = vk::False};
-
+	const vk::PipelineMultisampleStateCreateInfo multisampling{.rasterizationSamples = mMsaaSamples, .sampleShadingEnable = vk::False};
 	const vk::PipelineDepthStencilStateCreateInfo depthStencil{.depthTestEnable = vk::True,
 															   .depthWriteEnable = vk::True,
 															   .depthCompareOp = vk::CompareOp::eLess,
 															   .depthBoundsTestEnable = vk::False,
 															   .stencilTestEnable = vk::False};
-
 	const vk::PipelineColorBlendAttachmentState colorBlendAttachment{.blendEnable = vk::False,
 																	 .colorWriteMask
 																	 = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG
 																	 | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA};
-
 	const vk::PipelineColorBlendStateCreateInfo colorBlending{
 		.logicOpEnable = vk::False, .logicOp = vk::LogicOp::eCopy, .attachmentCount = 1, .pAttachments = &colorBlendAttachment};
-
-	const std::vector<vk::DynamicState> dynamicStates = {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
-	const vk::PipelineDynamicStateCreateInfo dynamicState{.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size()),
+	const std::vector<vk::DynamicState> dynamicStates{vk::DynamicState::eViewport, vk::DynamicState::eScissor};
+	const vk::PipelineDynamicStateCreateInfo dynamicState{.dynamicStateCount = sc<ui>(dynamicStates.size()),
 														  .pDynamicStates = dynamicStates.data()};
 
 	const vk::PipelineLayoutCreateInfo pipelineLayoutInfo{
@@ -367,20 +361,20 @@ void VulkanApplication::createGraphicsPipeline()
 
 	const vk::Format depthFormat{findDepthFormat()};
 
-	vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain
-		= {{.stageCount = 2,
-			.pStages = shaderStages.data(),
-			.pVertexInputState = &vertexInputInfo,
-			.pInputAssemblyState = &inputAssembly,
-			.pViewportState = &viewportState,
-			.pRasterizationState = &rasterizer,
-			.pMultisampleState = &multisampling,
-			.pDepthStencilState = &depthStencil,
-			.pColorBlendState = &colorBlending,
-			.pDynamicState = &dynamicState,
-			.layout = mPipelineLayout,
-			.renderPass = nullptr},
-		   {.colorAttachmentCount = 1, .pColorAttachmentFormats = &mSwapChainSurfaceFormat.format, .depthAttachmentFormat = depthFormat}};
+	vk::StructureChain<vk::GraphicsPipelineCreateInfo, vk::PipelineRenderingCreateInfo> pipelineCreateInfoChain{
+		{.stageCount = 2,
+		 .pStages = shaderStages.data(),
+		 .pVertexInputState = &vertexInputInfo,
+		 .pInputAssemblyState = &inputAssembly,
+		 .pViewportState = &viewportState,
+		 .pRasterizationState = &rasterizer,
+		 .pMultisampleState = &multisampling,
+		 .pDepthStencilState = &depthStencil,
+		 .pColorBlendState = &colorBlending,
+		 .pDynamicState = &dynamicState,
+		 .layout = mPipelineLayout,
+		 .renderPass = nullptr},
+		{.colorAttachmentCount = 1, .pColorAttachmentFormats = &mSwapChainSurfaceFormat.format, .depthAttachmentFormat = depthFormat}};
 
 	mGraphicsPipeline = vk::raii::Pipeline(mDevice, nullptr, pipelineCreateInfoChain.get<vk::GraphicsPipelineCreateInfo>());
 }
@@ -393,11 +387,22 @@ void VulkanApplication::createCommandPool()
 	mCommandPool = vk::raii::CommandPool(mDevice, poolInfo);
 }
 
+void VulkanApplication::createColorResources()
+{
+	const vk::Format colorFormat{mSwapChainSurfaceFormat.format};
+
+	createImage(mSwapChainExtent.width, mSwapChainExtent.height, 1, mMsaaSamples, colorFormat, vk::ImageTiling::eOptimal,
+				vk::ImageUsageFlagBits::eTransientAttachment | vk::ImageUsageFlagBits::eColorAttachment,
+				vk::MemoryPropertyFlagBits::eDeviceLocal, mColorImage, mColorImageMemory);
+
+	mColorImageView = createImageView(mColorImage, colorFormat, vk::ImageAspectFlagBits::eColor, 1);
+}
+
 void VulkanApplication::createDepthResources()
 {
 	const vk::Format depthFormat{findDepthFormat()};
 
-	createImage(mSwapChainExtent.width, mSwapChainExtent.height, 1, depthFormat, vk::ImageTiling::eOptimal,
+	createImage(mSwapChainExtent.width, mSwapChainExtent.height, 1, mMsaaSamples, depthFormat, vk::ImageTiling::eOptimal,
 				vk::ImageUsageFlagBits::eDepthStencilAttachment, vk::MemoryPropertyFlagBits::eDeviceLocal, mDepthImage, mDepthImageMemory);
 
 	mDepthImageView = createImageView(mDepthImage, depthFormat, vk::ImageAspectFlagBits::eDepth, 1);
@@ -431,7 +436,8 @@ void VulkanApplication::createTextureImage()
 
 	stbi_image_free(pixels);
 
-	createImage(sc<ui>(texWidth), sc<ui>(texHeight), mMipLevels, vk::Format::eR8G8B8A8Srgb, vk::ImageTiling::eOptimal,
+	createImage(sc<ui>(texWidth), sc<ui>(texHeight), mMipLevels, vk::SampleCountFlagBits::e1, vk::Format::eR8G8B8A8Srgb,
+				vk::ImageTiling::eOptimal,
 				vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
 				vk::MemoryPropertyFlagBits::eDeviceLocal, mTextureImage, mTextureImageMemory);
 
@@ -665,10 +671,9 @@ ATTR_NODISCARD vk::raii::ShaderModule VulkanApplication::createShaderModule(cons
 
 void VulkanApplication::recordCommandBuffer(ui imageIndex)
 {
-	const vk::raii::CommandBuffer &commandBuffer = mCommandBuffers.at(mFrameIndex);
+	const vk::raii::CommandBuffer &commandBuffer{mCommandBuffers.at(mFrameIndex)};
 	commandBuffer.begin({});
-
-	// Before starting rendering, transition the swapchain image to COLOR_ATTACHMENT_OPTIMALT
+	// Before starting rendering, transition the swapchain image to COLOR_ATTACHMENT_OPTIMAL
 	transition_image_layout(mSwapChainImages.at(imageIndex), vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal,
 							{},													// srcAccessMask (no need to wait for previous operations)
 							vk::AccessFlagBits2::eColorAttachmentWrite,			// dstAccessMask
@@ -676,49 +681,55 @@ void VulkanApplication::recordCommandBuffer(ui imageIndex)
 							vk::PipelineStageFlagBits2::eColorAttachmentOutput, // dstStage
 							vk::ImageAspectFlagBits::eColor);
 
-	// Transition depth image to depth attachment optimal layout
+	// Transition the multisampled color image to COLOR_ATTACHMENT_OPTIMAL
+	transition_image_layout(*mColorImage, vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal,
+							vk::AccessFlagBits2::eColorAttachmentWrite, vk::AccessFlagBits2::eColorAttachmentWrite,
+							vk::PipelineStageFlagBits2::eColorAttachmentOutput, vk::PipelineStageFlagBits2::eColorAttachmentOutput,
+							vk::ImageAspectFlagBits::eColor);
+
+	// Transition the depth image to DEPTH_ATTACHMENT_OPTIMAL
 	transition_image_layout(*mDepthImage, vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthAttachmentOptimal,
 							vk::AccessFlagBits2::eDepthStencilAttachmentWrite, vk::AccessFlagBits2::eDepthStencilAttachmentWrite,
 							vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
 							vk::PipelineStageFlagBits2::eEarlyFragmentTests | vk::PipelineStageFlagBits2::eLateFragmentTests,
 							vk::ImageAspectFlagBits::eDepth);
 
-	const vk::ClearValue clearColor{vk::ClearColorValue(std::array<float, 4>{0.0F, 0.0F, 0.0F, 1.0F})};
+	const vk::ClearValue clearColor{vk::ClearColorValue(0.0F, 0.0F, 0.0F, 1.0F)};
 	const vk::ClearValue clearDepth{vk::ClearDepthStencilValue(1.0F, 0)};
-	const vk::RenderingAttachmentInfo colorAttachmentInfo{
-		.imageView = mSwapChainImageViews.at(imageIndex),
-		.imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
-		.loadOp = vk::AttachmentLoadOp::eClear,
-		.storeOp = vk::AttachmentStoreOp::eStore,
-		.clearValue = clearColor,
-	};
 
-	const vk::RenderingAttachmentInfo depthAttachmentInfo{
-		.imageView = mDepthImageView,
-		.imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
-		.loadOp = vk::AttachmentLoadOp::eClear,
-		.storeOp = vk::AttachmentStoreOp::eDontCare,
-		.clearValue = clearDepth,
-	};
+	// Color attachment (multisampled) with resolve attachment
+	const vk::RenderingAttachmentInfo colorAttachment{.imageView = mColorImageView,
+													  .imageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+													  .resolveMode = vk::ResolveModeFlagBits::eAverage,
+													  .resolveImageView = mSwapChainImageViews.at(imageIndex),
+													  .resolveImageLayout = vk::ImageLayout::eColorAttachmentOptimal,
+													  .loadOp = vk::AttachmentLoadOp::eClear,
+													  .storeOp = vk::AttachmentStoreOp::eStore,
+													  .clearValue = clearColor};
 
-	const vk::RenderingInfo renderingInfo = {.renderArea = {.offset = {.x = 0, .y = 0}, .extent = mSwapChainExtent},
-											 .layerCount = 1,
-											 .colorAttachmentCount = 1,
-											 .pColorAttachments = &colorAttachmentInfo,
-											 .pDepthAttachment = &depthAttachmentInfo};
+	// Depth attachment
+	const vk::RenderingAttachmentInfo depthAttachment{.imageView = mDepthImageView,
+													  .imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
+													  .loadOp = vk::AttachmentLoadOp::eClear,
+													  .storeOp = vk::AttachmentStoreOp::eDontCare,
+													  .clearValue = clearDepth};
+
+	const vk::RenderingInfo renderingInfo{.renderArea = {.offset = {.x = 0, .y = 0}, .extent = mSwapChainExtent},
+										  .layerCount = 1,
+										  .colorAttachmentCount = 1,
+										  .pColorAttachments = &colorAttachment,
+										  .pDepthAttachment = &depthAttachment};
 
 	commandBuffer.beginRendering(renderingInfo);
 	commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *mGraphicsPipeline);
-	commandBuffer.setViewport(0, vk::Viewport{.x = 0.0F,
-											  .y = 0.0F,
-											  .width = sc<float>(mSwapChainExtent.width),
-											  .height = sc<float>(mSwapChainExtent.height),
-											  .minDepth = 0.0F,
-											  .maxDepth = 1.0F});
-	commandBuffer.setScissor(0, vk::Rect2D{.offset = {.x = 0, .y = 0}, .extent = mSwapChainExtent});
+	commandBuffer.setViewport(0,
+							  vk::Viewport(0.0F, 0.0F, sc<float>(mSwapChainExtent.width), sc<float>(mSwapChainExtent.height), 0.0F, 1.0F));
+
+	commandBuffer.setScissor(0, vk::Rect2D(vk::Offset2D(0, 0), mSwapChainExtent));
 	commandBuffer.bindVertexBuffers(0, *mVertexBuffer, {0});
 	commandBuffer.bindIndexBuffer(*mIndexBuffer, 0, vk::IndexType::eUint32);
 	commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, mPipelineLayout, 0, *mDescriptorSets.at(mFrameIndex), nullptr);
+
 	commandBuffer.drawIndexed(sc<ui>(mIndices.size()), 1, 0, 0, 0);
 	commandBuffer.endRendering();
 
@@ -729,7 +740,6 @@ void VulkanApplication::recordCommandBuffer(ui imageIndex)
 							vk::PipelineStageFlagBits2::eColorAttachmentOutput, // srcStage
 							vk::PipelineStageFlagBits2::eBottomOfPipe,			// dstStage
 							vk::ImageAspectFlagBits::eColor);
-
 	commandBuffer.end();
 }
 
@@ -778,6 +788,7 @@ void VulkanApplication::recreateSwapChain()
 
 	createSwapChain();
 	createImageViews();
+	createColorResources();
 	createDepthResources();
 }
 
@@ -848,15 +859,16 @@ void VulkanApplication::updateUniformBuffer(ui currentImage)
 	memcpy(mUniformBuffersMapped.at(currentImage), &ubo, sizeof(ubo));
 }
 
-void VulkanApplication::createImage(ui width, ui height, ui mipLevels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage,
-									vk::MemoryPropertyFlags properties, vk::raii::Image &image, vk::raii::DeviceMemory &imageMemory) const
+void VulkanApplication::createImage(ui width, ui height, ui mipLevels, vk::SampleCountFlagBits numSamples, vk::Format format,
+									vk::ImageTiling tiling, vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties,
+									vk::raii::Image &image, vk::raii::DeviceMemory &imageMemory) const
 {
 	const vk::ImageCreateInfo imageInfo{.imageType = vk::ImageType::e2D,
 										.format = format,
 										.extent = {.width = width, .height = height, .depth = 1},
 										.mipLevels = mipLevels,
 										.arrayLayers = 1,
-										.samples = vk::SampleCountFlagBits::e1,
+										.samples = numSamples,
 										.tiling = tiling,
 										.usage = usage,
 										.sharingMode = vk::SharingMode::eExclusive,
@@ -998,13 +1010,13 @@ void VulkanApplication::generateMipmaps(vk::raii::Image &image, vk::Format image
 
 	std::unique_ptr<vk::raii::CommandBuffer> commandBuffer = beginSingleTimeCommands();
 
-	vk::ImageMemoryBarrier barrier = {.srcAccessMask = vk::AccessFlagBits::eTransferWrite,
-									  .dstAccessMask = vk::AccessFlagBits::eTransferRead,
-									  .oldLayout = vk::ImageLayout::eTransferDstOptimal,
-									  .newLayout = vk::ImageLayout::eTransferSrcOptimal,
-									  .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
-									  .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
-									  .image = image};
+	vk::ImageMemoryBarrier barrier{.srcAccessMask = vk::AccessFlagBits::eTransferWrite,
+								   .dstAccessMask = vk::AccessFlagBits::eTransferRead,
+								   .oldLayout = vk::ImageLayout::eTransferDstOptimal,
+								   .newLayout = vk::ImageLayout::eTransferSrcOptimal,
+								   .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
+								   .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
+								   .image = image};
 	barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
 	barrier.subresourceRange.baseArrayLayer = 0;
 	barrier.subresourceRange.layerCount = 1;
@@ -1029,7 +1041,7 @@ void VulkanApplication::generateMipmaps(vk::raii::Image &image, vk::Format image
 		offsets.at(1) = vk::Offset3D(mipWidth, mipHeight, 1);
 		dstOffsets.at(0) = vk::Offset3D(0, 0, 0);
 		dstOffsets.at(1) = vk::Offset3D(mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1);
-		vk::ImageBlit blit = {.srcSubresource = {}, .srcOffsets = offsets, .dstSubresource = {}, .dstOffsets = dstOffsets};
+		vk::ImageBlit blit{.srcSubresource = {}, .srcOffsets = offsets, .dstSubresource = {}, .dstOffsets = dstOffsets};
 		blit.srcSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, i - 1, 0, 1);
 		blit.dstSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, i, 0, 1);
 
@@ -1063,6 +1075,41 @@ void VulkanApplication::generateMipmaps(vk::raii::Image &image, vk::Format image
 	commandBuffer->pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, barrier);
 
 	endSingleTimeCommands(*commandBuffer);
+}
+
+vk::SampleCountFlagBits VulkanApplication::getMaxUsableSampleCount()
+{
+	const vk::PhysicalDeviceProperties physicalDeviceProperties{mPhysicalDevice.getProperties()};
+
+	const vk::SampleCountFlags counts{physicalDeviceProperties.limits.framebufferColorSampleCounts
+									  & physicalDeviceProperties.limits.framebufferDepthSampleCounts};
+
+	if (counts & vk::SampleCountFlagBits::e64)
+	{
+		return vk::SampleCountFlagBits::e64;
+	}
+	if (counts & vk::SampleCountFlagBits::e32)
+	{
+		return vk::SampleCountFlagBits::e32;
+	}
+	if (counts & vk::SampleCountFlagBits::e16)
+	{
+		return vk::SampleCountFlagBits::e16;
+	}
+	if (counts & vk::SampleCountFlagBits::e8)
+	{
+		return vk::SampleCountFlagBits::e8;
+	}
+	if (counts & vk::SampleCountFlagBits::e4)
+	{
+		return vk::SampleCountFlagBits::e4;
+	}
+	if (counts & vk::SampleCountFlagBits::e2)
+	{
+		return vk::SampleCountFlagBits::e2;
+	}
+
+	return vk::SampleCountFlagBits::e1;
 }
 
 void VulkanApplication::mainLoop()

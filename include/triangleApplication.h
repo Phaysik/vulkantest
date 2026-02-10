@@ -64,6 +64,8 @@ class VulkanApplication
 
 		void createCommandPool();
 
+		void createColorResources();
+
 		void createDepthResources();
 
 		void createTextureImage();
@@ -111,8 +113,9 @@ class VulkanApplication
 
 		void updateUniformBuffer(ui currentImage);
 
-		void createImage(ui width, ui height, ui mipLevels, vk::Format format, vk::ImageTiling tiling, vk::ImageUsageFlags usage,
-						 vk::MemoryPropertyFlags properties, vk::raii::Image &image, vk::raii::DeviceMemory &imageMemory) const;
+		void createImage(ui width, ui height, ui mipLevels, vk::SampleCountFlagBits numSamples, vk::Format format, vk::ImageTiling tiling,
+						 vk::ImageUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Image &image,
+						 vk::raii::DeviceMemory &imageMemory) const;
 
 		ATTR_NODISCARD std::unique_ptr<vk::raii::CommandBuffer> beginSingleTimeCommands() const;
 
@@ -126,6 +129,8 @@ class VulkanApplication
 														   ui mipLevels) const;
 
 		void generateMipmaps(vk::raii::Image &image, vk::Format imageFormat, ui width, ui height, ui mipLevels);
+
+		vk::SampleCountFlagBits getMaxUsableSampleCount();
 
 		void mainLoop();
 
@@ -306,6 +311,11 @@ class VulkanApplication
 		vk::raii::Image mDepthImage{nullptr};
 		vk::raii::DeviceMemory mDepthImageMemory{nullptr};
 		vk::raii::ImageView mDepthImageView{nullptr};
+
+		vk::SampleCountFlagBits mMsaaSamples{vk::SampleCountFlagBits::e1};
+		vk::raii::Image mColorImage{nullptr};
+		vk::raii::DeviceMemory mColorImageMemory{nullptr};
+		vk::raii::ImageView mColorImageView{nullptr};
 };
 
 #endif
