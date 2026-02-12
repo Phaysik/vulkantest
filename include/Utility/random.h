@@ -1,8 +1,8 @@
 /*! @file random.h
 	@brief Contains the function declarations for creating a random number generator
-	@date --/--/----
-	@version x.x.x
-	@since x.x.x
+	@date 02/12/2026
+	@version 0.0.1
+	@since 0.0.1
 	@author Matthew Moore
 */
 
@@ -12,23 +12,24 @@
 #include <chrono>
 #include <random>
 
-#include "attributeMacros.h"
-#include "cconcepts.h" // for Integral
-#include "typedefs.h"
+#include "Core/attributeMacros.h"
+#include "Core/cconcepts.h" // for Integral
 
 /*! @namespace Utility Holds any useful functionality that doesn't fit anywhere else
-	@date --/--/----
-	@version x.x.x
-	@since x.x.x
+	@date 02/12/2026
+	@version 0.0.1
+	@since 0.0.1
 	@author Matthew Moore
 */
-namespace Utility
+namespace Dimensia::Utility
 {
+	using Dimensia::Core::Integral;
+
 	/*! @class Random random.h "include/random.h"
 		@brief Class for creating a random number generator
-		@date --/--/----
-		@version x.x.x
-		@since x.x.x
+		@date 02/12/2026
+		@version 0.0.1
+		@since 0.0.1
 		@author Matthew Moore
 	*/
 	class Random
@@ -38,9 +39,9 @@ namespace Utility
 				@param[in] min The minimum value (inclusive)
 				@param[in] max The maximum value (inclusive)
 				@retval int The random number in the range
-				@date --/--/----
-				@version x.x.x
-				@since x.x.x
+				@date 02/12/2026
+				@version 0.0.1
+				@since 0.0.1
 				@author Matthew Moore
 			*/
 			ATTR_NODISCARD static int get(int min, int max) noexcept
@@ -54,12 +55,12 @@ namespace Utility
 				@param[in] min The minimum value (inclusive)
 				@param[in] max The maximum value (inclusive)
 				@retval T The typecasted random number
-				@date --/--/----
-				@version x.x.x
-				@since x.x.x
+				@date 02/12/2026
+				@version 0.0.1
+				@since 0.0.1
 				@author Matthew Moore
 			*/
-			template <Concepts::Integral T>
+			template <Integral T>
 			ATTR_NODISCARD static T get(T min, T max) noexcept
 			{
 				return std::uniform_int_distribution<T>{min, max}(mTwister);
@@ -67,9 +68,9 @@ namespace Utility
 
 			/*! @brief Gets #mTwister
 				@retval std::mt19937 The global random number generator
-				@date --/--/----
-				@version x.x.x
-				@since x.x.x
+				@date 02/12/2026
+				@version 0.0.1
+				@since 0.0.1
 				@author Matthew Moore
 			*/
 			ATTR_NODISCARD static std::mt19937 &getTwister() noexcept
@@ -80,9 +81,9 @@ namespace Utility
 		private:
 			/*! @brief Creates the global random number generator
 				@retval std::mt19937 The global random number generator
-				@date --/--/----
-				@version x.x.x
-				@since x.x.x
+				@date 02/12/2026
+				@version 0.0.1
+				@since 0.0.1
 				@author Matthew Moore
 			*/
 			ATTR_NODISCARD static std::mt19937 generate() noexcept
@@ -90,20 +91,21 @@ namespace Utility
 				std::random_device randomDevice{};
 
 				// Create seed_seq with high-res clock and 7 random numbers from std::random_device
-				std::seed_seq seedSequence{sc<std::seed_seq::result_type>(std::chrono::steady_clock::now().time_since_epoch().count()),
-										   randomDevice(),
-										   randomDevice(),
-										   randomDevice(),
-										   randomDevice(),
-										   randomDevice(),
-										   randomDevice(),
-										   randomDevice()};
+				std::seed_seq seedSequence{
+					static_cast<std::seed_seq::result_type>(std::chrono::steady_clock::now().time_since_epoch().count()),
+					randomDevice(),
+					randomDevice(),
+					randomDevice(),
+					randomDevice(),
+					randomDevice(),
+					randomDevice(),
+					randomDevice()};
 
 				return std::mt19937{seedSequence};
 			}
 
 			static inline std::mt19937 mTwister{generate()}; /*!< The global random number generator */
 	};
-} // namespace Utility
+} // namespace Dimensia::Utility
 
 #endif

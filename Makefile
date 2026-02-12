@@ -4,7 +4,9 @@ COMPILER_VERSION = -std=c++2c
 COMPILE_FLAGS_COMMON = -DVULKAN_HPP_NO_STRUCT_CONSTRUCTORS -DVULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS -DGLFW_INCLUDE_VULKAN -DGLM_FORCE_RADIANS -DGLM_FORCE_DEPTH_ZERO_TO_ONE -DGLM_ENABLE_EXPERIMENTAL -DSTB_IMAGE_IMPLEMENTATION -DTINYOBJLOADER_IMPLEMENTATION
 COMPILER_FLAGS_RELEASE = ${COMPILER_VERSION} -O3 -DNDEBUG ${COMPILE_FLAGS_COMMON}
 COMPILER_FLAGS_DEV = ${COMPILER_VERSION} -O0 -g -pg ${COMPILE_FLAGS_COMMON}
+COMPILER_FLAGS_TEST = ${COMPILER_VERSION} --coverage -fPIC -O0 -g -fprofile-arcs -ftest-coverage
 COMPILER_FLAGS_VALGRIND = ${COMPILER_VERSION} -O0 -g ${COMPILE_FLAGS_COMMON}
+COMPILER_FLAGS_BENCHMARK = ${COMPILER_VERSION} -O3 -pg ${COMPILE_FLAGS_COMMON}
 
 WARNINGS = -fdelete-null-pointer-checks -fstrict-aliasing -fimplicit-constexpr -pedantic -pedantic-errors -Wall -Wextra -Weffc++ -Wcast-align -Wcast-qual -Wctor-dtor-privacy -Wdisabled-optimization -Wformat=2 -Wformat-nonliteral -Wformat-security -Wformat-signedness -Wformat-truncation=2 -Wformat-y2k -Wlogical-op -Wmissing-declarations -Wmissing-include-dirs -Wnull-dereference -Wnoexcept -Woverloaded-virtual -Wredundant-decls -Wshadow -Wsign-conversion -Wsign-promo -Wstrict-null-sentinel -Wswitch-default -Wswitch-enum -Wundef -Wunused -Wunused-const-variable=2 -Wuseless-cast -Wuninitialized -Wstrict-aliasing -Wduplicated-branches -Wtrampolines -Wduplicated-cond -Wbidi-chars=any -Wfloat-equal -Wconversion -Winline -Wzero-as-null-pointer-constant -Wmissing-noreturn -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=malloc -Wsuggest-attribute=cold -Wsuggest-attribute=format -Wmissing-format-attribute -Wpacked -Wunused-macros -Wno-missing-requires -Wno-missing-template-keyword -Wvariadic-macros -Wunsafe-loop-optimizations -Wno-changes-meaning -Wdouble-promotion -Wcomma-subscript -Wdangling-reference -Wsuggest-final-types -Wsuggest-override -Wsuggest-final-methods -Winvalid-constexpr -Wold-style-cast -Wextra-semi -Wenum-conversion -Werror $(if $(filter-out 13,$(COMPILER_STANDARD)), -Wnrvo -Wsuggest-attribute=returns_nonnull)
 
@@ -44,7 +46,6 @@ OUTPUT_FOLDER_TRACY = ${BUILD_FOLDER}/${TRACY_FOLDER}
 
 TEST_FOLDER = tests
 TEST_SOURCES = $(shell find ${TEST_FOLDER} ${SOURCE_FOLDER} -type f -not -path '*/main.cpp' -not -path '*/${TRACY_FOLDER}/*' -name '*.cpp')
-TEST_COMPILER_FLAGS = ${COMPILER_VERSION} --coverage -fPIC -O0 -g -fprofile-arcs -ftest-coverage
 TEST_INCLUDE_FOLDER =
 TEST_INCLUDE_ARGUMENT =
 TEST_INTEGRATIONS_FOLDER = ${TEST_FOLDER}/integrations
@@ -66,6 +67,19 @@ TEST_BREAK =
 TEST_EXECUTION_FLAGS = --gtest_repeat=${TEST_REPEAT_COUNT} --gtest_brief=1 $(if $(TEST_BREAK),--gtest_break_on_failure)
 OUTPUT_FOLDER_TEST = ${BUILD_FOLDER}/${TEST_FOLDER}
 OUTPUT_FILE_TEST = test
+
+BENCHMARK_FOLDER = benchmarks
+BENCHMARK_SOURCES = $(shell find ${BENCHMARK_FOLDER} ${SOURCE_FOLDER} -type f -not -path '*/main.cpp' -not -path '*/${TRACY_FOLDER}/*' -name '*.cpp')
+BENCHMARK_INCLUDE_FOLDER =
+BENCHMARK_INCLUDE_ARGUMENT =
+BENCHMARK_LIBRARIES = ${LIBRARIES} -lbenchmark -lpthread
+BENCHMARK_RESOURCES = ${RESOURCES_FOLDER}
+OUTPUT_FOLDER_BENCHMARK = ${BUILD_FOLDER}/${BENCHMARK_FOLDER}
+OUTPUT_FILE_BENCHMARK = benchmarks
+OBJECTS_BENCHMARK_FULL = $(patsubst $(BENCHMARK_FOLDER)/%.cpp, $(OUTPUT_FOLDER_BENCHMARK)/%.o, $(filter $(BENCHMARK_FOLDER)/%.cpp, $(BENCHMARK_SOURCES)))
+OBJECTS_BENCHMARK_SRC = $(patsubst $(SOURCE_FOLDER)/%.cpp, $(OUTPUT_FOLDER_BENCHMARK)/%.o, $(filter $(SOURCE_FOLDER)/%.cpp, $(BENCHMARK_SOURCES)))
+OBJECTS_BENCHMARK_ALL = $(OBJECTS_BENCHMARK_FULL) $(OBJECTS_BENCHMARK_SRC)
+DEPS_BENCHMARK_ALL = $(OBJECTS_BENCHMARK_ALL:.o=.d)
 
 BRANCH_COVERAGE = --rc branch_coverage=true
 
@@ -191,35 +205,51 @@ val: shaders $(OBJECTS_VALGRIND)
 valgrind: val
 	valgrind ${VALGRIND_FLAGS} ${OUTPUT_FOLDER_VALGRIND}/${OUTPUT_FILE_VALGRIND}
 
+${OUTPUT_FOLDER_BENCHMARK}/%.o: ${BENCHMARK_FOLDER}/%.cpp
+	@dir=$(dir $@); \
+	mkdir -p $$dir;
+	${COMPILER} ${COMPILER_FLAGS_BENCHMARK} ${WARNINGS} ${INCLUDE_ARGUMENT} ${BENCHMARK_INCLUDE_ARGUMENT} -MMD -MP -c $< -o $@
+
+${OUTPUT_FOLDER_BENCHMARK}/%.o: ${SOURCE_FOLDER}/%.cpp
+	@dir=$(dir $@); \
+	mkdir -p $$dir;
+	${COMPILER} ${COMPILER_FLAGS_BENCHMARK} ${WARNINGS} ${INCLUDE_ARGUMENT} ${BENCHMARK_INCLUDE_ARGUMENT} -MMD -MP -c $< -o $@
+
+-include $(DEPS_BENCHMARK_ALL)
+
+benchmarks: $(OBJECTS_BENCHMARK_ALL)
+	${COMPILER} ${COMPILER_FLAGS_BENCHMARK} ${OBJECTS_BENCHMARK_ALL} ${BENCHMARK_LIBRARIES} -o ${OUTPUT_FOLDER_BENCHMARK}/${OUTPUT_FILE_BENCHMARK}
+	${OUTPUT_FOLDER_BENCHMARK}/${OUTPUT_FILE_BENCHMARK}
+
 ${OUTPUT_FOLDER_TEST}/%.o: ${TEST_FOLDER}/%.cpp
 	@dir=$(dir $@); \
 	mkdir -p $$dir;
-	${COMPILER} ${TEST_COMPILER_FLAGS} ${WARNINGS} ${INCLUDE_ARGUMENT} ${TEST_INCLUDE_ARGUMENT} -MMD -MP -c $< -o $@
+	${COMPILER} ${COMPILER_FLAGS_TEST} ${WARNINGS} ${INCLUDE_ARGUMENT} ${TEST_INCLUDE_ARGUMENT} -MMD -MP -c $< -o $@
 
 ${OUTPUT_FOLDER_TEST}/%.o: ${TEST_INTEGRATIONS_FOLDER}/%.cpp
 	@dir=$(dir $@); \
 	mkdir -p $$dir;
-	${COMPILER} ${TEST_COMPILER_FLAGS} ${WARNINGS} ${INCLUDE_ARGUMENT} ${TEST_INTEGRATIONS_INCLUDE_ARUGMENT} -MMD -MP -c $< -o $@
+	${COMPILER} ${COMPILER_FLAGS_TEST} ${WARNINGS} ${INCLUDE_ARGUMENT} ${TEST_INTEGRATIONS_INCLUDE_ARUGMENT} -MMD -MP -c $< -o $@
 
 ${OUTPUT_FOLDER_TEST}/%.o: ${TEST_MOCKS_FOLDER}/%.cpp
 	@dir=$(dir $@); \
 	mkdir -p $$dir;
-	${COMPILER} ${TEST_COMPILER_FLAGS} ${WARNINGS} ${INCLUDE_ARGUMENT} ${TEST_MOCKS_INCLUDE_ARUGMENT} -MMD -MP -c $< -o $@
+	${COMPILER} ${COMPILER_FLAGS_TEST} ${WARNINGS} ${INCLUDE_ARGUMENT} ${TEST_MOCKS_INCLUDE_ARUGMENT} -MMD -MP -c $< -o $@
 
 ${OUTPUT_FOLDER_TEST}/%.o: ${TEST_UNITS_FOLDER}/%.cpp
 	@dir=$(dir $@); \
 	mkdir -p $$dir;
-	${COMPILER} ${TEST_COMPILER_FLAGS} ${WARNINGS} ${INCLUDE_ARGUMENT} ${TEST_UNITS_INCLUDE_ARUGMENT} -MMD -MP -c $< -o $@
+	${COMPILER} ${COMPILER_FLAGS_TEST} ${WARNINGS} ${INCLUDE_ARGUMENT} ${TEST_UNITS_INCLUDE_ARUGMENT} -MMD -MP -c $< -o $@
 
 ${OUTPUT_FOLDER_TEST}/%.o: ${TEST_MAIN_FOLDER}/%.cpp
 	@dir=$(dir $@); \
 	mkdir -p $$dir;
-	${COMPILER} ${TEST_COMPILER_FLAGS} ${WARNINGS} ${INCLUDE_ARGUMENT} ${TEST_MAIN_INCLUDE_ARUGMENT} -MMD -MP -c $< -o $@
+	${COMPILER} ${COMPILER_FLAGS_TEST} ${WARNINGS} ${INCLUDE_ARGUMENT} ${TEST_MAIN_INCLUDE_ARUGMENT} -MMD -MP -c $< -o $@
 
 ${OUTPUT_FOLDER_TEST}/%.o: ${SOURCE_FOLDER}/%.cpp
 	@dir=$(dir $@); \
 	mkdir -p $$dir;
-	${COMPILER} ${TEST_COMPILER_FLAGS} ${WARNINGS} ${INCLUDE_ARGUMENT} ${TEST_INCLUDE_ARGUMENT} -MMD -MP -c $< -o $@
+	${COMPILER} ${COMPILER_FLAGS_TEST} ${WARNINGS} ${INCLUDE_ARGUMENT} ${TEST_INCLUDE_ARGUMENT} -MMD -MP -c $< -o $@
 
 copy_and_run_tests:
 	if [ -d ${RESOURCES_FOLDER} ]; then \
@@ -234,7 +264,7 @@ copy_and_run_tests:
 -include $(DEPS_TEST_ALL)
 
 build_tests: $(OBJECTS_TEST_USING)
-	${COMPILER} ${TEST_COMPILER_FLAGS} ${OBJECTS_TEST_USING} ${TEST_LIBRARIES} -o ${OUTPUT_FOLDER_TEST}/${OUTPUT_FILE_TEST}
+	${COMPILER} ${COMPILER_FLAGS_TEST} ${OBJECTS_TEST_USING} ${TEST_LIBRARIES} -o ${OUTPUT_FOLDER_TEST}/${OUTPUT_FILE_TEST}
 	${MAKE} copy_and_run_tests
 
 lcov: build_tests

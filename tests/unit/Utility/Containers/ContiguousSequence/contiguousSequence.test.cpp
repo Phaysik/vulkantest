@@ -15,7 +15,7 @@
 
 #include <gtest/gtest.h>
 
-using Utility::Containers::ContiguousSequence::computeContiguousSequenceSum;
+using Dimensia::Utility::Containers::ContiguousSequence::computeContiguousSequenceSum;
 
 // NOLINTBEGIN(misc-const-correctness,cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 

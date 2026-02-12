@@ -1,8 +1,8 @@
 /*! @file input.h
 	@brief Contains the function declarations for getting user input.
-	@date --/--/----
-	@version x.x.x
-	@since x.x.x
+	@date 02/12/2026
+	@version 0.0.1
+	@since 0.0.1
 	@author Matthew Moore
 */
 
@@ -20,16 +20,18 @@
 #include <type_traits>
 #include <vector>
 
-#include "cconcepts.h" // for Integral, String
+#include "Core/cconcepts.h" // for Integral, String
 
 /*! @namespace Utility Holds any useful functionality that doesn't fit anywhere else
-	@date --/--/----
-	@version x.x.x
-	@since x.x.x
+	@date 02/12/2026
+	@version 0.0.1
+	@since 0.0.1
 	@author Matthew Moore
 */
-namespace Utility
+namespace Dimensia::Utility
 {
+	using Dimensia::Core::Integral;
+	using Dimensia::Core::String;
 	template <typename T>
 	concept IsArrayLike = requires {
 		typename T::value_type; // Requires the type to have a nested `value_type`
@@ -40,9 +42,9 @@ namespace Utility
 
 	/*! @class Input input.h "include/input.h"
 		@brief Will try and extract valid user input and clean up the input buffer as needed
-		@date --/--/----
-		@version x.x.x
-		@since x.x.x
+		@date 02/12/2026
+		@version 0.0.1
+		@since 0.0.1
 		@author Matthew Moore
 	*/
 	class Input
@@ -59,9 +61,9 @@ namespace Utility
 				@param[in, out] input The input stream to use. The default value is std::cin
 				@param[in] afterFailureOnly If you need to re-print the input message after a condition has failed. The default value is
 			   false
-				@date --/--/----
-				@version x.x.x
-				@since x.x.x
+				@date 02/12/2026
+				@version 0.0.1
+				@since 0.0.1
 				@author Matthew Moore
 			*/
 			template <typename T>
@@ -112,12 +114,12 @@ namespace Utility
 				@param[in, out] input The input stream to use. The default value is std::cin
 				@param[in] afterFailureOnly If you need to re-print the input message after a condition has failed. The default value is
 			   false
-				@date --/--/----
-				@version x.x.x
-				@since x.x.x
+				@date 02/12/2026
+				@version 0.0.1
+				@since 0.0.1
 				@author Matthew Moore
 			*/
-			template <Concepts::String T>
+			template <String T>
 			static T getInput(std::string_view inputMessage = mInputMessage, std::string_view errorMessage = mErrorMessage,
 							  [[maybe_unused]] const bool ignoreExtraneous = true, std::istream &input = std::cin,
 							  const bool afterFailureOnly = false)
@@ -156,12 +158,12 @@ namespace Utility
 				@param[in] afterFailureOnly If you need to re-print the input message after a condition has failed. The default value is
 			   false
 				@retval T The value that was extracted
-				@date --/--/----
-				@version x.x.x
-				@since x.x.x
+				@date 02/12/2026
+				@version 0.0.1
+				@since 0.0.1
 				@author Matthew Moore
 			*/
-			template <Concepts::Integral T>
+			template <Integral T>
 			static T getInput(const T min, const T max, std::string_view inputMessage = mInputMessage,
 							  std::string_view errorMessage = mErrorMessage, const bool ignoreExtraneous = true,
 							  std::istream &input = std::cin, const bool afterFailureOnly = false)
@@ -195,9 +197,9 @@ namespace Utility
 				@param[in] afterFailureOnly If you need to re-print the input message after a condition has failed. The default value is
 			   false
 				@retval T::value_type The value type of the array-like object
-				@date --/--/----
-				@version x.x.x
-				@since x.x.x
+				@date 02/12/2026
+				@version 0.0.1
+				@since 0.0.1
 				@author Matthew Moore
 			*/
 			template <IsArrayLike T>
@@ -234,9 +236,9 @@ namespace Utility
 				@param[in] afterFailureOnly If you need to re-print the input message after a condition has failed. The default value is
 			   false
 				@retval T The value that was extracted
-				@date --/--/----
-				@version x.x.x
-				@since x.x.x
+				@date 02/12/2026
+				@version 0.0.1
+				@since 0.0.1
 				@author Matthew Moore
 			*/
 			template <typename T>
@@ -269,9 +271,9 @@ namespace Utility
 			/*! @brief This function will clear any extraneous input in the input buffer
 				@post The input buffer will be empty
 				@param[in] input The input stream to use.
-				@date --/--/----
-				@version x.x.x
-				@since x.x.x
+				@date 02/12/2026
+				@version 0.0.1
+				@since 0.0.1
 				@author Matthew Moore
 			*/
 			static void ignoreLine(std::istream &input) noexcept
@@ -285,9 +287,9 @@ namespace Utility
 			   normal operation mode
 				@param[in] input The input stream to use.
 				@retval bool If the extraction failed
-				@date --/--/----
-				@version x.x.x
-				@since x.x.x
+				@date 02/12/2026
+				@version 0.0.1
+				@since 0.0.1
 				@author Matthew Moore
 			*/
 			static bool clearFailedExtraction(std::istream &input)
@@ -314,9 +316,9 @@ namespace Utility
 			/*! @brief Will print out @p message provided that it is not empty
 				@param[in] message The message to print
 				@param[in] newLine If a new line should be printed
-				@date --/--/----
-				@version x.x.x
-				@since x.x.x
+				@date 02/12/2026
+				@version 0.0.1
+				@since 0.0.1
 				@author Matthew Moore
 			*/
 			static void printIfNotEmpty(std::string_view message, const bool newLine = false)
@@ -332,6 +334,6 @@ namespace Utility
 				}
 			}
 	};
-} // namespace Utility
+} // namespace Dimensia::Utility
 
 #endif

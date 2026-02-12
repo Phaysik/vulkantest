@@ -1,12 +1,12 @@
 /*! @file cconcepts.test.cpp
 	@brief C++ file for creating tests for validating custom concepts.
-	@date --/--/----
-	@version x.x.x
-	@since x.x.x
+	@date 02/12/2026
+	@version 0.0.1
+	@since 0.0.1
 	@author Matthew Moore
 */
 
-#include "cconcepts.h"
+#include "Core/cconcepts.h"
 
 #include <cstdint>
 #include <string>
@@ -14,12 +14,12 @@
 
 #include <gtest/gtest.h>
 
-using Concepts::FloatingPoint;
-using Concepts::Integral;
-using Concepts::RationalNumber;
-using Concepts::SignedIntegral;
-using Concepts::String;
-using Concepts::UnsignedIntegral;
+using Dimensia::Core::FloatingPoint;
+using Dimensia::Core::Integral;
+using Dimensia::Core::RationalNumber;
+using Dimensia::Core::SignedIntegral;
+using Dimensia::Core::String;
+using Dimensia::Core::UnsignedIntegral;
 
 // Compile-time sanity checks (will fail to compile if concepts change unexpectedly)
 static_assert(Integral<int>);

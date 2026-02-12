@@ -1,8 +1,8 @@
 /*! \file attributeMacros.h
 	\brief Contains the attribute macros for creating portable C++ code
-	\date --/--/----
-	\version x.x.x
-	\since x.x.x
+	\date 02/12/2026
+	\version 0.0.1
+	\since 0.0.1
 	\author Matthew Moore
 */
 

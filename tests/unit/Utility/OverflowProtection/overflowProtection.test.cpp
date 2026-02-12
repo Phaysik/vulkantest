@@ -1,8 +1,8 @@
 /*! @file overflowProtection.test.cpp
 	@brief Google Test unit tests for the OverflowProtection helpers.
-	@date --/--/----
-	@version x.x.x
-	@since x.x.x
+	@date 02/12/2026
+	@version 0.0.1
+	@since 0.0.1
 	@author Matthew Moore
 */
 
@@ -13,8 +13,8 @@
 
 #include <gtest/gtest.h>
 
-using Utility::OverflowProtection::SafeMultiply;
-using Utility::OverflowProtection::WillMultiplyOverflow;
+using Dimensia::Utility::OverflowProtection::SafeMultiply;
+using Dimensia::Utility::OverflowProtection::WillMultiplyOverflow;
 
 // NOLINTBEGIN(misc-const-correctness,cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 

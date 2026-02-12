@@ -1,8 +1,8 @@
 /*! @file cconcepts.h
 	@brief Contains the declarations of common concepts that might be used in multiple files.
-	@date --/--/----
-	@version x.x.x
-	@since x.x.x
+	@date 02/12/2026
+	@version 0.0.1
+	@since 0.0.1
 	@author Matthew Moore
 */
 
@@ -12,14 +12,14 @@
 #include <string>
 #include <type_traits>
 
-/*! @namespace Concepts
+/*! @namespace Dimensia::Core
 	@brief Collection of common compile-time type concepts used across the codebase.
 	@details This namespace provides small, expressive concepts built on top of the standard
 	type-traits library. Use these concepts to constrain template parameters for integral,
 	unsigned, signed, floating-point, rational (integral or floating), and std::string-like types.
 	@note All concepts are compile-time predicates with no runtime cost.
  */
-namespace Concepts
+namespace Dimensia::Core
 {
 	/*! @concept Integral
 		@brief Tests whether a type is an integral type.
@@ -67,6 +67,6 @@ namespace Concepts
 	*/
 	template <typename T>
 	concept String = std::is_same_v<std::string, std::remove_cvref_t<T>>;
-} // namespace Concepts
+} // namespace Dimensia::Core
 
 #endif

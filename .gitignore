@@ -12,3 +12,4 @@
 .vscode/.cache
 /src/tracy/*
 *.spv
+gmon.out

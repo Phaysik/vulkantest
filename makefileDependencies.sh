@@ -229,6 +229,24 @@ installVulkan() {
     echo "Verify installation by running: vkcube"
 }
 
+installBenchmark() {
+    git clone https://github.com/google/benchmark.git
+    cd benchmark
+
+    sudo cmake -E make_directory "build"
+
+    sudo cmake -DBENCHMARK_DOWNLOAD_DEPENDENCIES=on -DCMAKE_BUILD_TYPE=Release -S . -B "build"
+
+    sudo cmake --build "build" --config Release --target install
+
+    sudo cp /usr/local/lib/libbench* /usr/lib/
+    sudo cp -r /usr/local/include/benchmark* /usr/include
+    sudo cp /usr/local/lib/pkgconfig/benchmark* /usr/lib/pkgconfig/
+    sudo cp -r /usr/local/lib/cmake/benchmark /usr/lib/cmake/
+    sudo cp -r /usr/local/share/doc/benchmark /usr/share/doc/
+    sudo cp -r /usr/local/share/googlebenchmark /usr/share
+}
+
 main() {
     echo "This shell file is set up to only work on Ubuntu operating systems"
 
@@ -274,6 +292,13 @@ main() {
             sudo cmake CMakeLists.txt
             sudo make
             sudo cp ./lib/libgtest*.a /usr/lib
+        fi
+
+        if [ -f "/usr/lib/libbenchmark.a" ] && [ -f "/usr/lib/libbenchmark_main.a" ]; then
+            echo "Google Benchmark already exists"
+        else
+            echo "Setting up Google Benchmark"
+            installBenchmark
         fi
 
         # If not 'a' or 'A', set up documentation, formatting, and linting tools

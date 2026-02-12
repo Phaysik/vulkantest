@@ -3,19 +3,19 @@
 	@details Exercises absolute and relative epsilon paths to ensure correct behavior
 	across near-zero and large-magnitude comparisons. Tests intentionally execute
 	runtime code paths (non-constexpr variables) to improve coverage reporting.
-	@date --/--/----
-	@version x.x.x
-	@since x.x.x
+	@date 02/12/2026
+	@version 0.0.1
+	@since 0.0.1
 	@author Matthew Moore
 */
 
-#include "Utility/Floats/floatUtility.h"
+#include "Utility/Math/floatUtility.h"
 
 #include <numbers>
 
 #include <gtest/gtest.h>
 
-using Utility::Floats::approximatelyEqualAbsRel;
+using Dimensia::Utility::Math::approximatelyEqualAbsRel;
 
 // NOLINTBEGIN(misc-const-correctness,cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
 

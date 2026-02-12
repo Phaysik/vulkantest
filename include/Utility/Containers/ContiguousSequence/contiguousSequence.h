@@ -1,8 +1,8 @@
 /*! \file contiguousSequence.h
 	\brief Contains the function declarations for creating helper utilities for contiguous sequence containers.
-	\date --/--/----
-	\version x.x.x
-	\since x.x.x
+	\date 02/12/2026
+	\version 0.0.1
+	\since 0.0.1
 	\author Matthew Moore
 */
 
@@ -11,11 +11,10 @@
 
 #include <span>
 
-#include "attributeMacros.h"
-#include "cconcepts.h"
-#include "typedefs.h"
+#include "Core/attributeMacros.h"
+#include "Core/cconcepts.h"
 
-/*! @namespace Utility::Containers::ContiguousSequence
+/*! @namespace Dimensia::Utility::Containers::ContiguousSequence
 	@brief Utilities for working with contiguous sequence containers
 	@details
 	This namespace provides small, efficient helper routines that operate on
@@ -31,15 +30,17 @@
 	@since 0.0.1
 	@author Matthew Moore
  */
-namespace Utility::Containers::ContiguousSequence
+namespace Dimensia::Utility::Containers::ContiguousSequence
 {
+	using Dimensia::Core::Integral;
+
 	/*! @brief Sum `length` elements from @p sequence starting at @p startIndex.
 		@details
 		Computes the sum of `length` contiguous elements beginning at
 		`startIndex` within @p sequence. The function performs direct index
 		access using `std::span` (bounds-checked by the caller if required).
-		@tparam Concepts::Integral Integral The integer type used for indices
-			   and arithmetic. Must satisfy @ref Concepts::Integral.
+		@tparam Dimensia::Core::Integral Integral The integer type used for indices
+			   and arithmetic. Must satisfy @ref Dimensia::Core::Integral.
 		@param[in] sequence A read-only span containing the elements to sum.
 		@param[in] startIndex The starting index within @p sequence (0-based).
 		@param[in] length The number of elements to include in the sum. The
@@ -48,11 +49,11 @@ namespace Utility::Containers::ContiguousSequence
 				returns zero if `startIndex >= sequence.size()` or `startIndex + length > sequence.size()`.
 		@note Time complexity: O(length). Space complexity: O(1).
 	*/
-	template <Concepts::Integral Integral>
+	template <Integral Integral>
 	ATTR_NODISCARD constexpr Integral computeContiguousSequenceSum(const std::span<const Integral> &sequence, const Integral startIndex,
 																   const Integral length)
 	{
-		if (startIndex >= sc<Integral>(sequence.size()) || (startIndex + length) > sc<Integral>(sequence.size()))
+		if (startIndex >= static_cast<Integral>(sequence.size()) || (startIndex + length) > static_cast<Integral>(sequence.size()))
 		{
 			return Integral{0};
 		}
@@ -61,7 +62,7 @@ namespace Utility::Containers::ContiguousSequence
 
 		for (Integral i{startIndex}; i < startIndex + length; ++i)
 		{
-			sum += sequence.at(sc<std::size_t>(i));
+			sum += sequence.at(static_cast<std::size_t>(i));
 		}
 
 		return sum;
@@ -73,18 +74,18 @@ namespace Utility::Containers::ContiguousSequence
 		Convenience overload that forwards to the three-argument overload
 		(@ref computeContiguousSequenceSum(const std::span<const Integral>&, Integral, Integral)).
 		See that overload for full preconditions and complexity guarantees.
-		@tparam Concepts::Integral Integral The integral type used for indices
-			   and arithmetic. Must satisfy @ref Concepts::Integral.
+		@tparam Dimensia::Core::Integral Integral The integral type used for indices
+			   and arithmetic. Must satisfy @ref Dimensia::Core::Integral.
 		@param[in] sequence Read-only span of elements to sum.
 		@param[in] startIndex Zero-based index at which summation begins. Defaults to 0.
 		@return The sum of elements from `startIndex` to the end as an
 				`Integral` value.
 	*/
-	template <Concepts::Integral Integral>
+	template <Integral Integral>
 	ATTR_NODISCARD constexpr Integral computeContiguousSequenceSum(const std::span<const Integral> &sequence, const Integral startIndex = 0)
 	{
 		return computeContiguousSequenceSum<Integral>(sequence, startIndex, static_cast<Integral>(sequence.size()));
 	}
-} // namespace Utility::Containers::ContiguousSequence
+} // namespace Dimensia::Utility::Containers::ContiguousSequence
 
 #endif

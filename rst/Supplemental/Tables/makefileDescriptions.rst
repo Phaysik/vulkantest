@@ -33,6 +33,8 @@ Below is a list of all the :file:`Makefile` commands along with a breakdown of w
     |                            |----------------------------------------------------------------------------------------------------|
     |                            | Runs a memory checker on the executable in the output folder to see if there's any memory leaks.   |
     +----------------------------+----------------------------------------------------------------------------------------------------+
+    | benchmarks                 | Runs the benchmarks command. Runs a suite of google benchmarks to test performance.                |
+    +----------------------------+----------------------------------------------------------------------------------------------------+
     | copy_and_run_tests         | Copies the resource folder to the output folder.                                                   |
     |                            |----------------------------------------------------------------------------------------------------|
     |                            | Copies and runs the test executable from the test folder to the output folder.                     |

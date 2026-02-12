@@ -2,15 +2,30 @@
 #include <exception>
 #include <iostream>
 
-#include "attributeMacros.h"
-#include "triangleApplication.h"
+#include "Components/Transform/transformComponent.h"
+#include "ECS/entity.h"
 
-ATTR_CONST int main()
+int main()
 {
 	try
 	{
-		VulkanApplication app;
-		app.run();
+		using Dimensia::Components::TransformComponent;
+		Dimensia::ECS::Entity entity("MyEntity");
+		const TransformComponent added{*entity.addComponent<TransformComponent>(TransformComponent())};
+		const bool removed{entity.removeComponent<TransformComponent>()};
+
+		if (removed)
+		{
+			const TransformComponent added2{*entity.addComponent<TransformComponent>(TransformComponent())};
+		}
+		else
+		{
+			std::cout << "Failed to remove component\n";
+		}
+
+		TransformComponent comp{*entity.getComponent<TransformComponent>()};
+
+		comp.setPosition({0.0F, 0.0F, 0.0F});
 	}
 	catch (const std::exception &e)
 	{

@@ -21,6 +21,7 @@ Do not change any of the variables in the Makefile as it may cause the executabl
 | debug                      | Creates a dev executable in the output folder with debugging information in the compiled code. Copies resource folder to the output folder. |
 | dev                        | Runs the debug command. Runs the dev executable in the output folder. |
 | valgrind                   | Runs the debug command. Runs a memory checker on the executable in the output folder to see if there is any memory leaks. |
+| benchmarks                 | Runs the benchmarks command. Runs a suite of google benchmarks to test performance. |
 | copy_and_run_tests         | Copies the resource folder to the output folder. Copies and runs the test executable from the test folder to the output folder. |
 | build_tests                | Compiles a test executable with Google Test flags. Runs the copy_and_test command. |
 | lcov                       | Runs the build_test command. Creates lcov files on the entire codebase. Then removes the lcov files associated with the lcov folder. |
