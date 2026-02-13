@@ -16,7 +16,7 @@ DEBUG_WARNINGS = -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointe
 
 INCLUDE_FOLDER = include
 INCLUDE_ARGUMENT = -I${INCLUDE_FOLDER}
-LIBRARIES = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
+LIBRARIES = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi -lconfigcat -lcurl -lz -lssl -lcrypto -lhash-library
 RESOURCES_FOLDER = resources
 
 SOURCE_FOLDER = src

@@ -9,7 +9,12 @@
 #ifndef INCLUDE_CONSTANTS_H
 #define INCLUDE_CONSTANTS_H
 
+#include <string_view>
+
 namespace Dimensia::Core
-{} // namespace Dimensia::Core
+{
+	// ConfigCat flag names
+	constexpr std::string_view REMOVE_ENTITY_VECTOR_TYPE_ID{"removeEntityVectorTypeId"};
+} // namespace Dimensia::Core
 
 #endif
