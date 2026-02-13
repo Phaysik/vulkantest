@@ -147,5 +147,17 @@ int main()
 			std::cout << "Entity " << entity.index << ":" << entity.generation << " buff=" << buff.name << ", " << buff.duration << "\n";
 		}
 	});
+
+	entityBuffs->list.erase(
+		std::remove_if(entityBuffs->list.begin(), entityBuffs->list.end(), [](const Buff &buff) { return buff.name == "Speed Boost"; }),
+		entityBuffs->list.end());
+
+	std::cout << "\n--- After buff removal ---\n";
+	ecs.forEach<Buffs>([](Entity entity, Buffs &buffs) {
+		for (const auto &buff : buffs.list)
+		{
+			std::cout << "Entity " << entity.index << ":" << entity.generation << " buff=" << buff.name << ", " << buff.duration << "\n";
+		}
+	});
 	return 0;
 }
