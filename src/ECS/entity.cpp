@@ -13,10 +13,10 @@
 
 namespace Dimensia::ECS
 {
-	Entity::Entity(std::string_view entityName) : mName(entityName), mComponents(0), mComponentTypeIds(0), mComponentCache(0)
+	Entity::Entity(std::string_view entityName) : mName(entityName), mComponents(0), mComponentCache(0)
 	{
 		mComponents.reserve(4);
-		mComponentTypeIds.reserve(4);
+		// mComponentTypeIds.reserve(4);
 		mComponentCache.reserve(4);
 	}
 

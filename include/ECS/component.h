@@ -68,9 +68,21 @@ namespace Dimensia::ECS
 				return ComponentTypeIdSystem::getTypeId<T>();
 			}
 
+			// Runtime-stored type id for this component instance. Set by Entity when added.
+			constexpr void setTypeId(std::size_t typeID) noexcept
+			{
+				mTypeId = typeID;
+			}
+
+			ATTR_NODISCARD constexpr std::size_t getTypeId() const noexcept
+			{
+				return mTypeId;
+			}
+
 		private:
 			Entity *mOwner{nullptr};
 			std::string mName;
+			std::size_t mTypeId{static_cast<std::size_t>(-1)};
 	};
 } // namespace Dimensia::ECS
 

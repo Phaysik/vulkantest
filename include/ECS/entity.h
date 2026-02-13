@@ -49,14 +49,13 @@ namespace Dimensia::ECS
 			{
 				static_assert(std::is_base_of_v<Component, T>, "T must derive from Component");
 
-				const std::size_t typeId{Component::getTypeId<T>()};
+				const std::size_t typeID{Component::getTypeId<T>()};
 
 				// Check if component of this type already exists
-				const auto iterator{mComponentCache.find(typeId)};
+				const auto iterator{mComponentCache.find(typeID)};
 				if (iterator != mComponentCache.end())
 				{
-					const std::size_t index = iterator->second;
-					return static_cast<T *>(mComponents.at(index).get());
+					return static_cast<T *>(iterator->second);
 				}
 
 				// Create new component
@@ -64,14 +63,11 @@ namespace Dimensia::ECS
 
 				T *componentPtr{component.get()};
 				componentPtr->setOwner(this);
+				componentPtr->setTypeId(typeID);
 
 				mComponents.emplace_back(std::move(component));
-				// record the component's type id in the parallel vector
-				mComponentTypeIds.emplace_back(typeId);
-
-				const std::size_t index = mComponents.size() - 1;
-				// Cache the component index by its compile-time type id
-				mComponentCache.emplace(typeId, index);
+				// Cache the component pointer by its compile-time type id
+				mComponentCache.emplace(typeID, componentPtr);
 
 				return componentPtr;
 			}
@@ -79,13 +75,12 @@ namespace Dimensia::ECS
 			template <typename T>
 			ATTR_NODISCARD T *getComponent() noexcept
 			{
-				const std::size_t typeId{Component::getTypeId<T>()};
+				const std::size_t typeID{Component::getTypeId<T>()};
 
-				const auto iterator = mComponentCache.find(typeId);
+				const auto iterator = mComponentCache.find(typeID);
 				if (iterator != mComponentCache.end())
 				{
-					const std::size_t index = iterator->second;
-					return static_cast<T *>(mComponents.at(index).get());
+					return static_cast<T *>(iterator->second);
 				}
 
 				return nullptr;
@@ -94,60 +89,51 @@ namespace Dimensia::ECS
 			template <typename T>
 			ATTR_NODISCARD const T *getComponent() const noexcept
 			{
-				const std::size_t typeId{Component::getTypeId<T>()};
+				const std::size_t typeID{Component::getTypeId<T>()};
 
-				const auto iterator = mComponentCache.find(typeId);
+				const auto iterator = mComponentCache.find(typeID);
 				if (iterator != mComponentCache.end())
 				{
-					const std::size_t index = iterator->second;
-					return static_cast<const T *>(mComponents.at(index).get());
+					return static_cast<const T *>(iterator->second);
 				}
 
 				return nullptr;
 			}
 
 			template <typename T>
-			bool removeComponent()
+			ATTR_NODISCARD bool removeComponent()
 			{
-				const std::size_t typeId{Component::getTypeId<T>()};
+				const std::size_t typeID{Component::getTypeId<T>()};
 
-				auto iterator{mComponentCache.find(typeId)};
+				auto iterator{mComponentCache.find(typeID)};
 				if (iterator == mComponentCache.end())
 				{
 					return false;
 				}
 
-				const std::size_t index{iterator->second};
+				const Component *componentPtr{iterator->second};
 				// remove mapping for this type
 				mComponentCache.erase(iterator);
 
-				const std::size_t lastIndex{mComponents.size() - 1};
-				if (index != lastIndex)
-				{
-					// move last element into the removed slot
-					std::swap(mComponents.at(index), mComponents.at(lastIndex));
-					std::swap(mComponentTypeIds.at(index), mComponentTypeIds.at(lastIndex));
+				const auto newEnd{
+					std::remove_if(mComponents.begin(), mComponents.end(),
+								   [componentPtr](const std::unique_ptr<Component> &comp) { return comp.get() == componentPtr; })};
 
-					// update cache entry for the moved component's type id
-					const std::size_t movedTypeId{mComponentTypeIds.at(index)};
-					mComponentCache[movedTypeId] = index;
+				if (newEnd != mComponents.end())
+				{
+					mComponents.erase(newEnd, mComponents.end());
+					return true;
 				}
 
-				// pop the last element (the removed component)
-				mComponents.pop_back();
-				mComponentTypeIds.pop_back();
-
-				return true;
+				return false;
 			}
 
 		private:
 			std::string mName;
 			bool mActive{true};
 			std::vector<std::unique_ptr<Component>> mComponents;
-			// Parallel vector storing the compile-time type id for each entry in mComponents.
-			std::vector<std::size_t> mComponentTypeIds;
-			// Map from component type id -> index within mComponents / mComponentTypeIds
-			std::unordered_map<std::size_t, std::size_t> mComponentCache;
+			// Map from component type id -> pointer to component instance
+			std::unordered_map<std::size_t, Component *> mComponentCache;
 	};
 } // namespace Dimensia::ECS
 
