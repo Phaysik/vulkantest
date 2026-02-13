@@ -21,6 +21,17 @@ struct Mana
 		int mp;
 }; // trivial
 
+struct Buff
+{
+		std::string name;
+		int duration;
+};
+
+struct Buffs
+{
+		std::vector<Buff> list; // multiple buffs per entity
+};
+
 struct NameTag
 {
 		std::string tag;
@@ -96,6 +107,11 @@ int main()
 	ecs.addComponent<Health>(e, {.hp = 100});
 	ecs.addComponent<Mana>(e, {.mp = 50});
 	ecs.addComponent<NameTag>(e, {"Goblin"});
+	ecs.addComponent<Buffs>(e, {}); // start with empty list
+
+	auto *entityBuffs = ecs.getComponent<Buffs>(e);
+	entityBuffs->list.push_back({"Speed Boost", 10});
+	entityBuffs->list.push_back({"Strength Boost", 5});
 
 	std::cout << "\n--- Created entity with multiple components ---\n";
 	std::cout << "Entity " << e.index << ":" << e.generation << " name=" << ecs.getComponent<NameTag>(e)->tag << "\n";
@@ -122,6 +138,14 @@ int main()
 	ecs.forEach<Position, Velocity>([](Entity entity, Position &pos, Velocity &vel) {
 		std::cout << "Entity " << entity.index << ":" << entity.generation << " position=(" << pos.x << ", " << pos.y << ", " << pos.z
 				  << ")" << " velocity=(" << vel.dx << ", " << vel.dy << ", " << vel.dz << ")" << "\n";
+	});
+
+	std::cout << "\n--- Buffs ---\n";
+	ecs.forEach<Buffs>([](Entity entity, Buffs &buffs) {
+		for (const auto &buff : buffs.list)
+		{
+			std::cout << "Entity " << entity.index << ":" << entity.generation << " buff=" << buff.name << ", " << buff.duration << "\n";
+		}
 	});
 	return 0;
 }
