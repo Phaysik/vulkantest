@@ -245,6 +245,9 @@ installBenchmark() {
     sudo cp -r /usr/local/lib/cmake/benchmark /usr/lib/cmake/
     sudo cp -r /usr/local/share/doc/benchmark /usr/share/doc/
     sudo cp -r /usr/local/share/googlebenchmark /usr/share
+
+    cd ..
+    sudo rm -rf benchmark
 }
 
 main() {
