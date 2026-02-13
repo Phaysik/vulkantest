@@ -1,25 +1,28 @@
 #include "Core/attributeMacros.h"
 #include "ECS/deepseekTest.h"
 
+// -----------------------------------------------------------------------------
+//  Example components
+// -----------------------------------------------------------------------------
 struct Position
 {
 		float x, y, z;
-}; // trivial
+};
 
 struct Velocity
 {
 		float dx, dy, dz;
-}; // trivial
+};
 
 struct Health
 {
 		int hp;
-}; // trivial
+};
 
 struct Mana
 {
 		int mp;
-}; // trivial
+};
 
 struct Buff
 {
@@ -29,135 +32,110 @@ struct Buff
 
 struct Buffs
 {
-		std::vector<Buff> list; // multiple buffs per entity
+		std::vector<Buff> activeBuffs;
 };
 
 struct NameTag
+
 {
 		std::string tag;
-}; // non‑trivial, but fine
+};
 
-// #include "ECS/chatgptTest.h"
+// Zero‑size tags
+struct AliveTag
+{
+		static constexpr bool is_tag = true;
+};
+
+struct DebugTag
+{
+		static constexpr bool is_tag = true;
+};
+
+struct BuffedTag
+{
+		static constexpr bool is_tag = true;
+};
 
 // -----------------------------------------------------------------------------
-//  Demo: Name + active flag, structural moves, swap-remove, query
+//  Demo (same as before)
 // -----------------------------------------------------------------------------
 int main()
 {
-	// Register components (registration happens on first call to componentId<T>)
-	// Silence unused warnings with (void)
-	volatile auto nameId = componentId<std::string>();
-	(void) nameId;
-	volatile auto activeId = componentId<bool>();
-	(void) activeId;
+
+	registerTag<AliveTag>();
+	registerTag<DebugTag>();
+	registerTag<BuffedTag>();
 
 	ECS ecs;
 
-	Entity e1 = ecs.createEntity();
-	Entity e2 = ecs.createEntity();
-	Entity e3 = ecs.createEntity();
+	Entity goblin = ecs.createEntityWith(NameTag{"Goblin"}, Position{10.f, 20.f, 30.f}, Velocity{1.f, 0.f, 0.f}, Health{100}, Mana{50},
+										 Buffs{{{"Haste", 5}, {"Shield", 3}}}, AliveTag{}, BuffedTag{});
 
-	ecs.addComponent<std::string>(e1, "Alice");
-	ecs.addComponent<std::string>(e2, "Bob");
-	ecs.addComponent<std::string>(e3, "Charlie");
+	std::cout << "--- Batch created entity ---\n";
+	std::cout << "Entity " << goblin.index << ":" << goblin.generation << "\n";
+	std::cout << "Name: " << ecs.getComponent<NameTag>(goblin)->tag << "\n";
+	std::cout << "Size of DebugTag: " << sizeof(DebugTag) << "\n";
+	std::cout << "Has AliveTag: " << ecs.hasTag<AliveTag>(goblin) << "\n";
+	std::cout << "Has DebugTag: " << ecs.hasTag<DebugTag>(goblin) << "\n";
 
-	ecs.addComponent<bool>(e1, true);
-	ecs.addComponent<bool>(e3, true);
+	ecs.addTag<DebugTag>(goblin);
+	std::cout << "After adding DebugTag: " << ecs.hasTag<DebugTag>(goblin) << "\n";
 
-	std::cout << "--- Active entities after setup ---\n";
-	ecs.forEach<std::string, bool>([](Entity e, std::string &name, bool &active) {
-		std::cout << "Entity " << e.index << ":" << e.generation << " name=" << name << " active=" << active << "\n";
-	});
-
-	ecs.removeComponent<bool>(e3);
-
-	std::cout << "\n--- After removing Active from Charlie ---\n";
-	ecs.forEach<std::string, bool>([](Entity e, std::string &name, bool &active) {
-		std::cout << "Entity " << e.index << ":" << e.generation << " name=" << name << " active=" << active << "\n";
-	});
-
-	auto dummyScoreId = componentId<int>();
-	(void) dummyScoreId;
-	ecs.addComponent<int>(e2, 42);
-
-	std::cout << "\n--- After adding score=42 to Bob ---\n";
-	ecs.forEach<std::string, int>([](Entity e, std::string &name, int &score) {
-		std::cout << "Entity " << e.index << ":" << e.generation << " name=" << name << " score=" << score << "\n";
-	});
-
-	ecs.destroyEntity(e2);
-	std::cout << "\n--- After destroying Bob ---\n";
-	std::cout << "Bob alive? " << ecs.alive(e2) << "\n";
-
-	Entity e4 = ecs.createEntity();
-	ecs.addComponent<std::string>(e4, "Dave");
-	ecs.addComponent<bool>(e4, true);
-	std::cout << "New entity: index=" << e4.index << " generation=" << e4.generation << "\n";
-
-	std::cout << "\n--- Final state (all entities with name and active) ---\n";
-	ecs.forEach<std::string, bool>([](Entity e, std::string &name, bool &active) {
-		std::cout << "Entity " << e.index << ":" << e.generation << " name=" << name << " active=" << active << "\n";
-	});
-
-	Entity e = ecs.createEntity();
-
-	ecs.addComponent<std::string>(e, "Goblin");
-	ecs.addComponent<Position>(e, {10.f, 20.f, 30.f});
-	ecs.addComponent<Velocity>(e, {1.f, 0.f, 0.f});
-	ecs.addComponent<Health>(e, {.hp = 100});
-	ecs.addComponent<Mana>(e, {.mp = 50});
-	ecs.addComponent<NameTag>(e, {"Goblin"});
-	ecs.addComponent<Buffs>(e, {}); // start with empty list
-
-	auto *entityBuffs = ecs.getComponent<Buffs>(e);
-	entityBuffs->list.push_back({"Speed Boost", 10});
-	entityBuffs->list.push_back({"Strength Boost", 5});
-
-	std::cout << "\n--- Created entity with multiple components ---\n";
-	std::cout << "Entity " << e.index << ":" << e.generation << " name=" << ecs.getComponent<NameTag>(e)->tag << "\n";
-
-	std::cout << "\n--- All entities ---\n";
-	ecs.forEach<std::string>([](Entity entity, std::string &name) {
-		std::cout << "Entity " << entity.index << ":" << entity.generation << " name=" << name << "\n";
-	});
+	ecs.removeTag<BuffedTag>(goblin);
+	std::cout << "After removing BuffedTag: " << ecs.hasTag<BuffedTag>(goblin) << "\n";
 
 	std::cout << "\n--- Before movement ---\n";
-	ecs.forEach<Position, Velocity>([](Entity entity, Position &pos, Velocity &vel) {
-		std::cout << "Entity " << entity.index << ":" << entity.generation << " position=(" << pos.x << ", " << pos.y << ", " << pos.z
-				  << ")" << " velocity=(" << vel.dx << ", " << vel.dy << ", " << vel.dz << ")" << "\n";
+	ecs.forEach<Position, Velocity>([](Entity e, Position &p, Velocity &v) {
+		std::cout << "Entity " << e.index << ":" << e.generation << " pos=(" << p.x << "," << p.y << "," << p.z << ")" << " vel=(" << v.dx
+				  << "," << v.dy << "," << v.dz << ")\n";
 	});
 
-	// Update positions using velocity
-	ecs.forEach<Position, Velocity>([](ATTR_MAYBE_UNUSED Entity entity, Position &pos, Velocity &vel) {
-		pos.x += vel.dx;
-		pos.y += vel.dy;
-		pos.z += vel.dz;
+	ecs.forEach<Position, Velocity>([](ATTR_MAYBE_UNUSED Entity e, Position &p, Velocity &v) {
+		p.x += v.dx;
+		p.y += v.dy;
+		p.z += v.dz;
 	});
 
 	std::cout << "\n--- After movement ---\n";
-	ecs.forEach<Position, Velocity>([](Entity entity, Position &pos, Velocity &vel) {
-		std::cout << "Entity " << entity.index << ":" << entity.generation << " position=(" << pos.x << ", " << pos.y << ", " << pos.z
-				  << ")" << " velocity=(" << vel.dx << ", " << vel.dy << ", " << vel.dz << ")" << "\n";
+	ecs.forEach<Position, Velocity>([](Entity e, Position &p, Velocity &v) {
+		std::cout << "Entity " << e.index << ":" << e.generation << " pos=(" << p.x << "," << p.y << "," << p.z << ")" << " vel=(" << v.dx
+				  << "," << v.dy << "," << v.dz << ")\n";
+	});
+
+	const ECS &cecs = ecs;
+	std::cout << "\n--- Const query (Health) ---\n";
+	cecs.forEach<Health>(
+		[](Entity e, const Health &h) { std::cout << "Entity " << e.index << ":" << e.generation << " HP=" << h.hp << "\n"; });
+
+	std::cout << "\n--- Entities with AliveTag ---\n";
+	ecs.forEach<NameTag, AliveTag>([](Entity e, NameTag &name, AliveTag) {
+		std::cout << "Entity " << e.index << ":" << e.generation << " name=" << name.tag << "\n";
 	});
 
 	std::cout << "\n--- Buffs ---\n";
-	ecs.forEach<Buffs>([](Entity entity, Buffs &buffs) {
-		for (const auto &buff : buffs.list)
+	ecs.forEach<Buffs>([](Entity e, Buffs &buffs) {
+		for (const auto &buff : buffs.activeBuffs)
 		{
-			std::cout << "Entity " << entity.index << ":" << entity.generation << " buff=" << buff.name << ", " << buff.duration << "\n";
+			std::cout << "Entity " << e.index << ":" << e.generation << " has buff " << buff.name << " with duration " << buff.duration
+					  << "\n";
 		}
 	});
 
-	entityBuffs->list.erase(
-		std::remove_if(entityBuffs->list.begin(), entityBuffs->list.end(), [](const Buff &buff) { return buff.name == "Speed Boost"; }),
-		entityBuffs->list.end());
+	ecs.getComponent<Buffs>(goblin)->activeBuffs.erase(std::remove_if(ecs.getComponent<Buffs>(goblin)->activeBuffs.begin(),
+																	  ecs.getComponent<Buffs>(goblin)->activeBuffs.end(),
+																	  [](const Buff &buff) { return buff.name == "Haste"; }),
+													   ecs.getComponent<Buffs>(goblin)->activeBuffs.end());
 
 	std::cout << "\n--- After buff removal ---\n";
 	ecs.forEach<Buffs>([](Entity entity, Buffs &buffs) {
-		for (const auto &buff : buffs.list)
+		for (const auto &buff : buffs.activeBuffs)
 		{
 			std::cout << "Entity " << entity.index << ":" << entity.generation << " buff=" << buff.name << ", " << buff.duration << "\n";
 		}
 	});
+
+	ecs.compact();
+
 	return 0;
 }
