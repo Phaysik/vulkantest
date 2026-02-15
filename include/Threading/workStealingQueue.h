@@ -13,19 +13,22 @@
 #include <functional>
 #include <mutex>
 
-class WorkStealingQueue
+namespace Dimensia::Threading
 {
-	public:
-		using Task = std::function<void()>;
+	class WorkStealingQueue
+	{
+		public:
+			using Task = std::function<void()>;
 
-		void push(Task task);
-		bool try_pop(Task &task);
-		bool try_steal(Task &task);
-		size_t size() const;
+			void push(Task task);
+			bool try_pop(Task &task);
+			bool try_steal(Task &task);
+			size_t size() const;
 
-	private:
-		std::deque<Task> queue;
-		mutable std::mutex mutex;
-};
+		private:
+			std::deque<Task> queue;
+			mutable std::mutex mutex;
+	};
+} // namespace Dimensia::Threading
 
 #endif

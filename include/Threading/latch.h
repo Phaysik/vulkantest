@@ -13,17 +13,20 @@
 #include <condition_variable>
 #include <mutex>
 
-class Latch
+namespace Dimensia::Threading
 {
-	public:
-		explicit Latch(int count);
-		void count_down();
-		void wait();
+	class Latch
+	{
+		public:
+			explicit Latch(int count);
+			void count_down();
+			void wait();
 
-	private:
-		std::atomic<int> counter;
-		std::mutex mutex;
-		std::condition_variable cv;
-};
+		private:
+			std::atomic<int> counter;
+			std::mutex mutex;
+			std::condition_variable cv;
+	};
+} // namespace Dimensia::Threading
 
 #endif

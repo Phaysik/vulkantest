@@ -10,18 +10,22 @@
 #define INCLUDE_ECS_CHUNKVERSION_H
 
 #include <array>
-#include <cstdint>
 
 #include "ECS/componentRegistry.h" // for MAX_COMPONENTS
 
-struct ChunkVersion
+namespace Dimensia::ECS
 {
-		VersionType version;
-		std::array<VersionType, MAX_COMPONENTS> componentVersions;
+	using Registry::VersionType;
 
-		ChunkVersion();
-		void bump();
-		void bumpComponent(ComponentTypeId id);
-};
+	struct ChunkVersion
+	{
+			VersionType version;
+			std::array<VersionType, Registry::MAX_COMPONENTS> componentVersions;
+
+			ChunkVersion();
+			void bump();
+			void bumpComponent(Registry::ComponentTypeId id);
+	};
+} // namespace Dimensia::ECS
 
 #endif

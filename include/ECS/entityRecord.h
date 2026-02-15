@@ -11,15 +11,18 @@
 
 #include <cstdint>
 
-// Forward declaration
-class Archetype;
-
-struct EntityRecord
+namespace Dimensia::ECS
 {
-		uint32_t generation;
-		Archetype *archetype;
-		uint32_t chunkIndex;
-		uint32_t slotIndex;
-};
+	// No forward declaration needed – we store an ID instead of a pointer.
+	static constexpr uint32_t INVALID_ARCHETYPE_ID = UINT32_MAX;
+
+	struct EntityRecord
+	{
+			uint32_t generation;
+			uint32_t archetypeId; // ID of the archetype (index into ECS::archetypePtrs_)
+			uint32_t chunkIndex;
+			uint32_t slotIndex;
+	};
+} // namespace Dimensia::ECS
 
 #endif

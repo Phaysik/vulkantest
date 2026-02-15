@@ -20,34 +20,36 @@
 
 #include "latch.h"
 
-class ThreadPool
+namespace Dimensia::Threading
 {
-	public:
-		explicit ThreadPool(size_t numThreads = std::thread::hardware_concurrency());
-		~ThreadPool();
+	class ThreadPool
+	{
+		public:
+			explicit ThreadPool(size_t numThreads = std::thread::hardware_concurrency());
+			~ThreadPool();
 
-		template <typename F>
-		auto submit(F &&f) const -> std::future<decltype(f())>
-		{
-			using return_type = decltype(f());
-			auto task = std::make_shared<std::packaged_task<return_type()>>(std::forward<F>(f));
-			std::future<return_type> result = task->get_future();
+			template <typename F>
+			auto submit(F &&f) const -> std::future<decltype(f())>
 			{
-				std::unique_lock<std::mutex> lock(queueMutex);
-				tasks.emplace([task]() { (*task)(); });
+				using return_type = decltype(f());
+				auto task = std::make_shared<std::packaged_task<return_type()>>(std::forward<F>(f));
+				std::future<return_type> result = task->get_future();
+				{
+					std::unique_lock<std::mutex> lock(queueMutex);
+					tasks.emplace([task]() { (*task)(); });
+				}
+				condition.notify_one();
+				return result;
 			}
-			condition.notify_one();
-			return result;
-		}
 
-		void submit_with_latch(std::function<void()> task, Latch &latch) const;
+			void submit_with_latch(std::function<void()> task, Latch &latch) const;
 
-	private:
-		mutable std::queue<std::function<void()>> tasks;
-		mutable std::mutex queueMutex;
-		mutable std::condition_variable condition;
-		std::vector<std::thread> workers;
-		std::atomic<bool> stop;
-};
-
+		private:
+			mutable std::queue<std::function<void()>> tasks;
+			mutable std::mutex queueMutex;
+			mutable std::condition_variable condition;
+			std::vector<std::thread> workers;
+			std::atomic<bool> stop;
+	};
+} // namespace Dimensia::Threading
 #endif

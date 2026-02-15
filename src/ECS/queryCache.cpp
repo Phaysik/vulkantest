@@ -10,40 +10,43 @@
 
 #include <algorithm>
 
-void QueryCache::addArchetype(ComponentMask regularMask, Archetype *arch)
+namespace Dimensia::ECS
 {
-	archetypes_.emplace_back(regularMask, arch);
-	results_.clear();
-}
-
-void QueryCache::removeArchetype(Archetype *arch)
-{
-	auto it = std::remove_if(archetypes_.begin(), archetypes_.end(), [arch](const auto &p) { return p.second == arch; });
-	archetypes_.erase(it, archetypes_.end());
-	results_.clear();
-}
-
-const std::vector<Archetype *> &QueryCache::get(ComponentMask requiredMask) const
-{
-	auto it = results_.find(requiredMask);
-	if (it != results_.end())
+	void QueryCache::addArchetype(ComponentMask regularMask, Archetype *arch)
 	{
-		return it->second;
+		archetypes_.emplace_back(regularMask, arch);
+		results_.clear();
 	}
 
-	std::vector<Archetype *> matching;
-	for (auto &[mask, arch] : archetypes_)
+	void QueryCache::removeArchetype(Archetype *arch)
 	{
-		if ((mask & requiredMask) == requiredMask)
+		auto it = std::remove_if(archetypes_.begin(), archetypes_.end(), [arch](const auto &p) { return p.second == arch; });
+		archetypes_.erase(it, archetypes_.end());
+		results_.clear();
+	}
+
+	const std::vector<Archetype *> &QueryCache::get(ComponentMask requiredMask) const
+	{
+		auto it = results_.find(requiredMask);
+		if (it != results_.end())
 		{
-			matching.push_back(arch);
+			return it->second;
 		}
-	}
-	auto emplaced = results_.emplace(requiredMask, std::move(matching));
-	return emplaced.first->second;
-}
 
-void QueryCache::clear()
-{
-	results_.clear();
-}
+		std::vector<Archetype *> matching;
+		for (auto &[mask, arch] : archetypes_)
+		{
+			if ((mask & requiredMask) == requiredMask)
+			{
+				matching.push_back(arch);
+			}
+		}
+		auto emplaced = results_.emplace(requiredMask, std::move(matching));
+		return emplaced.first->second;
+	}
+
+	void QueryCache::clear()
+	{
+		results_.clear();
+	}
+} // namespace Dimensia::ECS

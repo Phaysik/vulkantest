@@ -13,22 +13,24 @@
 #include <utility>
 #include <vector>
 
+#include "ECS/archetype.h"
+
 #include "componentMask.h"
 
-// Forward declaration
-class Archetype;
-
-class QueryCache
+namespace Dimensia::ECS
 {
-	public:
-		void addArchetype(ComponentMask regularMask, Archetype *arch);
-		void removeArchetype(Archetype *arch);
-		const std::vector<Archetype *> &get(ComponentMask requiredMask) const;
-		void clear();
+	class QueryCache
+	{
+		public:
+			void addArchetype(ComponentMask regularMask, Archetype *arch);
+			void removeArchetype(Archetype *arch);
+			const std::vector<Archetype *> &get(ComponentMask requiredMask) const;
+			void clear();
 
-	private:
-		std::vector<std::pair<ComponentMask, Archetype *>> archetypes_;
-		mutable std::unordered_map<ComponentMask, std::vector<Archetype *>> results_;
-};
+		private:
+			std::vector<std::pair<ComponentMask, Archetype *>> archetypes_;
+			mutable std::unordered_map<ComponentMask, std::vector<Archetype *>> results_;
+	};
+} // namespace Dimensia::ECS
 
 #endif

@@ -9,9 +9,11 @@
 #ifndef INCLUDE_COMPONENTS_MANA_MANACOMPONENT_H
 #define INCLUDE_COMPONENTS_MANA_MANACOMPONENT_H
 
-struct Mana
+namespace Dimensia::Components
 {
-		int mp;
-};
-
+	struct Mana
+	{
+			int mp;
+	};
+} // namespace Dimensia::Components
 #endif

@@ -6,6 +6,25 @@
 
 int main()
 {
+	using Dimensia::ECS::ECS;
+
+	using Dimensia::Components::Buff;
+	using Dimensia::Components::Buffs;
+	using Dimensia::Components::Health;
+	using Dimensia::Components::Mana;
+	using Dimensia::Components::Name;
+	using Dimensia::Components::Position;
+	using Dimensia::Components::Velocity;
+
+	using Dimensia::Tags::AliveTag;
+	using Dimensia::Tags::BuffedTag;
+	using Dimensia::Tags::DebugTag;
+
+	using Dimensia::ECS::CommandBuffer;
+	using Dimensia::ECS::Entity;
+	using Dimensia::ECS::ExecutionPolicy;
+	using Dimensia::ECS::SystemVersion;
+
 	ECS ecs;
 
 	const Entity goblin = ecs.createEntityWith(

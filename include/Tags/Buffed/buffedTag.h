@@ -9,9 +9,12 @@
 #ifndef INCLUDE_TAGS_BUFFED_BUFFEDTAG_H
 #define INCLUDE_TAGS_BUFFED_BUFFEDTAG_H
 
-struct BuffedTag
+namespace Dimensia::Tags
 {
-		static constexpr bool is_tag = true;
-};
+	struct BuffedTag
+	{
+			static constexpr bool is_tag = true;
+	};
+} // namespace Dimensia::Tags
 
 #endif

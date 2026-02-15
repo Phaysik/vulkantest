@@ -20,117 +20,124 @@
 #include "componentRegistry.h"
 #include "entity.h"
 
-// Forward declaration
-class ECS;
-
-class CommandBuffer
+namespace Dimensia::ECS
 {
-	public:
-		template <typename T>
-		void addComponent(Entity entity, T value)
-		{
-			auto buf = getThreadBuffer();
-			buf->commands.push_back(Command::makeAdd(entity, std::move(value)));
-		}
 
-		template <typename T>
-		void removeComponent(Entity entity)
-		{
-			auto buf = getThreadBuffer();
-			buf->commands.push_back(Command::makeRemove(entity, componentId<T>()));
-		}
+	// Forward declaration
+	class ECS;
 
-		void destroy(Entity entity);
-		void setParent(Entity child, Entity parent);
-		void apply(ECS &ecs);
-		void clear();
+	using Registry::componentId;
+	using Registry::ComponentTypeId;
 
-	private:
-		enum class CmdType : uint8_t
-		{
-			AddComponent,
-			RemoveComponent,
-			Destroy,
-			SetParent
-		};
+	class CommandBuffer
+	{
+		public:
+			template <typename T>
+			void addComponent(Entity entity, T value)
+			{
+				auto buf = getThreadBuffer();
+				buf->commands.push_back(Command::makeAdd(entity, std::move(value)));
+			}
 
-		struct Command
-		{
-				CmdType type;
-				Entity entity;
+			template <typename T>
+			void removeComponent(Entity entity)
+			{
+				auto buf = getThreadBuffer();
+				buf->commands.push_back(Command::makeRemove(entity, componentId<T>()));
+			}
 
-				union {
-						struct
-						{
-								ComponentTypeId compId;
-								alignas(MAX_COMPONENT_ALIGN) std::byte buffer[MAX_COMPONENT_SIZE];
-						} add;
+			void destroy(Entity entity);
+			void setParent(Entity child, Entity parent);
+			void apply(ECS &ecs);
+			void clear();
 
-						struct
-						{
-								ComponentTypeId compId;
-						} remove;
+		private:
+			enum class CmdType : uint8_t
+			{
+				AddComponent,
+				RemoveComponent,
+				Destroy,
+				SetParent
+			};
 
-						struct
-						{
-								Entity parent;
-						} setParent;
-				} data;
+			struct Command
+			{
+					CmdType type;
+					Entity entity;
 
-				template <typename T>
-				static Command makeAdd(Entity e, T &&value)
-				{
-					Command cmd;
-					cmd.type = CmdType::AddComponent;
-					cmd.entity = e;
-					cmd.data.add.compId = componentId<T>();
-					new (cmd.data.add.buffer) T(std::forward<T>(value));
-					return cmd;
-				}
+					union {
+							struct
+							{
+									ComponentTypeId compId;
+									alignas(Registry::MAX_COMPONENT_ALIGN) std::byte buffer[Registry::MAX_COMPONENT_SIZE];
+							} add;
 
-				static Command makeRemove(Entity e, ComponentTypeId compId)
-				{
-					Command cmd;
-					cmd.type = CmdType::RemoveComponent;
-					cmd.entity = e;
-					cmd.data.remove.compId = compId;
-					return cmd;
-				}
+							struct
+							{
+									ComponentTypeId compId;
+							} remove;
 
-				static Command makeDestroy(Entity e)
-				{
-					Command cmd;
-					cmd.type = CmdType::Destroy;
-					cmd.entity = e;
-					return cmd;
-				}
+							struct
+							{
+									Entity parent;
+							} setParent;
+					} data;
 
-				static Command makeSetParent(Entity child, Entity parent)
-				{
-					Command cmd;
-					cmd.type = CmdType::SetParent;
-					cmd.entity = child;
-					cmd.data.setParent.parent = parent;
-					return cmd;
-				}
+					template <typename T>
+					static Command makeAdd(Entity e, T &&value)
+					{
+						Command cmd;
+						cmd.type = CmdType::AddComponent;
+						cmd.entity = e;
+						cmd.data.add.compId = componentId<T>();
+						new (cmd.data.add.buffer) T(std::forward<T>(value));
+						return cmd;
+					}
 
-				void destroyBuffer();
-		};
+					static Command makeRemove(Entity e, ComponentTypeId compId)
+					{
+						Command cmd;
+						cmd.type = CmdType::RemoveComponent;
+						cmd.entity = e;
+						cmd.data.remove.compId = compId;
+						return cmd;
+					}
 
-		struct ThreadBuffer
-		{
-				std::vector<Command> commands;
-		};
+					static Command makeDestroy(Entity e)
+					{
+						Command cmd;
+						cmd.type = CmdType::Destroy;
+						cmd.entity = e;
+						return cmd;
+					}
 
-		std::unordered_map<std::thread::id, std::unique_ptr<ThreadBuffer>> buffers_;
-		std::mutex map_mutex_;
+					static Command makeSetParent(Entity child, Entity parent)
+					{
+						Command cmd;
+						cmd.type = CmdType::SetParent;
+						cmd.entity = child;
+						cmd.data.setParent.parent = parent;
+						return cmd;
+					}
 
-		ThreadBuffer *getThreadBuffer();
+					void destroyBuffer();
+			};
 
-		template <typename... Ts>
-		static void dispatchAddImpl(ECS &ecs, Entity e, ComponentTypeId id, void *buffer, std::tuple<Ts...>);
-		static void dispatchAdd(ECS &ecs, Entity e, ComponentTypeId id, void *buffer);
-		static void dispatchRemove(ECS &ecs, Entity e, ComponentTypeId id);
-};
+			struct ThreadBuffer
+			{
+					std::vector<Command> commands;
+			};
+
+			std::unordered_map<std::thread::id, std::unique_ptr<ThreadBuffer>> buffers_;
+			std::mutex map_mutex_;
+
+			ThreadBuffer *getThreadBuffer();
+
+			template <typename... Ts>
+			static void dispatchAddImpl(ECS &ecs, Entity e, ComponentTypeId id, void *buffer, std::tuple<Ts...>);
+			static void dispatchAdd(ECS &ecs, Entity e, ComponentTypeId id, void *buffer);
+			static void dispatchRemove(ECS &ecs, Entity e, ComponentTypeId id);
+	};
+} // namespace Dimensia::ECS
 
 #endif

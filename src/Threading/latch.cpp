@@ -8,18 +8,21 @@
 
 #include "Threading/latch.h"
 
-Latch::Latch(int count) : counter(count) {}
-
-void Latch::count_down()
+namespace Dimensia::Threading
 {
-	if (counter.fetch_sub(1, std::memory_order_acq_rel) == 1)
+	Latch::Latch(int count) : counter(count) {}
+
+	void Latch::count_down()
 	{
-		cv.notify_all();
+		if (counter.fetch_sub(1, std::memory_order_acq_rel) == 1)
+		{
+			cv.notify_all();
+		}
 	}
-}
 
-void Latch::wait()
-{
-	std::unique_lock<std::mutex> lock(mutex);
-	cv.wait(lock, [this] { return counter.load(std::memory_order_acquire) == 0; });
-}
+	void Latch::wait()
+	{
+		std::unique_lock<std::mutex> lock(mutex);
+		cv.wait(lock, [this] { return counter.load(std::memory_order_acquire) == 0; });
+	}
+} // namespace Dimensia::Threading

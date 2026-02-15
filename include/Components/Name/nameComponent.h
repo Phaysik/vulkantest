@@ -11,9 +11,12 @@
 
 #include <string>
 
-struct Name
+namespace Dimensia::Components
 {
-		std::string name;
-};
+	struct Name
+	{
+			std::string name;
+	};
+} // namespace Dimensia::Components
 
 #endif

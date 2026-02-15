@@ -9,9 +9,12 @@
 #ifndef INCLUDE_TAGS_DEBUG_DEBUGTAG_H
 #define INCLUDE_TAGS_DEBUG_DEBUGTAG_H
 
-struct DebugTag
+namespace Dimensia::Tags
 {
-		static constexpr bool is_tag = true;
-};
+	struct DebugTag
+	{
+			static constexpr bool is_tag = true;
+	};
+} // namespace Dimensia::Tags
 
 #endif

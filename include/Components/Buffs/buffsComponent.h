@@ -13,9 +13,12 @@
 
 #include "Components/Buff/buffComponent.h"
 
-struct Buffs
+namespace Dimensia::Components
 {
-		std::vector<Buff> activeBuffs;
-};
+	struct Buffs
+	{
+			std::vector<Buff> activeBuffs;
+	};
+} // namespace Dimensia::Components
 
 #endif

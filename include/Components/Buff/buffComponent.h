@@ -11,10 +11,13 @@
 
 #include <string>
 
-struct Buff
+namespace Dimensia::Components
 {
-		std::string name;
-		int duration;
-};
+	struct Buff
+	{
+			std::string name;
+			int duration;
+	};
+} // namespace Dimensia::Components
 
 #endif

@@ -9,9 +9,12 @@
 #ifndef INCLUDE_TAGS_ALIVE_ALIVETAG_H
 #define INCLUDE_TAGS_ALIVE_ALIVETAG_H
 
-struct AliveTag
+namespace Dimensia::Tags
 {
-		static constexpr bool is_tag = true;
-};
+	struct AliveTag
+	{
+			static constexpr bool is_tag = true;
+	};
+} // namespace Dimensia::Tags
 
 #endif

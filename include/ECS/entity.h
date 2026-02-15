@@ -11,14 +11,17 @@
 
 #include <cstdint>
 
-struct Entity
+namespace Dimensia::ECS
 {
-		uint32_t index;
-		uint32_t generation;
-		bool operator==(const Entity &other) const = default;
-		bool operator!=(const Entity &other) const = default;
-};
+	struct Entity
+	{
+			uint32_t index;
+			uint32_t generation;
+			bool operator==(const Entity &other) const = default;
+			bool operator!=(const Entity &other) const = default;
+	};
 
-constexpr Entity NULL_ENTITY{.index=0, .generation=0};
+	constexpr Entity NULL_ENTITY{.index = 0, .generation = 0};
+} // namespace Dimensia::ECS
 
 #endif

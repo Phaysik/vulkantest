@@ -9,9 +9,11 @@
 #ifndef INCLUDE_COMPONENTS_POSITION_POSITIONCOMPONENT_H
 #define INCLUDE_COMPONENTS_POSITION_POSITIONCOMPONENT_H
 
-struct Position
+namespace Dimensia::Components
 {
-		float x, y, z;
-};
-
+	struct Position
+	{
+			float x, y, z;
+	};
+} // namespace Dimensia::Components
 #endif

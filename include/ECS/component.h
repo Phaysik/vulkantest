@@ -15,11 +15,10 @@
 #include <string_view>
 
 #include "Core/attributeMacros.h"
+#include "ECS/entity.h"
 
 namespace Dimensia::ECS
 {
-	class Entity; // Forward-declare the Entity type in the same namespace
-
 	class ComponentTypeIdSystem
 	{
 		public:
@@ -34,9 +33,7 @@ namespace Dimensia::ECS
 			inline static std::atomic_size_t s_nextTypeId{0};
 	};
 
-	// NOLINTBEGIN(cppcoreguidelines-special-member-functions,hicpp-special-member-functions)
 	class Component
-	// NOLINTEND(cppcoreguidelines-special-member-functions,hicpp-special-member-functions)
 	{
 		public:
 			explicit Component(std::string_view componentName = "Component") : mName(componentName) {}

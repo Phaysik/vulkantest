@@ -8,17 +8,20 @@
 
 #include "ECS/chunkVersion.h"
 
-ChunkVersion::ChunkVersion() : version(1)
+namespace Dimensia::ECS
 {
-	componentVersions.fill(1);
-}
+	ChunkVersion::ChunkVersion() : version(1)
+	{
+		componentVersions.fill(1);
+	}
 
-void ChunkVersion::bump()
-{
-	++version;
-}
+	void ChunkVersion::bump()
+	{
+		++version;
+	}
 
-void ChunkVersion::bumpComponent(ComponentTypeId id)
-{
-	++componentVersions[id];
-}
+	void ChunkVersion::bumpComponent(Registry::ComponentTypeId id)
+	{
+		++componentVersions[id];
+	}
+} // namespace Dimensia::ECS

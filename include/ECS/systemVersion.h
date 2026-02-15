@@ -15,14 +15,19 @@
 #include "componentMask.h"
 #include "componentRegistry.h"
 
-struct SystemVersion
+namespace Dimensia::ECS
 {
-		VersionType version;
-		std::array<VersionType, MAX_COMPONENTS> componentVersions;
+	using Registry::VersionType;
 
-		SystemVersion();
-		bool needsUpdate(const ChunkVersion &chunk, ComponentMask requiredComponents) const;
-		void update(const ChunkVersion &chunk);
-};
+	struct SystemVersion
+	{
+			VersionType version;
+			std::array<VersionType, Registry::MAX_COMPONENTS> componentVersions;
+
+			SystemVersion();
+			bool needsUpdate(const ChunkVersion &chunk, ComponentMask requiredComponents) const;
+			void update(const ChunkVersion &chunk);
+	};
+} // namespace Dimensia::ECS
 
 #endif

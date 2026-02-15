@@ -11,9 +11,11 @@
 
 #include <array>
 #include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <vector>
+
+#include "Core/attributeMacros.h"
+#include "Core/typedefs.h"
 
 #include "chunkVersion.h"
 #include "componentMask.h"
@@ -21,83 +23,85 @@
 #include "entity.h"
 #include "entityRecord.h"
 
-class Archetype
+namespace Dimensia::ECS
 {
-	public:
-		explicit Archetype(ComponentMask regularMask);
-		~Archetype();
+	using Dimensia::Core::ui;
+	using Dimensia::Core::ul;
 
-		Archetype(const Archetype &) = delete;
-		Archetype &operator=(const Archetype &) = delete;
+	using Registry::ComponentTypeId;
+	using Registry::MAX_COMPONENTS;
 
-		std::pair<uint32_t, uint32_t> addEntity(Entity entity, const std::array<const void *, MAX_COMPONENTS> &copyData,
-												const std::array<void *, MAX_COMPONENTS> &moveData, ComponentMask tags = ComponentMask(0));
-		std::pair<Entity, uint32_t> removeEntity(uint32_t chunkIdx, uint32_t slotIdx);
-		void compact(std::vector<EntityRecord> &globalRecords);
+	class Archetype
+	{
 
-		// Getters
-		ComponentMask getRegularMask() const
-		{
-			return regularMask_;
-		}
+		public:
+			explicit Archetype(ComponentMask regularMask, uint32_t id);
+			~Archetype();
 
-		uint32_t getChunkCount() const
-		{
-			return static_cast<uint32_t>(chunks_.size());
-		}
+			Archetype(const Archetype &) = delete;
+			Archetype &operator=(const Archetype &) = delete;
 
-		uint32_t getEntityCount(uint32_t chunkIdx) const;
-		void *getComponentArray(uint32_t chunkIdx, ComponentTypeId compId) const;
-		Entity *getEntityArray(uint32_t chunkIdx) const;
-		bool hasTag(uint32_t chunkIdx, uint32_t slotIdx, ComponentTypeId tagId) const;
-		void setTag(uint32_t chunkIdx, uint32_t slotIdx, ComponentTypeId tagId);
-		void clearTag(uint32_t chunkIdx, uint32_t slotIdx, ComponentTypeId tagId);
-		ComponentMask getTags(uint32_t chunkIdx, uint32_t slotIdx) const;
+			std::pair<ui, ui> addEntity(Entity entity, const std::array<const void *, MAX_COMPONENTS> &copyData,
+										const std::array<void *, MAX_COMPONENTS> &moveData, ComponentMask tags = ComponentMask(0));
+			std::pair<Entity, ui> removeEntity(ui chunkIdx, ui slotIdx);
 
-		const ChunkVersion &getChunkVersion(uint32_t chunkIdx) const
-		{
-			return chunkVersions_[chunkIdx];
-		}
+			void compact(std::vector<EntityRecord> &globalRecords);
 
-		void bumpChunkVersion(uint32_t chunkIdx)
-		{
-			chunkVersions_[chunkIdx].bump();
-		}
+			// Getters
+			ATTR_NODISCARD ComponentMask getRegularMask() const;
 
-		void bumpComponentVersion(uint32_t chunkIdx, ComponentTypeId compId);
+			ATTR_NODISCARD ui getChunkCount() const;
 
-		template <typename F>
-		void forEachComponent(F &&func) const
-		{
-			forEachSetBit(regularMask_, std::forward<F>(func));
-		}
+			ATTR_NODISCARD const ChunkVersion &getChunkVersion(ui chunkIdx) const;
 
-	private:
-		static constexpr size_t CHUNK_SIZE = 16'384;
+			ATTR_NODISCARD ui getId() const;
 
-		struct Chunk
-		{
-				alignas(64) std::byte buffer[CHUNK_SIZE];
-				uint32_t count = 0;
-				uint32_t capacity = 0;
-		};
+			ATTR_NODISCARD ui getEntityCount(ui chunkIdx) const;
+			ATTR_NODISCARD void *getComponentArray(ui chunkIdx, ComponentTypeId compId) const;
+			ATTR_NODISCARD Entity *getEntityArray(ui chunkIdx) const;
+			ATTR_NODISCARD bool hasTag(ui chunkIdx, ui slotIdx, ComponentTypeId tagId) const;
+			void setTag(ui chunkIdx, ui slotIdx, ComponentTypeId tagId);
+			void clearTag(ui chunkIdx, ui slotIdx, ComponentTypeId tagId);
+			ATTR_NODISCARD ComponentMask getTags(ui chunkIdx, ui slotIdx) const;
 
-		ComponentMask regularMask_;
-		std::vector<std::unique_ptr<Chunk>> chunks_;
-		std::vector<uint32_t> freeChunks_;
-		uint32_t chunkCapacity_;
-		std::array<size_t, MAX_COMPONENTS> componentOffsets_;
-		std::array<size_t, MAX_COMPONENTS> componentSizes_;
-		size_t entityArrayOffset_ = 0;
-		size_t tagBitsetOffset_ = 0;
-		std::vector<ComponentTypeId> sortedRegular_;
-		std::vector<ChunkVersion> chunkVersions_;
+			void bumpChunkVersion(ui chunkIdx);
 
-		uint32_t computeCapacity() const;
-		void computeLayout(uint32_t capacity);
+			void bumpComponentVersion(ui chunkIdx, ComponentTypeId compId);
 
-		uint64_t *getTagBitset(Chunk *chunk) const;
-		const uint64_t *getTagBitset(const Chunk *chunk) const;
-};
+			template <typename F>
+			void forEachComponent(F &&func) const
+			{
+				forEachSetBit(regularMask_, std::forward<F>(func));
+			}
+
+		private:
+			static constexpr size_t CHUNK_SIZE = 16'384;
+
+			struct Chunk
+			{
+					alignas(64) std::byte buffer[CHUNK_SIZE];
+					ui count = 0;
+					ui capacity = 0;
+			};
+
+			ComponentMask regularMask_;
+			uint32_t archetypeId_; // stable ID assigned by ECS
+			std::vector<std::unique_ptr<Chunk>> chunks_;
+			std::vector<ui> freeChunks_;
+			ui chunkCapacity_;
+			std::array<size_t, MAX_COMPONENTS> componentOffsets_{};
+			std::array<size_t, MAX_COMPONENTS> componentSizes_{};
+			size_t entityArrayOffset_{0};
+			size_t tagBitsetOffset_{0};
+			std::vector<ComponentTypeId> sortedRegular_;
+			std::vector<ChunkVersion> chunkVersions_;
+
+			ATTR_NODISCARD ui computeCapacity() const;
+			void computeLayout(ui capacity);
+
+			ul *getTagBitset(Chunk *chunk) const;
+			const ul *getTagBitset(const Chunk *chunk) const;
+	};
+} // namespace Dimensia::ECS
 
 #endif

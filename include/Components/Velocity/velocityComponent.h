@@ -9,9 +9,11 @@
 #ifndef INCLUDE_COMPONENTS_VELOCITY_VELOCITYCOMPONENT_H
 #define INCLUDE_COMPONENTS_VELOCITY_VELOCITYCOMPONENT_H
 
-struct Velocity
+namespace Dimensia::Components
 {
-		float dx, dy, dz;
-};
-
+	struct Velocity
+	{
+			float dx, dy, dz;
+	};
+} // namespace Dimensia::Components
 #endif

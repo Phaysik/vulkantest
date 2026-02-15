@@ -10,29 +10,33 @@
 
 #include "ECS/processChunkHelpers.h"
 
-SystemVersion::SystemVersion() : version(0)
+namespace Dimensia::ECS
 {
-	componentVersions.fill(0);
-}
 
-bool SystemVersion::needsUpdate(const ChunkVersion &chunk, ComponentMask requiredComponents) const
-{
-	if (chunk.version > version)
+	SystemVersion::SystemVersion() : version(0)
 	{
-		return true;
+		componentVersions.fill(0);
 	}
-	bool needs = false;
-	forEachSetBit(requiredComponents, [&](ComponentTypeId id) {
-		if (chunk.componentVersions[id] > componentVersions[id])
-		{
-			needs = true;
-		}
-	});
-	return needs;
-}
 
-void SystemVersion::update(const ChunkVersion &chunk)
-{
-	version = chunk.version;
-	// componentVersions intentionally not updated here – they are updated per‑chunk after processing
-}
+	bool SystemVersion::needsUpdate(const ChunkVersion &chunk, ComponentMask requiredComponents) const
+	{
+		if (chunk.version > version)
+		{
+			return true;
+		}
+		bool needs = false;
+		forEachSetBit(requiredComponents, [&](ComponentTypeId id) {
+			if (chunk.componentVersions[id] > componentVersions[id])
+			{
+				needs = true;
+			}
+		});
+		return needs;
+	}
+
+	void SystemVersion::update(const ChunkVersion &chunk)
+	{
+		version = chunk.version;
+		// componentVersions intentionally not updated here – they are updated per‑chunk after processing
+	}
+} // namespace Dimensia::ECS

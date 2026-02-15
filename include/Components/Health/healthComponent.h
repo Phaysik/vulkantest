@@ -9,9 +9,12 @@
 #ifndef INCLUDE_COMPONENTS_HEALTH_HEALTHCOMPONENT_H
 #define INCLUDE_COMPONENTS_HEALTH_HEALTHCOMPONENT_H
 
-struct Health
+namespace Dimensia::Components
 {
-		int hp;
-};
+	struct Health
+	{
+			int hp;
+	};
+} // namespace Dimensia::Components
 
 #endif
