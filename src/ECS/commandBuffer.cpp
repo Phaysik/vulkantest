@@ -1,0 +1,116 @@
+/*! \file commandBuffer.cpp
+	\brief Contains the function definitions for creating a commandBuffer
+	\date 02/14/2026
+	\version x.x.x
+	\since x.x.x
+	\author Matthew Moore
+*/
+
+#include "ECS/commandBuffer.h"
+
+#include <cassert>
+
+#include "ECS/ecs.h"
+
+void CommandBuffer::setParent(Entity child, Entity parent)
+{
+	auto buf = getThreadBuffer();
+	buf->commands.push_back(Command::makeSetParent(child, parent));
+}
+
+void CommandBuffer::destroy(Entity entity)
+{
+	auto buf = getThreadBuffer();
+	buf->commands.push_back(Command::makeDestroy(entity));
+}
+
+CommandBuffer::ThreadBuffer *CommandBuffer::getThreadBuffer()
+{
+	std::lock_guard<std::mutex> lock(map_mutex_);
+	auto tid = std::this_thread::get_id();
+	auto it = buffers_.find(tid);
+	if (it != buffers_.end())
+	{
+		return it->second.get();
+	}
+	auto buf = std::make_unique<ThreadBuffer>();
+	auto ptr = buf.get();
+	buffers_[tid] = std::move(buf);
+	return ptr;
+}
+
+void CommandBuffer::Command::destroyBuffer()
+{
+	if (type == CmdType::AddComponent)
+	{
+		ComponentInfos[data.add.compId].destructor(data.add.buffer);
+	}
+}
+
+void CommandBuffer::clear()
+{
+	std::lock_guard<std::mutex> lock(map_mutex_);
+	buffers_.clear();
+}
+
+template <typename... Ts>
+void CommandBuffer::dispatchAddImpl(ECS &ecs, Entity e, ComponentTypeId id, void *buffer, std::tuple<Ts...>)
+{
+	bool handled = false;
+	(
+		[&] {
+			if (componentId<Ts>() == id)
+			{
+				Ts &value = *reinterpret_cast<Ts *>(buffer);
+				ecs.addComponent(e, std::move(value));
+				handled = true;
+			}
+		}(),
+		...);
+	assert(handled && "Unknown component ID in CommandBuffer::apply");
+}
+
+void CommandBuffer::dispatchAdd(ECS &ecs, Entity e, ComponentTypeId id, void *buffer)
+{
+	dispatchAddImpl(ecs, e, id, buffer, ComponentTypes{});
+}
+
+void CommandBuffer::dispatchRemove(ECS &ecs, Entity e, ComponentTypeId id)
+{
+	ecs.removeComponent(e, id);
+}
+
+void CommandBuffer::apply(ECS &ecs)
+{
+	std::vector<std::unique_ptr<ThreadBuffer>> local_buffers;
+	{
+		std::lock_guard<std::mutex> lock(map_mutex_);
+		for (auto &[_, buf] : buffers_)
+		{
+			local_buffers.push_back(std::move(buf));
+		}
+		buffers_.clear();
+	}
+	for (auto &buf : local_buffers)
+	{
+		for (auto &cmd : buf->commands)
+		{
+			switch (cmd.type)
+			{
+				case CmdType::AddComponent:
+					dispatchAdd(ecs, cmd.entity, cmd.data.add.compId, cmd.data.add.buffer);
+					cmd.destroyBuffer();
+					break;
+				case CmdType::RemoveComponent:
+					dispatchRemove(ecs, cmd.entity, cmd.data.remove.compId);
+					break;
+				case CmdType::Destroy:
+					ecs.destroyEntity(cmd.entity);
+					break;
+				case CmdType::SetParent:
+					ecs.setParent(cmd.entity, cmd.data.setParent.parent);
+					break;
+			}
+		}
+	}
+}

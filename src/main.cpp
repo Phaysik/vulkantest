@@ -1,80 +1,20 @@
+#include <ratio>
+
 #include "Core/attributeMacros.h"
-#include "ECS/deepseekTest.h"
+#include "ECS/ecs.h"
+#include "Utility/Clock/timer.h"
 
-// -----------------------------------------------------------------------------
-//  Example components
-// -----------------------------------------------------------------------------
-struct Position
-{
-		float x, y, z;
-};
-
-struct Velocity
-{
-		float dx, dy, dz;
-};
-
-struct Health
-{
-		int hp;
-};
-
-struct Mana
-{
-		int mp;
-};
-
-struct Buff
-{
-		std::string name;
-		int duration;
-};
-
-struct Buffs
-{
-		std::vector<Buff> activeBuffs;
-};
-
-struct NameTag
-
-{
-		std::string tag;
-};
-
-// Zero‑size tags
-struct AliveTag
-{
-		static constexpr bool is_tag = true;
-};
-
-struct DebugTag
-{
-		static constexpr bool is_tag = true;
-};
-
-struct BuffedTag
-{
-		static constexpr bool is_tag = true;
-};
-
-// -----------------------------------------------------------------------------
-//  Demo (same as before)
-// -----------------------------------------------------------------------------
 int main()
 {
-
-	registerTag<AliveTag>();
-	registerTag<DebugTag>();
-	registerTag<BuffedTag>();
-
 	ECS ecs;
 
-	Entity goblin = ecs.createEntityWith(NameTag{"Goblin"}, Position{10.f, 20.f, 30.f}, Velocity{1.f, 0.f, 0.f}, Health{100}, Mana{50},
-										 Buffs{{{"Haste", 5}, {"Shield", 3}}}, AliveTag{}, BuffedTag{});
+	const Entity goblin = ecs.createEntityWith(
+		Name{"Goblin"}, Position{.x = 10.F, .y = 20.F, .z = 30.F}, Velocity{.dx = 1.F, .dy = 0.F, .dz = 0.F}, Health{100}, Mana{50},
+		Buffs{{{.name = "Haste", .duration = 5}, {.name = "Shield", .duration = 3}}}, AliveTag{}, BuffedTag{});
 
 	std::cout << "--- Batch created entity ---\n";
 	std::cout << "Entity " << goblin.index << ":" << goblin.generation << "\n";
-	std::cout << "Name: " << ecs.getComponent<NameTag>(goblin)->tag << "\n";
+	std::cout << "Name: " << ecs.getComponent<Name>(goblin)->name << "\n";
 	std::cout << "Size of DebugTag: " << sizeof(DebugTag) << "\n";
 	std::cout << "Has AliveTag: " << ecs.hasTag<AliveTag>(goblin) << "\n";
 	std::cout << "Has DebugTag: " << ecs.hasTag<DebugTag>(goblin) << "\n";
@@ -86,39 +26,40 @@ int main()
 	std::cout << "After removing BuffedTag: " << ecs.hasTag<BuffedTag>(goblin) << "\n";
 
 	std::cout << "\n--- Before movement ---\n";
-	ecs.forEach<Position, Velocity>([](Entity e, Position &p, Velocity &v) {
-		std::cout << "Entity " << e.index << ":" << e.generation << " pos=(" << p.x << "," << p.y << "," << p.z << ")" << " vel=(" << v.dx
-				  << "," << v.dy << "," << v.dz << ")\n";
+	ecs.forEach<Position, Velocity>([](Entity entity, Position &position, Velocity &velocity) {
+		std::cout << "Entity " << entity.index << ":" << entity.generation << " pos=(" << position.x << "," << position.y << ","
+				  << position.z << ")" << " vel=(" << velocity.dx << "," << velocity.dy << "," << velocity.dz << ")\n";
 	});
 
-	ecs.forEach<Position, Velocity>([](ATTR_MAYBE_UNUSED Entity e, Position &p, Velocity &v) {
-		p.x += v.dx;
-		p.y += v.dy;
-		p.z += v.dz;
+	ecs.forEach<Position, Velocity>([](ATTR_MAYBE_UNUSED Entity entity, Position &position, Velocity &velocity) {
+		position.x += velocity.dx;
+		position.y += velocity.dy;
+		position.z += velocity.dz;
 	});
 
 	std::cout << "\n--- After movement ---\n";
-	ecs.forEach<Position, Velocity>([](Entity e, Position &p, Velocity &v) {
-		std::cout << "Entity " << e.index << ":" << e.generation << " pos=(" << p.x << "," << p.y << "," << p.z << ")" << " vel=(" << v.dx
-				  << "," << v.dy << "," << v.dz << ")\n";
+	ecs.forEach<Position, Velocity>([](Entity entity, Position &position, Velocity &velocity) {
+		std::cout << "Entity " << entity.index << ":" << entity.generation << " pos=(" << position.x << "," << position.y << ","
+				  << position.z << ")" << " vel=(" << velocity.dx << "," << velocity.dy << "," << velocity.dz << ")\n";
 	});
 
 	const ECS &cecs = ecs;
 	std::cout << "\n--- Const query (Health) ---\n";
-	cecs.forEach<Health>(
-		[](Entity e, const Health &h) { std::cout << "Entity " << e.index << ":" << e.generation << " HP=" << h.hp << "\n"; });
+	cecs.forEach<Health>([](Entity entity, const Health &health) {
+		std::cout << "Entity " << entity.index << ":" << entity.generation << " HP=" << health.hp << "\n";
+	});
 
 	std::cout << "\n--- Entities with AliveTag ---\n";
-	ecs.forEach<NameTag, AliveTag>([](Entity e, NameTag &name, AliveTag) {
-		std::cout << "Entity " << e.index << ":" << e.generation << " name=" << name.tag << "\n";
+	ecs.forEach<Name, AliveTag>([](Entity entity, Name &name, AliveTag) {
+		std::cout << "Entity " << entity.index << ":" << entity.generation << " name=" << name.name << "\n";
 	});
 
 	std::cout << "\n--- Buffs ---\n";
-	ecs.forEach<Buffs>([](Entity e, Buffs &buffs) {
+	ecs.forEach<Buffs>([](Entity entity, Buffs &buffs) {
 		for (const auto &buff : buffs.activeBuffs)
 		{
-			std::cout << "Entity " << e.index << ":" << e.generation << " has buff " << buff.name << " with duration " << buff.duration
-					  << "\n";
+			std::cout << "Entity " << entity.index << ":" << entity.generation << " has buff " << buff.name << " with duration "
+					  << buff.duration << "\n";
 		}
 	});
 
@@ -128,12 +69,176 @@ int main()
 													   ecs.getComponent<Buffs>(goblin)->activeBuffs.end());
 
 	std::cout << "\n--- After buff removal ---\n";
-	ecs.forEach<Buffs>([](Entity entity, Buffs &buffs) {
+	ecs.forEach<Buffs>(ExecutionPolicy::Par, [](Entity entity, Buffs &buffs) {
 		for (const auto &buff : buffs.activeBuffs)
 		{
 			std::cout << "Entity " << entity.index << ":" << entity.generation << " buff=" << buff.name << ", " << buff.duration << "\n";
 		}
 	});
+
+	// Batch processing
+	ecs.forEach<Position, Velocity>(ExecutionPolicy::ParBatched,
+									[](ATTR_MAYBE_UNUSED Entity entity, Position &pos, Velocity &vel) { pos.x += vel.dx; });
+
+	// Work stealing
+	ecs.forEach<Position, Velocity>(ExecutionPolicy::ParStealing,
+									[](ATTR_MAYBE_UNUSED Entity entity, Position &pos, Velocity &vel) { pos.x += vel.dx; });
+
+	// Version-aware (only process changed chunks)
+	SystemVersion physicsVersion;
+	ecs.forEach<Position, Velocity>(ExecutionPolicy::Par, physicsVersion,
+									[](ATTR_MAYBE_UNUSED Entity entity, Position &pos, Velocity &vel) { pos.x += vel.dx; });
+
+	// --- Hierarchy example ---
+	std::cout << "\n--- Hierarchy example ---\n";
+	const Entity parent = ecs.createEntityWith(Name{"Parent"});
+	const Entity child = ecs.createEntityWith(Name{"Child"});
+	ecs.setParent(child, parent);
+	std::cout << "Child's parent: " << ecs.getParent(child).index << "\n";
+	auto children = ecs.getChildren(parent);
+	std::cout << "Parent's children count: " << children.size() << "\n";
+
+	// --- Command buffer example ---
+	std::cout << "\n--- Command buffer example ---\n";
+	CommandBuffer cmds;
+	ecs.forEach<Name>(ExecutionPolicy::Seq, cmds, [&](Entity entity, Name &) {
+		cmds.addComponent(entity, Health{200}); // defer adding Health
+	});
+	cmds.apply(ecs);
+	std::cout << "Goblin HP after command buffer: " << ecs.getComponent<Health>(goblin)->hp << "\n";
+
+	// --- Hierarchical destruction with children ---
+	std::cout << "\n--- Destroy parent with children ---\n";
+	// ecs.destroyEntity(parent, true); // destroy parent and child
+	ecs.destroyEntity(parent); // destroy parent and child
+	std::cout << "Parent alive: " << ecs.alive(parent) << "\n";
+	std::cout << "Child alive: " << ecs.alive(child) << "\n";
+
+	ecs.compact();
+
+	// ------------------------------------------------------------------------
+	//  Stress test: command buffer with parallel forEach (modified to ensure one operation per entity)
+	// ------------------------------------------------------------------------
+	std::cout << "\n=== Stress test: command buffer ===\n";
+
+	// const int NUM_ENTITIES = 10'000;
+	const int NUM_ENTITIES = 10'000;
+	std::vector<Entity> entities;
+	entities.reserve(NUM_ENTITIES);
+
+	// Create many entities with only a Name (or any component, just to have data)
+	for (int i = 0; i < NUM_ENTITIES; ++i)
+	{
+		entities.emplace_back(ecs.createEntityWith(Name{"dummy"}));
+	}
+
+	CommandBuffer stressCmds;
+
+	Dimensia::Utility::Clock::Timer::start();
+	constexpr int WORKLOAD{5'000};
+
+	ecs.forEach<Name>(ExecutionPolicy::ParStealing, stressCmds, [&](Entity entity, Name &) {
+		volatile double dummy = 1.0;
+		for (int iter = 0; iter < WORKLOAD; ++iter)
+		{
+			dummy = (dummy * 1.000001) + 0.000001; // some meaningless math
+		}
+		(void) dummy;									// prevent optimization
+		const int eID = static_cast<int>(entity.index); // use entity index as unique ID
+
+		// Assign each entity exactly one operation based on id % 5
+		const int operation = eID % 5;
+
+		switch (operation)
+		{
+			case 0: // add Health
+				stressCmds.addComponent(entity, Health{eID * 2});
+				break;
+			case 2: // destroy
+				stressCmds.destroy(entity);
+				break;
+			case 3: // set parent (link to entity id/2, if still alive)
+				if (eID != 0)
+				{
+					const int parentIdx = eID / 2;
+					if (parentIdx < NUM_ENTITIES && ecs.alive(entities.at(static_cast<size_t>(parentIdx))))
+					{
+						stressCmds.setParent(entity, entities.at(static_cast<size_t>(parentIdx)));
+					}
+				}
+				break;
+			default:
+				break;
+		}
+	});
+
+	auto time{Dimensia::Utility::Clock::Timer::stop<std::milli>()};
+	std::cout << "ParStealing forEach " << NUM_ENTITIES << " queued commands in " << time << " ms.\n";
+
+	Dimensia::Utility::Clock::Timer::start();
+	stressCmds.apply(ecs);
+	time = Dimensia::Utility::Clock::Timer::stop<std::milli>();
+	std::cout << "apply() executed commands in " << time << " ms.\n";
+
+	// ------------------------------------------------------------------------
+	//  Verification
+	// ------------------------------------------------------------------------
+	int healthCount = 0;
+	int nameCount = 0;
+	int aliveCount = 0;
+	int parentCount = 0;
+
+	ecs.forEach<Health>([&](Entity, Health &) { ++healthCount; });
+	ecs.forEach<Name>([&](Entity, Name &) { ++nameCount; });
+	for (const Entity entity : entities)
+	{
+		if (ecs.alive(entity))
+		{
+			++aliveCount;
+		}
+
+		if (ecs.getParent(entity).index != 0)
+		{
+			++parentCount;
+		}
+	}
+
+	// Expected approximate counts (using modulo 5 distribution):
+	// - case 0: add Health → 20% of entities
+	// - case 1: remove Name → 20% (name removed)
+	// - case 2: destroy → 20%
+	// - case 3: set parent → 20% (excluding id=0, so ~19.98%)
+	// - case 4: no op → 20% (name remains)
+	const int expectedAlive = NUM_ENTITIES - (NUM_ENTITIES / 5); // destroyed 20%
+	const int expectedHealth = NUM_ENTITIES / 5;				 // case 0
+	const int expectedName
+		= NUM_ENTITIES
+		- (NUM_ENTITIES
+		   / 5); // not removed (case 1 removed) + no op (case 4) = 40% remain? Wait, case 1 removes, case 4 keeps. So total name =
+				 // case 4 (20%) + case 0? case 0 adds Health but does not remove Name, so name remains. Also case 2 destroys, so
+				 // they are gone. So name count = case 0 (20%) + case 3 (20%) + case 4 (20%) = 60%? But careful: case 3 sets parent
+				 // but does not remove Name, so name remains. So total name = entities not in case 1 and not destroyed.
+				 // Destroyed (case 2) are 20%, case 1 removes 20%, so remaining 60% should have Name. Also entities with Health (case
+				 // 0) are a subset of those (20%). So expectedName = NUM_ENTITIES * 3/5 = 6000 for 10000.
+	const int expectedParent = (NUM_ENTITIES / 5) - 1; // case 3, exclude id 0 (approximately)
+
+	std::cout << "\n--- Results ---\n";
+	std::cout << "Alive      : " << aliveCount << " (expected ~" << expectedAlive << ")\n";
+	std::cout << "Health     : " << healthCount << " (expected ~" << expectedHealth << ")\n";
+	std::cout << "Name    : " << nameCount << " (expected ~" << expectedName << ")\n";
+	std::cout << "Has parent : " << parentCount << " (expected ~" << expectedParent << ")\n";
+
+	// Cleanup remaining entities
+	Dimensia::Utility::Clock::Timer::start();
+	for (const Entity entity : entities)
+	{
+		if (ecs.alive(entity))
+		{
+			ecs.destroyEntity(entity, false);
+		}
+	}
+	time = Dimensia::Utility::Clock::Timer::stop<std::milli>();
+	std::cout << "Cleanup took " << time << " ms.\n";
 
 	ecs.compact();
 
