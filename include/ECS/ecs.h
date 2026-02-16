@@ -30,7 +30,7 @@
 
 namespace Dimensia::ECS
 {
-	using Registry::ComponentTypeId;
+	using Registry::ComponentTypeID;
 	using Registry::MAX_COMPONENTS;
 
 	using Threading::Latch;
@@ -59,7 +59,7 @@ namespace Dimensia::ECS
 			template <typename... Ts>
 			Entity createEntityWith(Ts &&...components)
 			{
-				std::array<ComponentTypeId, sizeof...(Ts)> compIds{componentId<std::decay_t<Ts>>()...};
+				std::array<ComponentTypeID, sizeof...(Ts)> compIds{componentId<std::decay_t<Ts>>()...};
 				ComponentMask regularMask{0, 0}, tagMask{0, 0};
 				std::array<const void *, MAX_COMPONENTS> copyData{};
 				std::array<void *, MAX_COMPONENTS> moveData{};
@@ -68,7 +68,7 @@ namespace Dimensia::ECS
 
 				[&]<std::size_t... I>(std::index_sequence<I...>) {
 					(([&] {
-						 ComponentTypeId id = compIds[I];
+						 ComponentTypeID id = compIds[I];
 						 const auto &info = ComponentInfos[id];
 						 if (info.isTag)
 						 {
@@ -127,7 +127,7 @@ namespace Dimensia::ECS
 				{
 					return;
 				}
-				ComponentTypeId compId = componentId<T>();
+				ComponentTypeID compId = componentId<T>();
 				const auto &info = ComponentInfos[compId];
 				if (info.isTag)
 				{
@@ -169,7 +169,7 @@ namespace Dimensia::ECS
 				{
 					return;
 				}
-				ComponentTypeId compId = componentId<T>();
+				ComponentTypeID compId = componentId<T>();
 				const auto &info = ComponentInfos[compId];
 				if (info.isTag)
 				{
@@ -180,7 +180,7 @@ namespace Dimensia::ECS
 				removeComponent(entity, compId); // non‑template version already updated
 			}
 
-			void removeComponent(Entity entity, ComponentTypeId compId); // non‑template
+			void removeComponent(Entity entity, ComponentTypeID compId); // non‑template
 
 			template <typename T>
 			T *getComponent(Entity entity)
@@ -202,7 +202,7 @@ namespace Dimensia::ECS
 				{
 					return;
 				}
-				ComponentTypeId tagId = componentId<Tag>();
+				ComponentTypeID tagId = componentId<Tag>();
 				if (!ComponentInfos[tagId].isTag)
 				{
 					return;
@@ -218,7 +218,7 @@ namespace Dimensia::ECS
 				{
 					return;
 				}
-				ComponentTypeId tagId = componentId<Tag>();
+				ComponentTypeID tagId = componentId<Tag>();
 				if (!ComponentInfos[tagId].isTag)
 				{
 					return;
@@ -234,7 +234,7 @@ namespace Dimensia::ECS
 				{
 					return false;
 				}
-				ComponentTypeId tagId = componentId<Tag>();
+				ComponentTypeID tagId = componentId<Tag>();
 				if (!ComponentInfos[tagId].isTag)
 				{
 					return false;
@@ -548,7 +548,7 @@ namespace Dimensia::ECS
 						const ChunkVersion *chunkVer = std::get<2>(chunk);
 						processFunc(arch, c);
 						forEachSetBit(requiredRegular,
-									  [&](ComponentTypeId id) { version.componentVersions[id] = chunkVer->getComponentVersion(id); });
+									  [&](ComponentTypeID id) { version.componentVersions[id] = chunkVer->getComponentVersion(id); });
 					}
 					const auto &lastChunk = dirtyChunks.back();
 					version.version
@@ -573,7 +573,7 @@ namespace Dimensia::ECS
 						Archetype *arch = std::get<0>(chunk);
 						uint32_t c = std::get<1>(chunk);
 						const ChunkVersion *chunkVer = std::get<2>(chunk);
-						forEachSetBit(requiredRegular, [&](ComponentTypeId id) {
+						forEachSetBit(requiredRegular, [&](ComponentTypeID id) {
 							version.componentVersions[id] = std::max(version.componentVersions[id], chunkVer->getComponentVersion(id));
 						});
 						version.version = std::max(version.version, arch->getChunkVersion(c).getVersion());
@@ -608,7 +608,7 @@ namespace Dimensia::ECS
 						Archetype *arch = std::get<0>(chunk);
 						uint32_t c = std::get<1>(chunk);
 						const ChunkVersion *chunkVer = std::get<2>(chunk);
-						forEachSetBit(requiredRegular, [&](ComponentTypeId id) {
+						forEachSetBit(requiredRegular, [&](ComponentTypeID id) {
 							version.componentVersions[id] = std::max(version.componentVersions[id], chunkVer->getComponentVersion(id));
 						});
 						version.version = std::max(version.version, arch->getChunkVersion(c).getVersion());
@@ -662,7 +662,7 @@ namespace Dimensia::ECS
 						const ChunkVersion *chunkVer = std::get<2>(chunk);
 						processFunc(arch, c);
 						forEachSetBit(requiredRegular,
-									  [&](ComponentTypeId id) { version.componentVersions[id] = chunkVer->mComponentVersions[id]; });
+									  [&](ComponentTypeID id) { version.componentVersions[id] = chunkVer->mComponentVersions[id]; });
 					}
 					const auto &lastChunk = dirtyChunks.back();
 					version.version
@@ -682,7 +682,7 @@ namespace Dimensia::ECS
 						Archetype *arch = std::get<0>(chunk);
 						uint32_t c = std::get<1>(chunk);
 						const ChunkVersion *chunkVer = std::get<2>(chunk);
-						forEachSetBit(requiredRegular, [&](ComponentTypeId id) {
+						forEachSetBit(requiredRegular, [&](ComponentTypeID id) {
 							version.componentVersions[id] = std::max(version.componentVersions[id], chunkVer->mComponentVersions[id]);
 						});
 						version.version = std::max(version.version, arch->getChunkVersion(c).getVersion());
@@ -836,8 +836,8 @@ namespace Dimensia::ECS
 			Archetype *getOrCreateArchetype(ComponentMask regularMask);
 			void moveEntity(Entity entity, ComponentMask newRegularMask, const std::array<const void *, MAX_COMPONENTS> &copyData,
 							const std::array<void *, MAX_COMPONENTS> &moveData, ComponentMask newTags = ComponentMask(0));
-			void *getComponentPtr(Entity entity, ComponentTypeId compId);
-			const void *getComponentPtr(Entity entity, ComponentTypeId compId) const;
+			void *getComponentPtr(Entity entity, ComponentTypeID compId);
+			const void *getComponentPtr(Entity entity, ComponentTypeID compId) const;
 			void destroyHierarchy(Entity entity);
 
 			friend class CommandBuffer;

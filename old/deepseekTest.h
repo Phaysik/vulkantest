@@ -122,7 +122,7 @@ struct always_false : std::false_type
 // -----------------------------------------------------------------------------
 constexpr size_t CHUNK_SIZE = 16'384;
 constexpr size_t MAX_COMPONENTS = 128;
-using ComponentTypeId = uint32_t;
+using ComponentTypeID = uint32_t;
 using VersionType = uint64_t;
 
 // Forward declarations
@@ -144,7 +144,7 @@ struct ChunkVersion
 			++version;
 		}
 
-		void bumpComponent(ComponentTypeId id)
+		void bumpComponent(ComponentTypeID id)
 		{
 			++componentVersions[id];
 		}
@@ -273,7 +273,7 @@ void forEachSetBit(ComponentMask mask, F &&func)
 	{
 		uint64_t t = bits & -bits;
 		int idx = __builtin_ctzll(bits);
-		func(static_cast<ComponentTypeId>(idx));
+		func(static_cast<ComponentTypeID>(idx));
 		bits ^= t;
 	}
 	bits = mask.high;
@@ -281,7 +281,7 @@ void forEachSetBit(ComponentMask mask, F &&func)
 	{
 		uint64_t t = bits & -bits;
 		int idx = __builtin_ctzll(bits) + 64;
-		func(static_cast<ComponentTypeId>(idx));
+		func(static_cast<ComponentTypeID>(idx));
 		bits ^= t;
 	}
 }
@@ -569,13 +569,13 @@ class CommandBuffer
 				union {
 						struct
 						{
-								ComponentTypeId compId;
+								ComponentTypeID compId;
 								alignas(MAX_COMPONENT_ALIGN) std::byte buffer[MAX_COMPONENT_SIZE];
 						} add;
 
 						struct
 						{
-								ComponentTypeId compId;
+								ComponentTypeID compId;
 						} remove;
 
 						struct
@@ -595,7 +595,7 @@ class CommandBuffer
 					return cmd;
 				}
 
-				static Command makeRemove(Entity e, ComponentTypeId compId)
+				static Command makeRemove(Entity e, ComponentTypeID compId)
 				{
 					Command cmd;
 					cmd.type = CmdType::RemoveComponent;
@@ -655,11 +655,11 @@ class CommandBuffer
 
 		// Helper templates – declared, defined later after ECS is complete
 		template <typename... Ts>
-		static void dispatchAddImpl(ECS &ecs, Entity e, ComponentTypeId id, void *buffer, std::tuple<Ts...>);
+		static void dispatchAddImpl(ECS &ecs, Entity e, ComponentTypeID id, void *buffer, std::tuple<Ts...>);
 
-		static void dispatchAdd(ECS &ecs, Entity e, ComponentTypeId id, void *buffer);
+		static void dispatchAdd(ECS &ecs, Entity e, ComponentTypeID id, void *buffer);
 
-		static void dispatchRemove(ECS &ecs, Entity e, ComponentTypeId id);
+		static void dispatchRemove(ECS &ecs, Entity e, ComponentTypeID id);
 
 	public:
 		template <typename T>
@@ -673,7 +673,7 @@ class CommandBuffer
 		void removeComponent(Entity entity)
 		{
 			auto buf = getThreadBuffer();
-			ComponentTypeId compId = componentId<T>();
+			ComponentTypeID compId = componentId<T>();
 			buf->commands.push_back(Command::makeRemove(entity, compId));
 		}
 
@@ -805,7 +805,7 @@ struct SystemVersion
 			}
 
 			bool needs = false;
-			forEachSetBit(requiredComponents, [&](ComponentTypeId id) {
+			forEachSetBit(requiredComponents, [&](ComponentTypeID id) {
 				if (chunk.componentVersions[id] > componentVersions[id])
 				{
 					needs = true;
@@ -853,12 +853,12 @@ class Archetype
 			return chunks_[chunkIdx]->count;
 		}
 
-		void *getComponentArray(uint32_t chunkIdx, ComponentTypeId compId) const;
+		void *getComponentArray(uint32_t chunkIdx, ComponentTypeID compId) const;
 		Entity *getEntityArray(uint32_t chunkIdx) const;
 
-		bool hasTag(uint32_t chunkIdx, uint32_t slotIdx, ComponentTypeId tagId) const;
-		void setTag(uint32_t chunkIdx, uint32_t slotIdx, ComponentTypeId tagId);
-		void clearTag(uint32_t chunkIdx, uint32_t slotIdx, ComponentTypeId tagId);
+		bool hasTag(uint32_t chunkIdx, uint32_t slotIdx, ComponentTypeID tagId) const;
+		void setTag(uint32_t chunkIdx, uint32_t slotIdx, ComponentTypeID tagId);
+		void clearTag(uint32_t chunkIdx, uint32_t slotIdx, ComponentTypeID tagId);
 		ComponentMask getTags(uint32_t chunkIdx, uint32_t slotIdx) const;
 
 		void compact(std::vector<EntityRecord> &globalRecords);
@@ -874,7 +874,7 @@ class Archetype
 			chunkVersions_[chunkIdx].bump();
 		}
 
-		void bumpComponentVersion(uint32_t chunkIdx, ComponentTypeId compId)
+		void bumpComponentVersion(uint32_t chunkIdx, ComponentTypeID compId)
 		{
 			chunkVersions_[chunkIdx].bumpComponent(compId);
 		}
@@ -903,7 +903,7 @@ class Archetype
 		std::array<size_t, MAX_COMPONENTS> componentSizes_;
 		size_t entityArrayOffset_ = 0;
 		size_t tagBitsetOffset_ = 0;
-		std::vector<ComponentTypeId> sortedRegular_;
+		std::vector<ComponentTypeID> sortedRegular_;
 
 		// Per-chunk versions
 		std::vector<ChunkVersion> chunkVersions_;
@@ -930,7 +930,7 @@ Archetype::Archetype(ComponentMask regularMask) : regularMask_(regularMask), chu
 	componentOffsets_.fill(SIZE_MAX);
 	componentSizes_.fill(0);
 
-	forEachSetBit(regularMask_, [this](ComponentTypeId id) {
+	forEachSetBit(regularMask_, [this](ComponentTypeID id) {
 		const auto &info = ComponentInfos[id];
 		if (info.size > 0)
 		{
@@ -949,7 +949,7 @@ Archetype::~Archetype()
 	{
 		for (uint32_t slot = 0; slot < chunk->count; ++slot)
 		{
-			for (ComponentTypeId compId : sortedRegular_)
+			for (ComponentTypeID compId : sortedRegular_)
 			{
 				void *ptr = static_cast<std::byte *>(chunk->buffer) + componentOffsets_[compId] + slot * componentSizes_[compId];
 				ComponentInfos[compId].destructor(ptr);
@@ -961,7 +961,7 @@ Archetype::~Archetype()
 uint32_t Archetype::computeCapacity() const
 {
 	size_t perEntity = sizeof(Entity);
-	for (ComponentTypeId id : sortedRegular_)
+	for (ComponentTypeID id : sortedRegular_)
 	{
 		perEntity += ComponentInfos[id].size;
 	}
@@ -976,7 +976,7 @@ uint32_t Archetype::computeCapacity() const
 		offset = (offset + alignof(uint64_t) - 1) & ~(alignof(uint64_t) - 1);
 		offset += cap * sizeof(uint64_t);
 
-		for (ComponentTypeId id : sortedRegular_)
+		for (ComponentTypeID id : sortedRegular_)
 		{
 			const auto &info = ComponentInfos[id];
 			offset = (offset + info.alignment - 1) & ~(info.alignment - 1);
@@ -1002,7 +1002,7 @@ void Archetype::computeLayout(uint32_t capacity)
 	tagBitsetOffset_ = offset;
 	offset += capacity * sizeof(uint64_t);
 
-	for (ComponentTypeId id : sortedRegular_)
+	for (ComponentTypeID id : sortedRegular_)
 	{
 		const auto &info = ComponentInfos[id];
 		offset = (offset + info.alignment - 1) & ~(info.alignment - 1);
@@ -1063,7 +1063,7 @@ std::pair<uint32_t, uint32_t> Archetype::addEntity(Entity entity, const std::arr
 	Entity *entityArr = reinterpret_cast<Entity *>(chunk->buffer + entityArrayOffset_);
 	new (&entityArr[slot]) Entity(entity);
 
-	for (ComponentTypeId id : sortedRegular_)
+	for (ComponentTypeID id : sortedRegular_)
 	{
 		size_t offset = componentOffsets_[id];
 		size_t size = componentSizes_[id];
@@ -1099,7 +1099,7 @@ std::pair<Entity, uint32_t> Archetype::removeEntity(uint32_t chunkIdx, uint32_t 
 	Entity *entityArr = reinterpret_cast<Entity *>(chunk->buffer + entityArrayOffset_);
 	uint64_t *tagBits = getTagBitset(chunk);
 
-	for (ComponentTypeId id : sortedRegular_)
+	for (ComponentTypeID id : sortedRegular_)
 	{
 		size_t offset = componentOffsets_[id];
 		size_t size = componentSizes_[id];
@@ -1114,7 +1114,7 @@ std::pair<Entity, uint32_t> Archetype::removeEntity(uint32_t chunkIdx, uint32_t 
 		entityArr[slotIdx] = movedEntity;
 		tagBits[slotIdx] = tagBits[lastSlot];
 
-		for (ComponentTypeId id : sortedRegular_)
+		for (ComponentTypeID id : sortedRegular_)
 		{
 			size_t offset = componentOffsets_[id];
 			size_t size = componentSizes_[id];
@@ -1122,7 +1122,7 @@ std::pair<Entity, uint32_t> Archetype::removeEntity(uint32_t chunkIdx, uint32_t 
 			void *src = chunk->buffer + offset + lastSlot * size;
 			ComponentInfos[id].moveConstruct(dest, src);
 		}
-		for (ComponentTypeId id : sortedRegular_)
+		for (ComponentTypeID id : sortedRegular_)
 		{
 			size_t offset = componentOffsets_[id];
 			size_t size = componentSizes_[id];
@@ -1144,7 +1144,7 @@ std::pair<Entity, uint32_t> Archetype::removeEntity(uint32_t chunkIdx, uint32_t 
 	return {movedEntity, slotIdx};
 }
 
-void *Archetype::getComponentArray(uint32_t chunkIdx, ComponentTypeId compId) const
+void *Archetype::getComponentArray(uint32_t chunkIdx, ComponentTypeID compId) const
 {
 	if (componentOffsets_[compId] == SIZE_MAX)
 	{
@@ -1158,20 +1158,20 @@ Entity *Archetype::getEntityArray(uint32_t chunkIdx) const
 	return reinterpret_cast<Entity *>(chunks_[chunkIdx]->buffer + entityArrayOffset_);
 }
 
-bool Archetype::hasTag(uint32_t chunkIdx, uint32_t slotIdx, ComponentTypeId tagId) const
+bool Archetype::hasTag(uint32_t chunkIdx, uint32_t slotIdx, ComponentTypeID tagId) const
 {
 	const uint64_t *tagBits = getTagBitset(chunks_[chunkIdx].get());
 	return (tagBits[slotIdx] & (uint64_t(1) << tagId)) != 0;
 }
 
-void Archetype::setTag(uint32_t chunkIdx, uint32_t slotIdx, ComponentTypeId tagId)
+void Archetype::setTag(uint32_t chunkIdx, uint32_t slotIdx, ComponentTypeID tagId)
 {
 	uint64_t *tagBits = getTagBitset(chunks_[chunkIdx].get());
 	tagBits[slotIdx] |= (uint64_t(1) << tagId);
 	chunkVersions_[chunkIdx].bump(); // Bump version
 }
 
-void Archetype::clearTag(uint32_t chunkIdx, uint32_t slotIdx, ComponentTypeId tagId)
+void Archetype::clearTag(uint32_t chunkIdx, uint32_t slotIdx, ComponentTypeID tagId)
 {
 	uint64_t *tagBits = getTagBitset(chunks_[chunkIdx].get());
 	tagBits[slotIdx] &= ~(uint64_t(1) << tagId);
@@ -1293,7 +1293,7 @@ class ECS
 		void removeComponent(Entity entity);
 
 		// Non‑template removeComponent (for command buffer)
-		void removeComponent(Entity entity, ComponentTypeId compId);
+		void removeComponent(Entity entity, ComponentTypeID compId);
 
 		template <typename T>
 		T *getComponent(Entity entity);
@@ -1368,8 +1368,8 @@ class ECS
 		Archetype *getOrCreateArchetype(ComponentMask regularMask);
 		void moveEntity(Entity entity, ComponentMask newRegularMask, const std::array<const void *, MAX_COMPONENTS> &copyData,
 						const std::array<void *, MAX_COMPONENTS> &moveData, ComponentMask newTags = ComponentMask(0));
-		void *getComponentPtr(Entity entity, ComponentTypeId compId);
-		const void *getComponentPtr(Entity entity, ComponentTypeId compId) const;
+		void *getComponentPtr(Entity entity, ComponentTypeID compId);
+		const void *getComponentPtr(Entity entity, ComponentTypeID compId) const;
 
 		// Helper to recursively destroy children
 		void destroyHierarchy(Entity entity);
@@ -1445,7 +1445,7 @@ Entity ECS::createEntity()
 template <typename... Ts>
 Entity ECS::createEntityWith(Ts &&...components)
 {
-	std::array<ComponentTypeId, sizeof...(Ts)> compIds{componentId<std::decay_t<Ts>>()...};
+	std::array<ComponentTypeID, sizeof...(Ts)> compIds{componentId<std::decay_t<Ts>>()...};
 
 	ComponentMask regularMask{0, 0};
 	ComponentMask tagMask{0, 0};
@@ -1456,7 +1456,7 @@ Entity ECS::createEntityWith(Ts &&...components)
 
 	[&]<std::size_t... I>(std::index_sequence<I...>) {
 		(([&] {
-			 ComponentTypeId id = compIds[I];
+			 ComponentTypeID id = compIds[I];
 			 const auto &info = ComponentInfos[id];
 			 if (info.isTag)
 			 {
@@ -1589,7 +1589,7 @@ Archetype *ECS::getOrCreateArchetype(ComponentMask regularMask)
 	return ptr;
 }
 
-void *ECS::getComponentPtr(Entity entity, ComponentTypeId compId)
+void *ECS::getComponentPtr(Entity entity, ComponentTypeID compId)
 {
 	if (!alive(entity))
 	{
@@ -1622,7 +1622,7 @@ void *ECS::getComponentPtr(Entity entity, ComponentTypeId compId)
 	return static_cast<std::byte *>(arr) + rec.slotIndex * size;
 }
 
-const void *ECS::getComponentPtr(Entity entity, ComponentTypeId compId) const
+const void *ECS::getComponentPtr(Entity entity, ComponentTypeID compId) const
 {
 	if (!alive(entity))
 	{
@@ -1660,7 +1660,7 @@ void ECS::addComponent(Entity entity, T value)
 	{
 		return;
 	}
-	ComponentTypeId compId = componentId<T>();
+	ComponentTypeID compId = componentId<T>();
 	const auto &info = ComponentInfos[compId];
 	if (info.isTag)
 	{
@@ -1704,7 +1704,7 @@ void ECS::removeComponent(Entity entity)
 	{
 		return;
 	}
-	ComponentTypeId compId = componentId<T>();
+	ComponentTypeID compId = componentId<T>();
 	const auto &info = ComponentInfos[compId];
 	if (info.isTag)
 	{
@@ -1716,7 +1716,7 @@ void ECS::removeComponent(Entity entity)
 	removeComponent(entity, compId);
 }
 
-void ECS::removeComponent(Entity entity, ComponentTypeId compId)
+void ECS::removeComponent(Entity entity, ComponentTypeID compId)
 {
 	if (!alive(entity))
 	{
@@ -1783,7 +1783,7 @@ void ECS::addTag(Entity entity)
 	{
 		return;
 	}
-	ComponentTypeId tagId = componentId<Tag>();
+	ComponentTypeID tagId = componentId<Tag>();
 	if (!ComponentInfos[tagId].isTag)
 	{
 		return;
@@ -1799,7 +1799,7 @@ void ECS::removeTag(Entity entity)
 	{
 		return;
 	}
-	ComponentTypeId tagId = componentId<Tag>();
+	ComponentTypeID tagId = componentId<Tag>();
 	if (!ComponentInfos[tagId].isTag)
 	{
 		return;
@@ -1815,7 +1815,7 @@ bool ECS::hasTag(Entity entity) const
 	{
 		return false;
 	}
-	ComponentTypeId tagId = componentId<Tag>();
+	ComponentTypeID tagId = componentId<Tag>();
 	if (!ComponentInfos[tagId].isTag)
 	{
 		return false;
@@ -1919,12 +1919,12 @@ void ECS::moveEntity(Entity entity, ComponentMask newRegularMask, const std::arr
 	finalCopy.fill(nullptr);
 	finalMove.fill(nullptr);
 
-	forEachSetBit(oldRegular, [&](ComponentTypeId id) { finalMove[id] = getComponentPtr(entity, id); });
+	forEachSetBit(oldRegular, [&](ComponentTypeID id) { finalMove[id] = getComponentPtr(entity, id); });
 
 	ComponentMask moveOverrideMask{0, 0};
 	ComponentMask copyOverrideMask{0, 0};
 
-	for (ComponentTypeId id = 0; id < MAX_COMPONENTS; ++id)
+	for (ComponentTypeID id = 0; id < MAX_COMPONENTS; ++id)
 	{
 		if (moveData[id] != nullptr)
 		{
@@ -1950,12 +1950,12 @@ void ECS::moveEntity(Entity entity, ComponentMask newRegularMask, const std::arr
 		}
 	}
 
-	forEachSetBit(moveOverrideMask, [&](ComponentTypeId id) {
+	forEachSetBit(moveOverrideMask, [&](ComponentTypeID id) {
 		finalMove[id] = moveData[id];
 		finalCopy[id] = nullptr;
 	});
 
-	forEachSetBit(copyOverrideMask, [&](ComponentTypeId id) {
+	forEachSetBit(copyOverrideMask, [&](ComponentTypeID id) {
 		finalCopy[id] = copyData[id];
 		finalMove[id] = nullptr;
 	});
@@ -1987,7 +1987,7 @@ constexpr ComponentMask build_required_mask()
 	(([&] {
 		 if constexpr (!is_tag_component<Components>::value)
 		 {
-			 ComponentTypeId id = componentId<Components>();
+			 ComponentTypeID id = componentId<Components>();
 			 if (id < 64)
 			 {
 				 mask.low |= (uint64_t(1) << id);
@@ -2413,7 +2413,7 @@ void ECS::forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
 
 			processFunc(arch, c);
 
-			forEachSetBit(requiredRegular, [&](ComponentTypeId id) { version.componentVersions[id] = chunkVer->componentVersions[id]; });
+			forEachSetBit(requiredRegular, [&](ComponentTypeID id) { version.componentVersions[id] = chunkVer->componentVersions[id]; });
 		}
 		const auto &lastChunk = dirtyChunks.back();
 		version.version = std::max(version.version, std::get<0>(lastChunk)->getChunkVersion(std::get<1>(lastChunk)).version);
@@ -2442,7 +2442,7 @@ void ECS::forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
 			uint32_t c = std::get<1>(chunk);
 			const ChunkVersion *chunkVer = std::get<2>(chunk);
 
-			forEachSetBit(requiredRegular, [&](ComponentTypeId id) {
+			forEachSetBit(requiredRegular, [&](ComponentTypeID id) {
 				version.componentVersions[id] = std::max(version.componentVersions[id], chunkVer->componentVersions[id]);
 			});
 			version.version = std::max(version.version, arch->getChunkVersion(c).version);
@@ -2483,7 +2483,7 @@ void ECS::forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
 			uint32_t c = std::get<1>(chunk);
 			const ChunkVersion *chunkVer = std::get<2>(chunk);
 
-			forEachSetBit(requiredRegular, [&](ComponentTypeId id) {
+			forEachSetBit(requiredRegular, [&](ComponentTypeID id) {
 				version.componentVersions[id] = std::max(version.componentVersions[id], chunkVer->componentVersions[id]);
 			});
 			version.version = std::max(version.version, arch->getChunkVersion(c).version);
@@ -2541,7 +2541,7 @@ void ECS::forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) c
 
 			processFunc(arch, c);
 
-			forEachSetBit(requiredRegular, [&](ComponentTypeId id) { version.componentVersions[id] = chunkVer->componentVersions[id]; });
+			forEachSetBit(requiredRegular, [&](ComponentTypeID id) { version.componentVersions[id] = chunkVer->componentVersions[id]; });
 		}
 		const auto &lastChunk = dirtyChunks.back();
 		version.version = std::max(version.version, std::get<0>(lastChunk)->getChunkVersion(std::get<1>(lastChunk)).version);
@@ -2557,7 +2557,7 @@ void ECS::forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) c
 
 			processFunc(arch, c);
 
-			forEachSetBit(requiredRegular, [&](ComponentTypeId id) { version.componentVersions[id] = chunkVer->componentVersions[id]; });
+			forEachSetBit(requiredRegular, [&](ComponentTypeID id) { version.componentVersions[id] = chunkVer->componentVersions[id]; });
 		}
 		const auto &lastChunk = dirtyChunks.back();
 		version.version = std::max(version.version, std::get<0>(lastChunk)->getChunkVersion(std::get<1>(lastChunk)).version);
@@ -2706,7 +2706,7 @@ void ECS::forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
 //  CommandBuffer method implementations (need ECS to be complete)
 // -----------------------------------------------------------------------------
 template <typename... Ts>
-void CommandBuffer::dispatchAddImpl(ECS &ecs, Entity e, ComponentTypeId id, void *buffer, std::tuple<Ts...>)
+void CommandBuffer::dispatchAddImpl(ECS &ecs, Entity e, ComponentTypeID id, void *buffer, std::tuple<Ts...>)
 {
 	bool handled = false;
 	(
@@ -2722,12 +2722,12 @@ void CommandBuffer::dispatchAddImpl(ECS &ecs, Entity e, ComponentTypeId id, void
 	assert(handled && "Unknown component ID in CommandBuffer::apply");
 }
 
-void CommandBuffer::dispatchAdd(ECS &ecs, Entity e, ComponentTypeId id, void *buffer)
+void CommandBuffer::dispatchAdd(ECS &ecs, Entity e, ComponentTypeID id, void *buffer)
 {
 	dispatchAddImpl(ecs, e, id, buffer, ComponentTypes{});
 }
 
-void CommandBuffer::dispatchRemove(ECS &ecs, Entity e, ComponentTypeId id)
+void CommandBuffer::dispatchRemove(ECS &ecs, Entity e, ComponentTypeID id)
 {
 	ecs.removeComponent(e, id);
 }

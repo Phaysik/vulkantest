@@ -8,12 +8,15 @@
 
 #include "ECS/chunkVersion.h"
 
+#include <cassert>
+
 #include "Core/attributeMacros.h"
 #include "ECS/componentRegistry.h"
 
 namespace Dimensia::ECS
 {
-	using Dimensia::Registry::ComponentTypeId;
+	using Dimensia::Registry::ComponentTypeID;
+	using Dimensia::Registry::MAX_COMPONENTS;
 	using Dimensia::Registry::VersionType;
 
 	// MARK: Constructor
@@ -30,15 +33,17 @@ namespace Dimensia::ECS
 		return mVersion;
 	}
 
-	ATTR_DEPRECATED ATTR_NODISCARD const std::array<VersionType, Dimensia::Registry::MAX_COMPONENTS> &ChunkVersion::getComponentVersions()
-		const noexcept
+	ATTR_DEPRECATED ATTR_NODISCARD const std::array<VersionType, MAX_COMPONENTS> &ChunkVersion::getComponentVersions() const noexcept
 	{
 		return mComponentVersions;
 	}
 
-	ATTR_NODISCARD VersionType ChunkVersion::getComponentVersion(const ComponentTypeId componentTypeID) const
+	ATTR_NODISCARD VersionType ChunkVersion::getComponentVersion(const ComponentTypeID componentTypeID) const noexcept
 	{
-		return mComponentVersions.at(componentTypeID);
+		assert(componentTypeID < MAX_COMPONENTS);
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		return mComponentVersions[componentTypeID];
 	}
 
 	// Mark: Member Functions
@@ -48,8 +53,11 @@ namespace Dimensia::ECS
 		++mVersion;
 	}
 
-	void ChunkVersion::bumpComponent(const ComponentTypeId componentTypeID)
+	void ChunkVersion::bumpComponent(const ComponentTypeID componentTypeID) noexcept
 	{
-		++mComponentVersions.at(componentTypeID);
+		assert(componentTypeID < MAX_COMPONENTS);
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		++mComponentVersions[componentTypeID];
 	}
 } // namespace Dimensia::ECS

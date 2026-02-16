@@ -76,7 +76,7 @@ namespace Dimensia::Registry
 	//  Configuration constants
 	// -----------------------------------------------------------------------------
 	constexpr size_t MAX_COMPONENTS = 128;
-	using ComponentTypeId = uint32_t;
+	using ComponentTypeID = uint32_t;
 	using VersionType = uint64_t;
 
 	// -----------------------------------------------------------------------------

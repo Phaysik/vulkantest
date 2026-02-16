@@ -23,7 +23,7 @@ namespace Dimensia::ECS
 		componentOffsets_.fill(SIZE_MAX);
 		componentSizes_.fill(0);
 
-		forEachSetBit(regularMask_, [this](ComponentTypeId typeID) {
+		forEachSetBit(regularMask_, [this](ComponentTypeID typeID) {
 			const auto &info = ComponentInfos.at(typeID);
 			if (info.size > 0)
 			{
@@ -42,7 +42,7 @@ namespace Dimensia::ECS
 		{
 			for (ui slot = 0; slot < chunk->count; ++slot)
 			{
-				for (const ComponentTypeId &compId : sortedRegular_)
+				for (const ComponentTypeID &compId : sortedRegular_)
 				{
 					void *ptr
 						= static_cast<std::byte *>(chunk->buffer) + componentOffsets_.at(compId) + (slot * componentSizes_.at(compId));
@@ -75,7 +75,7 @@ namespace Dimensia::ECS
 	ATTR_NODISCARD ui Archetype::computeCapacity() const
 	{
 		size_t perEntity = sizeof(Entity);
-		for (ComponentTypeId id : sortedRegular_)
+		for (ComponentTypeID id : sortedRegular_)
 		{
 			perEntity += ComponentInfos[id].size;
 		}
@@ -89,7 +89,7 @@ namespace Dimensia::ECS
 			offset = (offset + alignof(ul) - 1) & ~(alignof(ul) - 1);
 			offset += cap * sizeof(ul);
 
-			for (ComponentTypeId id : sortedRegular_)
+			for (ComponentTypeID id : sortedRegular_)
 			{
 				const auto &info = ComponentInfos[id];
 				offset = (offset + info.alignment - 1) & ~(info.alignment - 1);
@@ -115,7 +115,7 @@ namespace Dimensia::ECS
 		tagBitsetOffset_ = offset;
 		offset += capacity * sizeof(ul);
 
-		for (ComponentTypeId id : sortedRegular_)
+		for (ComponentTypeID id : sortedRegular_)
 		{
 			const auto &info = ComponentInfos[id];
 			offset = (offset + info.alignment - 1) & ~(info.alignment - 1);
@@ -175,7 +175,7 @@ namespace Dimensia::ECS
 		Entity *entityArr = reinterpret_cast<Entity *>(chunk->buffer + entityArrayOffset_);
 		new (&entityArr[slot]) Entity(entity);
 
-		for (ComponentTypeId id : sortedRegular_)
+		for (ComponentTypeID id : sortedRegular_)
 		{
 			size_t offset = componentOffsets_[id];
 			size_t size = componentSizes_[id];
@@ -209,7 +209,7 @@ namespace Dimensia::ECS
 		Entity *entityArr = reinterpret_cast<Entity *>(chunk->buffer + entityArrayOffset_);
 		ul *tagBits = getTagBitset(chunk);
 
-		for (ComponentTypeId id : sortedRegular_)
+		for (ComponentTypeID id : sortedRegular_)
 		{
 			size_t offset = componentOffsets_[id];
 			size_t size = componentSizes_[id];
@@ -224,7 +224,7 @@ namespace Dimensia::ECS
 			entityArr[slotIdx] = movedEntity;
 			tagBits[slotIdx] = tagBits[lastSlot];
 
-			for (ComponentTypeId id : sortedRegular_)
+			for (ComponentTypeID id : sortedRegular_)
 			{
 				size_t offset = componentOffsets_[id];
 				size_t size = componentSizes_[id];
@@ -232,7 +232,7 @@ namespace Dimensia::ECS
 				void *src = chunk->buffer + offset + lastSlot * size;
 				ComponentInfos[id].moveConstruct(dest, src);
 			}
-			for (ComponentTypeId id : sortedRegular_)
+			for (ComponentTypeID id : sortedRegular_)
 			{
 				size_t offset = componentOffsets_[id];
 				size_t size = componentSizes_[id];
@@ -252,7 +252,7 @@ namespace Dimensia::ECS
 		return {movedEntity, slotIdx};
 	}
 
-	ATTR_NODISCARD void *Archetype::getComponentArray(ui chunkIdx, ComponentTypeId compId) const
+	ATTR_NODISCARD void *Archetype::getComponentArray(ui chunkIdx, ComponentTypeID compId) const
 	{
 		if (componentOffsets_[compId] == SIZE_MAX)
 		{
@@ -266,20 +266,20 @@ namespace Dimensia::ECS
 		return reinterpret_cast<Entity *>(chunks_[chunkIdx]->buffer + entityArrayOffset_);
 	}
 
-	ATTR_NODISCARD bool Archetype::hasTag(ui chunkIdx, ui slotIdx, ComponentTypeId tagId) const
+	ATTR_NODISCARD bool Archetype::hasTag(ui chunkIdx, ui slotIdx, ComponentTypeID tagId) const
 	{
 		const ul *tagBits = getTagBitset(chunks_[chunkIdx].get());
 		return (tagBits[slotIdx] & (ul(1) << tagId)) != 0;
 	}
 
-	void Archetype::setTag(ui chunkIdx, ui slotIdx, ComponentTypeId tagId)
+	void Archetype::setTag(ui chunkIdx, ui slotIdx, ComponentTypeID tagId)
 	{
 		ul *tagBits = getTagBitset(chunks_[chunkIdx].get());
 		tagBits[slotIdx] |= (ul(1) << tagId);
 		chunkVersions_[chunkIdx].bump();
 	}
 
-	void Archetype::clearTag(ui chunkIdx, ui slotIdx, ComponentTypeId tagId)
+	void Archetype::clearTag(ui chunkIdx, ui slotIdx, ComponentTypeID tagId)
 	{
 		ul *tagBits = getTagBitset(chunks_[chunkIdx].get());
 		tagBits[slotIdx] &= ~(ul(1) << tagId);
@@ -344,7 +344,7 @@ namespace Dimensia::ECS
 		return chunks_[chunkIdx]->count;
 	}
 
-	void Archetype::bumpComponentVersion(ui chunkIdx, ComponentTypeId compId)
+	void Archetype::bumpComponentVersion(ui chunkIdx, ComponentTypeID compId)
 	{
 		chunkVersions_[chunkIdx].bumpComponent(compId);
 	}

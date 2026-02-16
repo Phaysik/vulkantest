@@ -16,7 +16,7 @@
 
 namespace Dimensia::ECS
 {
-	using Dimensia::Registry::ComponentTypeId;
+	using Dimensia::Registry::ComponentTypeID;
 	using Dimensia::Registry::MAX_COMPONENTS;
 	using Dimensia::Registry::VersionType;
 
@@ -33,12 +33,12 @@ namespace Dimensia::ECS
 
 			ATTR_DEPRECATED ATTR_NODISCARD const std::array<VersionType, MAX_COMPONENTS> &getComponentVersions() const noexcept;
 
-			ATTR_NODISCARD VersionType getComponentVersion(const ComponentTypeId componentTypeID) const;
+			ATTR_NODISCARD VersionType getComponentVersion(const ComponentTypeID componentTypeID) const noexcept;
 
 			// MARK: Member Functions
 
 			void bump() noexcept;
-			void bumpComponent(const ComponentTypeId componentTypeID);
+			void bumpComponent(const ComponentTypeID componentTypeID) noexcept;
 
 		private:
 			VersionType mVersion{1};

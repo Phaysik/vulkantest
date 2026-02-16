@@ -140,7 +140,7 @@ namespace Dimensia::ECS
 		return ptr;
 	}
 
-	void *ECS::getComponentPtr(Entity entity, ComponentTypeId compId)
+	void *ECS::getComponentPtr(Entity entity, ComponentTypeID compId)
 	{
 		if (!alive(entity))
 		{
@@ -171,7 +171,7 @@ namespace Dimensia::ECS
 		return static_cast<std::byte *>(arr) + rec.slotIndex * size;
 	}
 
-	const void *ECS::getComponentPtr(Entity entity, ComponentTypeId compId) const
+	const void *ECS::getComponentPtr(Entity entity, ComponentTypeID compId) const
 	{
 		if (!alive(entity))
 		{
@@ -203,7 +203,7 @@ namespace Dimensia::ECS
 		return static_cast<const std::byte *>(arr) + rec.slotIndex * size;
 	}
 
-	void ECS::removeComponent(Entity entity, ComponentTypeId compId)
+	void ECS::removeComponent(Entity entity, ComponentTypeID compId)
 	{
 		if (!alive(entity))
 		{
@@ -271,10 +271,10 @@ namespace Dimensia::ECS
 		finalCopy.fill(nullptr);
 		finalMove.fill(nullptr);
 
-		forEachSetBit(oldRegular, [&](ComponentTypeId id) { finalMove[id] = getComponentPtr(entity, id); });
+		forEachSetBit(oldRegular, [&](ComponentTypeID id) { finalMove[id] = getComponentPtr(entity, id); });
 
 		ComponentMask moveOverrideMask{0, 0}, copyOverrideMask{0, 0};
-		for (ComponentTypeId id = 0; id < MAX_COMPONENTS; ++id)
+		for (ComponentTypeID id = 0; id < MAX_COMPONENTS; ++id)
 		{
 			if (moveData[id] != nullptr)
 			{
@@ -300,11 +300,11 @@ namespace Dimensia::ECS
 			}
 		}
 
-		forEachSetBit(moveOverrideMask, [&](ComponentTypeId id) {
+		forEachSetBit(moveOverrideMask, [&](ComponentTypeID id) {
 			finalMove[id] = moveData[id];
 			finalCopy[id] = nullptr;
 		});
-		forEachSetBit(copyOverrideMask, [&](ComponentTypeId id) {
+		forEachSetBit(copyOverrideMask, [&](ComponentTypeID id) {
 			finalCopy[id] = copyData[id];
 			finalMove[id] = nullptr;
 		});

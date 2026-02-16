@@ -27,7 +27,7 @@ namespace Dimensia::ECS
 	class ECS;
 
 	using Registry::componentId;
-	using Registry::ComponentTypeId;
+	using Registry::ComponentTypeID;
 
 	class CommandBuffer
 	{
@@ -68,13 +68,13 @@ namespace Dimensia::ECS
 					union {
 							struct
 							{
-									ComponentTypeId compId;
+									ComponentTypeID compId;
 									alignas(Registry::MAX_COMPONENT_ALIGN) std::byte buffer[Registry::MAX_COMPONENT_SIZE];
 							} add;
 
 							struct
 							{
-									ComponentTypeId compId;
+									ComponentTypeID compId;
 							} remove;
 
 							struct
@@ -94,7 +94,7 @@ namespace Dimensia::ECS
 						return cmd;
 					}
 
-					static Command makeRemove(Entity e, ComponentTypeId compId)
+					static Command makeRemove(Entity e, ComponentTypeID compId)
 					{
 						Command cmd;
 						cmd.type = CmdType::RemoveComponent;
@@ -134,9 +134,9 @@ namespace Dimensia::ECS
 			ThreadBuffer *getThreadBuffer();
 
 			template <typename... Ts>
-			static void dispatchAddImpl(ECS &ecs, Entity e, ComponentTypeId id, void *buffer, std::tuple<Ts...>);
-			static void dispatchAdd(ECS &ecs, Entity e, ComponentTypeId id, void *buffer);
-			static void dispatchRemove(ECS &ecs, Entity e, ComponentTypeId id);
+			static void dispatchAddImpl(ECS &ecs, Entity e, ComponentTypeID id, void *buffer, std::tuple<Ts...>);
+			static void dispatchAdd(ECS &ecs, Entity e, ComponentTypeID id, void *buffer);
+			static void dispatchRemove(ECS &ecs, Entity e, ComponentTypeID id);
 	};
 } // namespace Dimensia::ECS
 

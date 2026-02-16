@@ -19,7 +19,7 @@
 
 namespace Dimensia::ECS
 {
-	class ComponentTypeIdSystem
+	class ComponentTypeIDSystem
 	{
 		public:
 			template <typename T>
@@ -62,7 +62,7 @@ namespace Dimensia::ECS
 			template <typename T>
 			static std::size_t getTypeId() noexcept
 			{
-				return ComponentTypeIdSystem::getTypeId<T>();
+				return ComponentTypeIDSystem::getTypeId<T>();
 			}
 
 			// Runtime-stored type id for this component instance. Set by Entity when added.

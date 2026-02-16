@@ -20,7 +20,7 @@ namespace Dimensia::ECS
 {
 	using Registry::componentId;
 	using Registry::ComponentInfos;
-	using Registry::ComponentTypeId;
+	using Registry::ComponentTypeID;
 	using Registry::is_tag_component;
 
 	// Helper to iterate over set bits in a ComponentMask
@@ -32,7 +32,7 @@ namespace Dimensia::ECS
 		{
 			uint64_t t = bits & -bits;
 			int idx = __builtin_ctzll(bits);
-			func(static_cast<ComponentTypeId>(idx));
+			func(static_cast<ComponentTypeID>(idx));
 			bits ^= t;
 		}
 		bits = mask.high;
@@ -40,7 +40,7 @@ namespace Dimensia::ECS
 		{
 			uint64_t t = bits & -bits;
 			int idx = __builtin_ctzll(bits) + 64;
-			func(static_cast<ComponentTypeId>(idx));
+			func(static_cast<ComponentTypeID>(idx));
 			bits ^= t;
 		}
 	}
@@ -53,7 +53,7 @@ namespace Dimensia::ECS
 		(([&] {
 			 if constexpr (!is_tag_component<Components>::value)
 			 {
-				 ComponentTypeId id = componentId<Components>();
+				 ComponentTypeID id = componentId<Components>();
 				 if (id < 64)
 				 {
 					 mask.low |= (uint64_t(1) << id);

@@ -28,7 +28,7 @@ namespace Dimensia::ECS
 	using Dimensia::Core::ui;
 	using Dimensia::Core::ul;
 
-	using Registry::ComponentTypeId;
+	using Registry::ComponentTypeID;
 	using Registry::MAX_COMPONENTS;
 
 	class Archetype
@@ -57,16 +57,16 @@ namespace Dimensia::ECS
 			ATTR_NODISCARD ui getId() const;
 
 			ATTR_NODISCARD ui getEntityCount(ui chunkIdx) const;
-			ATTR_NODISCARD void *getComponentArray(ui chunkIdx, ComponentTypeId compId) const;
+			ATTR_NODISCARD void *getComponentArray(ui chunkIdx, ComponentTypeID compId) const;
 			ATTR_NODISCARD Entity *getEntityArray(ui chunkIdx) const;
-			ATTR_NODISCARD bool hasTag(ui chunkIdx, ui slotIdx, ComponentTypeId tagId) const;
-			void setTag(ui chunkIdx, ui slotIdx, ComponentTypeId tagId);
-			void clearTag(ui chunkIdx, ui slotIdx, ComponentTypeId tagId);
+			ATTR_NODISCARD bool hasTag(ui chunkIdx, ui slotIdx, ComponentTypeID tagId) const;
+			void setTag(ui chunkIdx, ui slotIdx, ComponentTypeID tagId);
+			void clearTag(ui chunkIdx, ui slotIdx, ComponentTypeID tagId);
 			ATTR_NODISCARD ComponentMask getTags(ui chunkIdx, ui slotIdx) const;
 
 			void bumpChunkVersion(ui chunkIdx);
 
-			void bumpComponentVersion(ui chunkIdx, ComponentTypeId compId);
+			void bumpComponentVersion(ui chunkIdx, ComponentTypeID compId);
 
 			template <typename F>
 			void forEachComponent(F &&func) const
@@ -93,7 +93,7 @@ namespace Dimensia::ECS
 			std::array<size_t, MAX_COMPONENTS> componentSizes_{};
 			size_t entityArrayOffset_{0};
 			size_t tagBitsetOffset_{0};
-			std::vector<ComponentTypeId> sortedRegular_;
+			std::vector<ComponentTypeID> sortedRegular_;
 			std::vector<ChunkVersion> chunkVersions_;
 
 			ATTR_NODISCARD ui computeCapacity() const;

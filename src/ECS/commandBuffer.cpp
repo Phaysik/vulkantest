@@ -57,7 +57,7 @@ namespace Dimensia::ECS
 	}
 
 	template <typename... Ts>
-	void CommandBuffer::dispatchAddImpl(ECS &ecs, Entity e, ComponentTypeId id, void *buffer, std::tuple<Ts...>)
+	void CommandBuffer::dispatchAddImpl(ECS &ecs, Entity e, ComponentTypeID id, void *buffer, std::tuple<Ts...>)
 	{
 		bool handled = false;
 		(
@@ -73,12 +73,12 @@ namespace Dimensia::ECS
 		assert(handled && "Unknown component ID in CommandBuffer::apply");
 	}
 
-	void CommandBuffer::dispatchAdd(ECS &ecs, Entity e, ComponentTypeId id, void *buffer)
+	void CommandBuffer::dispatchAdd(ECS &ecs, Entity e, ComponentTypeID id, void *buffer)
 	{
 		dispatchAddImpl(ecs, e, id, buffer, Registry::ComponentTypes{});
 	}
 
-	void CommandBuffer::dispatchRemove(ECS &ecs, Entity e, ComponentTypeId id)
+	void CommandBuffer::dispatchRemove(ECS &ecs, Entity e, ComponentTypeID id)
 	{
 		ecs.removeComponent(e, id);
 	}
