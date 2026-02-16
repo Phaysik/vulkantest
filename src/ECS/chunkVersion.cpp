@@ -8,20 +8,41 @@
 
 #include "ECS/chunkVersion.h"
 
+#include "Core/attributeMacros.h"
+#include "ECS/componentRegistry.h"
+
 namespace Dimensia::ECS
 {
-	ChunkVersion::ChunkVersion() : version(1)
+	using Registry::VersionType;
+
+	// MARK: Constructor
+
+	ChunkVersion::ChunkVersion()
 	{
-		componentVersions.fill(1);
+		mComponentVersions.fill(1);
 	}
+
+	// MARK: Getters
+
+	ATTR_NODISCARD VersionType ChunkVersion::getVersion() const
+	{
+		return mVersion;
+	}
+
+	ATTR_NODISCARD const std::array<VersionType, Registry::MAX_COMPONENTS> &ChunkVersion::getComponentVersions() const
+	{
+		return mComponentVersions;
+	}
+
+	// Mark: Member Functions
 
 	void ChunkVersion::bump()
 	{
-		++version;
+		++mVersion;
 	}
 
-	void ChunkVersion::bumpComponent(Registry::ComponentTypeId id)
+	void ChunkVersion::bumpComponent(const Registry::ComponentTypeId componentTypeID)
 	{
-		++componentVersions[id];
+		++mComponentVersions.at(componentTypeID);
 	}
 } // namespace Dimensia::ECS

@@ -548,10 +548,11 @@ namespace Dimensia::ECS
 						const ChunkVersion *chunkVer = std::get<2>(chunk);
 						processFunc(arch, c);
 						forEachSetBit(requiredRegular,
-									  [&](ComponentTypeId id) { version.componentVersions[id] = chunkVer->componentVersions[id]; });
+									  [&](ComponentTypeId id) { version.componentVersions[id] = chunkVer->getComponentVersions().at(id); });
 					}
 					const auto &lastChunk = dirtyChunks.back();
-					version.version = std::max(version.version, std::get<0>(lastChunk)->getChunkVersion(std::get<1>(lastChunk)).version);
+					version.version
+						= std::max(version.version, std::get<0>(lastChunk)->getChunkVersion(std::get<1>(lastChunk)).getVersion());
 				}
 				else if (policy == ExecutionPolicy::Par)
 				{
@@ -573,9 +574,10 @@ namespace Dimensia::ECS
 						uint32_t c = std::get<1>(chunk);
 						const ChunkVersion *chunkVer = std::get<2>(chunk);
 						forEachSetBit(requiredRegular, [&](ComponentTypeId id) {
-							version.componentVersions[id] = std::max(version.componentVersions[id], chunkVer->componentVersions[id]);
+							version.componentVersions[id]
+								= std::max(version.componentVersions[id], chunkVer->getComponentVersions().at(id));
 						});
-						version.version = std::max(version.version, arch->getChunkVersion(c).version);
+						version.version = std::max(version.version, arch->getChunkVersion(c).getVersion());
 					}
 				}
 				else if (policy == ExecutionPolicy::ParBatched || policy == ExecutionPolicy::ParStealing)
@@ -608,9 +610,10 @@ namespace Dimensia::ECS
 						uint32_t c = std::get<1>(chunk);
 						const ChunkVersion *chunkVer = std::get<2>(chunk);
 						forEachSetBit(requiredRegular, [&](ComponentTypeId id) {
-							version.componentVersions[id] = std::max(version.componentVersions[id], chunkVer->componentVersions[id]);
+							version.componentVersions[id]
+								= std::max(version.componentVersions[id], chunkVer->getComponentVersions().at(id));
 						});
-						version.version = std::max(version.version, arch->getChunkVersion(c).version);
+						version.version = std::max(version.version, arch->getChunkVersion(c).getVersion());
 					}
 				}
 			}
@@ -661,10 +664,11 @@ namespace Dimensia::ECS
 						const ChunkVersion *chunkVer = std::get<2>(chunk);
 						processFunc(arch, c);
 						forEachSetBit(requiredRegular,
-									  [&](ComponentTypeId id) { version.componentVersions[id] = chunkVer->componentVersions[id]; });
+									  [&](ComponentTypeId id) { version.componentVersions[id] = chunkVer->mComponentVersions[id]; });
 					}
 					const auto &lastChunk = dirtyChunks.back();
-					version.version = std::max(version.version, std::get<0>(lastChunk)->getChunkVersion(std::get<1>(lastChunk)).version);
+					version.version
+						= std::max(version.version, std::get<0>(lastChunk)->getChunkVersion(std::get<1>(lastChunk)).getVersion());
 				}
 				else
 				{
@@ -681,9 +685,9 @@ namespace Dimensia::ECS
 						uint32_t c = std::get<1>(chunk);
 						const ChunkVersion *chunkVer = std::get<2>(chunk);
 						forEachSetBit(requiredRegular, [&](ComponentTypeId id) {
-							version.componentVersions[id] = std::max(version.componentVersions[id], chunkVer->componentVersions[id]);
+							version.componentVersions[id] = std::max(version.componentVersions[id], chunkVer->mComponentVersions[id]);
 						});
-						version.version = std::max(version.version, arch->getChunkVersion(c).version);
+						version.version = std::max(version.version, arch->getChunkVersion(c).getVersion());
 					}
 				}
 			}

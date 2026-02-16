@@ -20,13 +20,13 @@ namespace Dimensia::ECS
 
 	bool SystemVersion::needsUpdate(const ChunkVersion &chunk, ComponentMask requiredComponents) const
 	{
-		if (chunk.version > version)
+		if (chunk.getVersion() > version)
 		{
 			return true;
 		}
 		bool needs = false;
 		forEachSetBit(requiredComponents, [&](ComponentTypeId id) {
-			if (chunk.componentVersions[id] > componentVersions[id])
+			if (chunk.getComponentVersions().at(id) > componentVersions.at(id))
 			{
 				needs = true;
 			}
@@ -36,7 +36,7 @@ namespace Dimensia::ECS
 
 	void SystemVersion::update(const ChunkVersion &chunk)
 	{
-		version = chunk.version;
+		version = chunk.getVersion();
 		// componentVersions intentionally not updated here – they are updated per‑chunk after processing
 	}
 } // namespace Dimensia::ECS

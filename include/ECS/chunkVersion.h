@@ -11,20 +11,34 @@
 
 #include <array>
 
-#include "ECS/componentRegistry.h" // for MAX_COMPONENTS
+#include "Core/attributeMacros.h"
+#include "ECS/componentRegistry.h"
 
 namespace Dimensia::ECS
 {
 	using Registry::VersionType;
 
-	struct ChunkVersion
+	class ChunkVersion
 	{
-			VersionType version;
-			std::array<VersionType, Registry::MAX_COMPONENTS> componentVersions;
+		public:
+			// MARK: Constructor
 
-			ChunkVersion();
+			explicit ChunkVersion();
+
+			// MARK: Getters
+
+			ATTR_NODISCARD VersionType getVersion() const;
+
+			ATTR_NODISCARD const std::array<VersionType, Registry::MAX_COMPONENTS> &getComponentVersions() const;
+
+			// MARK: Member Functions
+
 			void bump();
-			void bumpComponent(Registry::ComponentTypeId id);
+			void bumpComponent(const Registry::ComponentTypeId componentTypeID);
+
+		private:
+			VersionType mVersion{1};
+			std::array<VersionType, Registry::MAX_COMPONENTS> mComponentVersions{};
 	};
 } // namespace Dimensia::ECS
 
