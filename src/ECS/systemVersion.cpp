@@ -26,7 +26,7 @@ namespace Dimensia::ECS
 		}
 		bool needs = false;
 		forEachSetBit(requiredComponents, [&](ComponentTypeId id) {
-			if (chunk.getComponentVersions().at(id) > componentVersions.at(id))
+			if (chunk.getComponentVersion(id) > componentVersions.at(id))
 			{
 				needs = true;
 			}

@@ -99,12 +99,109 @@
 		The `[[maybe_unused]]` attribute indicates that the a parameter may be unused.
 		@example
 		@code{.cpp}
-		int compute_value(ATTR_MAYBE_UNUSED number) { return 42; }
+		int compute_value(ATTR_MAYBE_UNUSED int number) { return number; }
 		@endcode
 	*/
 	#define ATTR_MAYBE_UNUSED [[maybe_unused]]
 #else
 	#define ATTR_MAYBE_UNUSED
+#endif
+
+#if __has_cpp_attribute(deprecated)
+	/*! @def ATTR_DEPRECATED
+		@brief Portable macro for the C++ `[[deprecated]]` attribute.
+		@details Expands to `[[deprecated]]` when supported by the compiler, otherwise to an empty token.
+		The `[[deprecated]]` attribute indicates that a function is deprecated and should not be used.
+		@example
+		@code{.cpp}
+		ATTR_DEPRECATED int compute_value(int number) { return number; }
+		@endcode
+	*/
+	#define ATTR_DEPRECATED [[deprecated]]
+#else
+	#define ATTR_DEPRECATED
+#endif
+
+#if __has_cpp_attribute(noreturn)
+	/*! @def ATTR_NORETURN
+		@brief Portable macro for the C++ `[[noreturn]]` attribute.
+		@details Expands to `[[noreturn]]` when supported by the compiler, otherwise to an empty token.
+		The `[[noreturn]]` attribute indicates that a function will not return control flow to the calling function after it finishes.
+		@example
+		@code{.cpp}
+		ATTR_NORETURN int compute_value(int number) { return number; }
+		@endcode
+	*/
+	#define ATTR_NORETURN [[noreturn]]
+#else
+	#define ATTR_NORETURN
+#endif
+
+#if __has_cpp_attribute(fallthrough)
+	/*! @def ATTR_FALLTHROUGH
+		@brief Portable macro for the C++ `[[fallthrough]]` attribute.
+		@details Expands to `[[fallthrough]]` when supported by the compiler, otherwise to an empty token.
+		The `[[fallthrough]]` attribute indicates that the fall through from the previous case label is intentional and should not be
+	   diagnosed.
+		@example
+		@code{.cpp}
+		int compute_value(int number) {
+			switch (number) {
+				case 1:
+				case 2:
+					foo();
+					ATTR_FALLTHROUGH;
+				case 3: // No warning on fallthrough
+					bar();
+				default:
+					break;
+			}
+		}
+		@endcode
+	*/
+	#define ATTR_FALLTHROUGH [[fallthrough]]
+#else
+	#define ATTR_FALLTHROUGH
+#endif
+
+#if __has_cpp_attribute(likely)
+	/*! @def ATTR_LIKELY
+		@brief Portable macro for the C++ `[[likely]]` attribute.
+		@details Expands to `[[likely]]` when supported by the compiler, otherwise to an empty token.
+		The `[[likely]]` attribute indicates that the a code path is more likely to be executed than the others.
+		@example
+		@code{.cpp}
+		constexpr double pow(doulbe x, uint64_t n) noexcept {
+			if (n > 0) ATTR_LIKELY
+				return x * pow(x, n - 1);
+			else ATTR_UNLIKELY
+				return 1;
+		}
+		@endcode
+	*/
+	#define ATTR_LIKELY [[likely]]
+#else
+	#define ATTR_LIKELY
+#endif
+
+#if __has_cpp_attribute(unlikely)
+	/*! @def ATTR_UNLIKELY
+		@brief Portable macro for the C++ `[[unlikely]]` attribute.
+		@details Expands to `[[unlikely]]` when supported by the compiler, otherwise to an empty token.
+		The `[[unlikely]]` attribute indicates that the a code path is more unlikely to be executed than the others.
+		@example
+		@code{.cpp}
+		constexpr double pow(doulbe x, uint64_t n) noexcept {
+			if (n > 0) ATTR_UNLIKELY
+				return x * pow(x, n - 1);
+			else ATTR_UNUNLIKELY
+				return 1;
+		}
+		@endcode
+	*/
+	#define ATTR_UNLIKELY [[unlikely]]
+#else
+	#define ATTR_UNLIKELY
 #endif
 
 #endif

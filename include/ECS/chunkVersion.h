@@ -16,7 +16,9 @@
 
 namespace Dimensia::ECS
 {
-	using Registry::VersionType;
+	using Dimensia::Registry::ComponentTypeId;
+	using Dimensia::Registry::MAX_COMPONENTS;
+	using Dimensia::Registry::VersionType;
 
 	class ChunkVersion
 	{
@@ -27,18 +29,20 @@ namespace Dimensia::ECS
 
 			// MARK: Getters
 
-			ATTR_NODISCARD VersionType getVersion() const;
+			ATTR_NODISCARD VersionType getVersion() const noexcept;
 
-			ATTR_NODISCARD const std::array<VersionType, Registry::MAX_COMPONENTS> &getComponentVersions() const;
+			ATTR_DEPRECATED ATTR_NODISCARD const std::array<VersionType, MAX_COMPONENTS> &getComponentVersions() const noexcept;
+
+			ATTR_NODISCARD VersionType getComponentVersion(const ComponentTypeId componentTypeID) const;
 
 			// MARK: Member Functions
 
-			void bump();
-			void bumpComponent(const Registry::ComponentTypeId componentTypeID);
+			void bump() noexcept;
+			void bumpComponent(const ComponentTypeId componentTypeID);
 
 		private:
 			VersionType mVersion{1};
-			std::array<VersionType, Registry::MAX_COMPONENTS> mComponentVersions{};
+			std::array<VersionType, MAX_COMPONENTS> mComponentVersions{};
 	};
 } // namespace Dimensia::ECS
 
