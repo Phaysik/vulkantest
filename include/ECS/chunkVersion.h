@@ -10,6 +10,7 @@
 #define INCLUDE_ECS_CHUNKVERSION_H
 
 #include <array>
+#include <compare>
 
 #include "Core/attributeMacros.h"
 #include "ECS/componentRegistry.h"
@@ -27,6 +28,10 @@ namespace Dimensia::ECS
 
 			explicit ChunkVersion();
 
+			// MARK: Comparison
+
+			std::strong_ordering operator<=>(const ChunkVersion &) const noexcept = default;
+
 			// MARK: Getters
 
 			ATTR_NODISCARD VersionType getVersion() const noexcept;
@@ -38,7 +43,10 @@ namespace Dimensia::ECS
 			// MARK: Member Functions
 
 			void bump() noexcept;
+
 			void bumpComponent(const ComponentTypeID componentTypeID) noexcept;
+
+			void reset() noexcept;
 
 		private:
 			VersionType mVersion{1};

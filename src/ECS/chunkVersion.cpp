@@ -60,4 +60,10 @@ namespace Dimensia::ECS
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		++mComponentVersions[componentTypeID];
 	}
+
+	void ChunkVersion::reset() noexcept
+	{
+		mVersion = 1;
+		mComponentVersions.fill(1);
+	}
 } // namespace Dimensia::ECS
