@@ -13,6 +13,7 @@ namespace Dimensia::Components
 {
 	struct Velocity
 	{
+		public:
 			float dx, dy, dz;
 	};
 } // namespace Dimensia::Components

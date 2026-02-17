@@ -9,6 +9,7 @@
 #ifndef INCLUDE_ECS_ECS_H
 #define INCLUDE_ECS_ECS_H
 
+#include <latch>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -34,7 +35,6 @@ namespace Dimensia::ECS
 	using Dimensia::Registry::ComponentTypeID;
 	using Dimensia::Registry::MAX_COMPONENTS;
 
-	using Dimensia::Threading::Latch;
 	using Dimensia::Threading::ThreadPool;
 	using Dimensia::Threading::WorkStealingPool;
 
@@ -332,7 +332,7 @@ namespace Dimensia::ECS
 					{
 						return;
 					}
-					Latch latch(static_cast<int>((allChunks.size() + 3) / 4)); // batch size 4
+					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + 3) / 4)); // batch size 4
 					const std::size_t batchSize = 4;
 					for (std::size_t i = 0; i < allChunks.size(); i += batchSize)
 					{
@@ -371,7 +371,7 @@ namespace Dimensia::ECS
 					{
 						return;
 					}
-					Latch latch(static_cast<int>((allChunks.size() + 7) / 8)); // batch size 8
+					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + 7) / 8)); // batch size 8
 					workStealingPool_.submit_chunks(
 						allChunks,
 						[func](Archetype *arch, ui c) {
@@ -453,7 +453,7 @@ namespace Dimensia::ECS
 					{
 						return;
 					}
-					Latch latch(static_cast<int>((allChunks.size() + 3) / 4));
+					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + 3) / 4));
 					const std::size_t batchSize = 4;
 					for (std::size_t i = 0; i < allChunks.size(); i += batchSize)
 					{
@@ -492,7 +492,7 @@ namespace Dimensia::ECS
 					{
 						return;
 					}
-					Latch latch(static_cast<int>((allChunks.size() + 7) / 8));
+					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + 7) / 8));
 					workStealingPool_.submit_chunks(
 						allChunks,
 						[func](Archetype *arch, ui c) {
@@ -591,7 +591,7 @@ namespace Dimensia::ECS
 					{
 						chunks.emplace_back(std::get<0>(chunk), std::get<1>(chunk));
 					}
-					Latch latch(static_cast<int>((chunks.size() + 3) / 4));
+					std::latch latch(static_cast<std::ptrdiff_t>((chunks.size() + 3) / 4));
 					const std::size_t batchSize = 4;
 					for (std::size_t i = 0; i < chunks.size(); i += batchSize)
 					{
@@ -768,7 +768,7 @@ namespace Dimensia::ECS
 					{
 						return;
 					}
-					Latch latch(static_cast<int>((allChunks.size() + 3) / 4));
+					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + 3) / 4));
 					const std::size_t batchSize = 4;
 					for (std::size_t i = 0; i < allChunks.size(); i += batchSize)
 					{
@@ -808,7 +808,7 @@ namespace Dimensia::ECS
 					{
 						return;
 					}
-					Latch latch(static_cast<int>((allChunks.size() + 7) / 8));
+					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + 7) / 8));
 					workStealingPool_.submit_chunks(
 						allChunks,
 						[&cmds, func](Archetype *arch, ui c) {

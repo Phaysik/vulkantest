@@ -13,6 +13,7 @@ namespace Dimensia::Components
 {
 	struct Health
 	{
+		public:
 			int hp;
 	};
 } // namespace Dimensia::Components

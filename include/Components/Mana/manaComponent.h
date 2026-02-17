@@ -13,6 +13,7 @@ namespace Dimensia::Components
 {
 	struct Mana
 	{
+		public:
 			int mp;
 	};
 } // namespace Dimensia::Components

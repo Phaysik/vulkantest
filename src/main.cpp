@@ -25,6 +25,10 @@ int main()
 	using Dimensia::ECS::ExecutionPolicy;
 	using Dimensia::ECS::SystemVersion;
 
+	// std::cout << alignof(std::atomic<Dimensia::Core::si>) << '\n';
+	// std::cout << alignof(std::mutex) << '\n';
+	// std::cout << alignof(std::condition_variable) << '\n';
+
 	ECS ecs;
 
 	const Entity goblin = ecs.createEntityWith(

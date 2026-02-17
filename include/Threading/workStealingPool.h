@@ -11,12 +11,12 @@
 
 #include <atomic>
 #include <functional>
+#include <latch>
 #include <thread>
 #include <vector>
 
 #include "ECS/archetype.h"
 
-#include "latch.h"
 #include "workStealingQueue.h"
 
 namespace Dimensia::Threading
@@ -30,7 +30,8 @@ namespace Dimensia::Threading
 			~WorkStealingPool();
 
 			template <typename TaskFunc>
-			void submit_chunks(const std::vector<std::pair<Archetype *, uint32_t>> &chunks, TaskFunc &&func, Latch &latch, std::size_t batchSize)
+			void submit_chunks(const std::vector<std::pair<Archetype *, uint32_t>> &chunks, TaskFunc &&func, std::latch &latch,
+							   std::size_t batchSize)
 			{
 				std::vector<std::pair<Archetype *, uint32_t>> batch;
 				batch.reserve(batchSize);

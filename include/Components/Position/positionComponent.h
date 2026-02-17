@@ -13,6 +13,7 @@ namespace Dimensia::Components
 {
 	struct Position
 	{
+		public:
 			float x, y, z;
 	};
 } // namespace Dimensia::Components

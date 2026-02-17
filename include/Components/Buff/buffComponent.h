@@ -15,6 +15,7 @@ namespace Dimensia::Components
 {
 	struct Buff
 	{
+		public:
 			std::string name;
 			int duration;
 	};

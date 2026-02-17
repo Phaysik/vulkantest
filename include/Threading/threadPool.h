@@ -13,12 +13,11 @@
 #include <condition_variable>
 #include <functional>
 #include <future>
+#include <latch>
 #include <mutex>
 #include <queue>
 #include <thread>
 #include <vector>
-
-#include "latch.h"
 
 namespace Dimensia::Threading
 {
@@ -42,7 +41,7 @@ namespace Dimensia::Threading
 				return result;
 			}
 
-			void submit_with_latch(std::function<void()> task, Latch &latch) const;
+			void submit_with_latch(std::function<void()> task, std::latch &latch) const;
 
 		private:
 			mutable std::queue<std::function<void()>> tasks;

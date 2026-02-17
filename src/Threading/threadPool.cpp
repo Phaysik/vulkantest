@@ -8,6 +8,8 @@
 
 #include "Threading/threadPool.h"
 
+#include <latch>
+
 namespace Dimensia::Threading
 {
 	ThreadPool::ThreadPool(std::size_t numThreads) : stop(false)
@@ -47,7 +49,7 @@ namespace Dimensia::Threading
 		}
 	}
 
-	void ThreadPool::submit_with_latch(std::function<void()> task, Latch &latch) const
+	void ThreadPool::submit_with_latch(std::function<void()> task, std::latch &latch) const
 	{
 		{
 			std::unique_lock<std::mutex> lock(queueMutex);

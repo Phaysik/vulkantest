@@ -13,6 +13,7 @@ namespace Dimensia::Tags
 {
 	struct BuffedTag
 	{
+		public:
 			static constexpr bool is_tag = true;
 	};
 } // namespace Dimensia::Tags

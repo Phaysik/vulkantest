@@ -15,6 +15,7 @@ namespace Dimensia::Components
 {
 	struct Name
 	{
+		public:
 			std::string name;
 	};
 } // namespace Dimensia::Components
