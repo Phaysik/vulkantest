@@ -12,23 +12,25 @@
 
 namespace Dimensia::Threading
 {
-	ThreadPool::ThreadPool(std::size_t numThreads) : stop(false)
+	// MARK: Constructor and Destructor
+
+	ThreadPool::ThreadPool(const std::size_t numThreads) : mStop(false)
 	{
 		for (std::size_t i = 0; i < numThreads; ++i)
 		{
-			workers.emplace_back([this] {
+			mWorkers.emplace_back([this] {
 				while (true)
 				{
 					std::function<void()> task;
 					{
-						std::unique_lock<std::mutex> lock(queueMutex);
-						condition.wait(lock, [this] { return stop || !tasks.empty(); });
-						if (stop && tasks.empty())
+						std::unique_lock<std::mutex> lock(mQueueMutex);
+						mCondition.wait(lock, [this] { return mStop || !mTasks.empty(); });
+						if (mStop && mTasks.empty())
 						{
 							return;
 						}
-						task = std::move(tasks.front());
-						tasks.pop();
+						task = std::move(mTasks.front());
+						mTasks.pop();
 					}
 					task();
 				}
@@ -39,25 +41,30 @@ namespace Dimensia::Threading
 	ThreadPool::~ThreadPool()
 	{
 		{
-			std::unique_lock<std::mutex> lock(queueMutex);
-			stop = true;
+			const std::unique_lock<std::mutex> lock(mQueueMutex);
+			mStop = true;
 		}
-		condition.notify_all();
-		for (auto &w : workers)
+
+		mCondition.notify_all();
+
+		for (std::thread &worker : mWorkers)
 		{
-			w.join();
+			worker.join();
 		}
 	}
 
-	void ThreadPool::submit_with_latch(std::function<void()> task, std::latch &latch) const
+	// MARK: Member Function
+
+	void ThreadPool::submit_with_latch(std::function<void()> &&task, std::latch &latch) const
 	{
 		{
-			std::unique_lock<std::mutex> lock(queueMutex);
-			tasks.emplace([task = std::move(task), &latch]() {
+			const std::unique_lock<std::mutex> lock(mQueueMutex);
+
+			mTasks.emplace([task = std::move(task), &latch]() {
 				task();
 				latch.count_down();
 			});
 		}
-		condition.notify_one();
+		mCondition.notify_one();
 	}
 } // namespace Dimensia::Threading

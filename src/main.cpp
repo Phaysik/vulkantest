@@ -25,9 +25,11 @@ int main()
 	using Dimensia::ECS::ExecutionPolicy;
 	using Dimensia::ECS::SystemVersion;
 
-	// std::cout << alignof(std::atomic<Dimensia::Core::si>) << '\n';
+	// std::cout << alignof(std::queue<void()>) << '\n';
 	// std::cout << alignof(std::mutex) << '\n';
 	// std::cout << alignof(std::condition_variable) << '\n';
+	// std::cout << alignof(std::vector<std::thread>) << '\n';
+	// std::cout << alignof(std::atomic<bool>) << '\n';
 
 	ECS ecs;
 

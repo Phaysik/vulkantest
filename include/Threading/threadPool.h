@@ -24,31 +24,45 @@ namespace Dimensia::Threading
 	class ThreadPool
 	{
 		public:
-			explicit ThreadPool(std::size_t numThreads = std::thread::hardware_concurrency());
+			// MARK: Constructors, Destructor, and Assignment Operators
+
+			explicit ThreadPool(const std::size_t numThreads = std::thread::hardware_concurrency());
+
+			ThreadPool(const ThreadPool &other) = delete;
+			ThreadPool(ThreadPool &&other) noexcept = delete;
+			ThreadPool &operator=(const ThreadPool &other) = delete;
+			ThreadPool &operator=(ThreadPool &&other) noexcept = delete;
+
 			~ThreadPool();
 
+			// MARK: Member Function
+
+			void submit_with_latch(std::function<void()> &&task, std::latch &latch) const;
+
+			// MARK: Template Member Function
+
 			template <typename F>
-			auto submit(F &&f) const -> std::future<decltype(f())>
+			std::future<std::invoke_result_t<F>> submit(F &&func) const
 			{
-				using return_type = decltype(f());
-				auto task = std::make_shared<std::packaged_task<return_type()>>(std::forward<F>(f));
+				using return_type = std::invoke_result_t<F>;
+				auto task{std::make_shared<std::packaged_task<return_type()>>(std::forward<F>(func))};
+
 				std::future<return_type> result = task->get_future();
 				{
-					std::unique_lock<std::mutex> lock(queueMutex);
-					tasks.emplace([task]() { (*task)(); });
+					const std::unique_lock<std::mutex> lock(mQueueMutex);
+					mTasks.emplace([task]() { (*task)(); });
 				}
-				condition.notify_one();
+
+				mCondition.notify_one();
 				return result;
 			}
 
-			void submit_with_latch(std::function<void()> task, std::latch &latch) const;
-
 		private:
-			mutable std::queue<std::function<void()>> tasks;
-			mutable std::mutex queueMutex;
-			mutable std::condition_variable condition;
-			std::vector<std::thread> workers;
-			std::atomic<bool> stop;
+			mutable std::queue<std::function<void()>> mTasks;
+			mutable std::mutex mQueueMutex;
+			mutable std::condition_variable mCondition;
+			std::vector<std::thread> mWorkers;
+			std::atomic<bool> mStop;
 	};
 } // namespace Dimensia::Threading
 #endif

@@ -123,9 +123,9 @@ namespace Dimensia::ECS
 			}
 
 		private:
-			CmdType mType{};
 			std::variant<AddData, RemoveData, SetParentData> mData;
 			Entity mEntity{};
+			CmdType mType{};
 	};
 } // namespace Dimensia::ECS
 
