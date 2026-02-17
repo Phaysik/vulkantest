@@ -117,6 +117,13 @@ int main()
 	auto children = ecs.getChildren(parent);
 	std::cout << "Parent's children count: " << children.size() << "\n";
 
+	// --- Hierarchical destruction with children ---
+	std::cout << "\n--- Destroy parent with children ---\n";
+	// ecs.destroyEntity(parent, true); // destroy parent and child
+	ecs.destroyEntity(parent); // destroy parent and child
+	std::cout << "Parent alive: " << ecs.alive(parent) << "\n";
+	std::cout << "Child alive: " << ecs.alive(child) << "\n";
+
 	// --- Command buffer example ---
 	std::cout << "\n--- Command buffer example ---\n";
 	CommandBuffer cmds;
@@ -125,13 +132,6 @@ int main()
 	});
 	cmds.apply(ecs);
 	std::cout << "Goblin HP after command buffer: " << ecs.getComponent<Health>(goblin)->hp << "\n";
-
-	// --- Hierarchical destruction with children ---
-	std::cout << "\n--- Destroy parent with children ---\n";
-	// ecs.destroyEntity(parent, true); // destroy parent and child
-	ecs.destroyEntity(parent); // destroy parent and child
-	std::cout << "Parent alive: " << ecs.alive(parent) << "\n";
-	std::cout << "Child alive: " << ecs.alive(child) << "\n";
 
 	ecs.compact();
 

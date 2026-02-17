@@ -289,7 +289,7 @@ namespace Dimensia::ECS
 	ATTR_NODISCARD ComponentMask Archetype::getTags(ui chunkIdx, ui slotIdx) const
 	{
 		const ul *tagBits = getTagBitset(chunks_[chunkIdx].get());
-		return ComponentMask(tagBits[slotIdx], 0);
+		return {tagBits[slotIdx], 0};
 	}
 
 	void Archetype::compact(std::vector<EntityRecord> &globalRecords)

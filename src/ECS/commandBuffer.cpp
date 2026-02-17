@@ -10,24 +10,81 @@
 
 #include <cassert>
 
+#include "Core/attributeMacros.h"
 #include "ECS/ecs.h"
 
 namespace Dimensia::ECS
 {
+	// MARK: Public Member Functions
 
-	void CommandBuffer::setParent(Entity child, Entity parent)
+	void CommandBuffer::setParent(const Entity &child, const Entity &parent)
 	{
-		auto buf = getThreadBuffer();
+		ThreadBuffer *buf{getThreadBuffer()};
 		buf->commands.push_back(Command::makeSetParent(child, parent));
 	}
 
-	void CommandBuffer::destroy(Entity entity)
+	void CommandBuffer::destroy(const Entity &entity)
 	{
-		auto buf = getThreadBuffer();
+		ThreadBuffer *buf{getThreadBuffer()};
 		buf->commands.push_back(Command::makeDestroy(entity));
 	}
 
-	CommandBuffer::ThreadBuffer *CommandBuffer::getThreadBuffer()
+	void CommandBuffer::apply(ECS &ecs)
+	{
+		std::vector<std::unique_ptr<ThreadBuffer>> local_buffers;
+		{
+			const std::scoped_lock<std::mutex> lock(mMapMutex);
+			for (auto &[threadID, buf] : mBuffers)
+			{
+				local_buffers.push_back(std::move(buf));
+			}
+			mBuffers.clear();
+		}
+
+		for (auto &buf : local_buffers)
+		{
+			for (auto &cmd : buf->commands)
+			{
+				switch (cmd.getType())
+				{
+					case CmdType::AddComponent:
+						{
+							auto &addData = std::get<AddData>(cmd.getData());
+							dispatchAdd(ecs, cmd.getEntity(), addData.compId, addData.buffer.data());
+							cmd.destroyBuffer();
+							break;
+						}
+					case CmdType::RemoveComponent:
+						{
+							const auto &removeData = std::get<RemoveData>(cmd.getData());
+							dispatchRemove(ecs, cmd.getEntity(), removeData.compId);
+							break;
+						}
+					case CmdType::Destroy:
+						ecs.destroyEntity(cmd.getEntity());
+						break;
+					case CmdType::SetParent:
+						{
+							const auto &setParentData = std::get<SetParentData>(cmd.getData());
+							ecs.setParent(cmd.getEntity(), setParentData.parent);
+							break;
+						}
+					default:
+						break;
+				}
+			}
+		}
+	}
+
+	void CommandBuffer::clear()
+	{
+		const std::scoped_lock<std::mutex> lock(mMapMutex);
+		mBuffers.clear();
+	}
+
+	// MARK: Private Member Functions
+
+	ThreadBuffer *CommandBuffer::getThreadBuffer()
 	{
 		thread_local ThreadBuffer *tls = nullptr;
 		if (tls != nullptr)
@@ -36,8 +93,8 @@ namespace Dimensia::ECS
 		}
 
 		// slow path once per thread
-		const std::scoped_lock lock(map_mutex_);
-		auto &slot = buffers_[std::this_thread::get_id()];
+		const std::scoped_lock lock(mMapMutex);
+		auto &slot = mBuffers[std::this_thread::get_id()];
 		if (!slot)
 		{
 			slot = std::make_unique<ThreadBuffer>();
@@ -46,82 +103,33 @@ namespace Dimensia::ECS
 		return tls;
 	}
 
-	void CommandBuffer::Command::destroyBuffer()
-	{
-		if (type == CmdType::AddComponent)
-		{
-			ComponentInfos[data.add.compId].destructor(data.add.buffer);
-		}
-	}
-
-	void CommandBuffer::clear()
-	{
-		const std::scoped_lock<std::mutex> lock(map_mutex_);
-		buffers_.clear();
-	}
-
 	template <typename... Ts>
-	void CommandBuffer::dispatchAddImpl(ECS &ecs, Entity e, ComponentTypeID id, void *buffer, std::tuple<Ts...>)
+	void CommandBuffer::dispatchAddImpl(ECS &ecs, const Entity &entity, const ComponentTypeID componentTypeID, std::byte *buffer,
+										std::tuple<Ts...> /* componentTypes */)
 	{
-		bool handled = false;
+		ATTR_MAYBE_UNUSED bool handled{false};
 		(
 			[&] {
-				if (componentId<Ts>() == id)
+				if (componentId<Ts>() == componentTypeID)
 				{
-					Ts &value = *reinterpret_cast<Ts *>(buffer);
-					ecs.addComponent(e, std::move(value));
+					// NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+					Ts &value = *std::launder(reinterpret_cast<Ts *>(buffer));
+					ecs.addComponent(entity, std::move(value));
 					handled = true;
 				}
 			}(),
 			...);
+
 		assert(handled && "Unknown component ID in CommandBuffer::apply");
 	}
 
-	void CommandBuffer::dispatchAdd(ECS &ecs, Entity e, ComponentTypeID id, void *buffer)
+	void CommandBuffer::dispatchAdd(ECS &ecs, const Entity &entity, const ComponentTypeID componentTypeID, std::byte *buffer)
 	{
-		dispatchAddImpl(ecs, e, id, buffer, Registry::ComponentTypes{});
+		dispatchAddImpl(ecs, entity, componentTypeID, buffer, Registry::ComponentTypes{});
 	}
 
-	void CommandBuffer::dispatchRemove(ECS &ecs, Entity e, ComponentTypeID id)
+	void CommandBuffer::dispatchRemove(ECS &ecs, const Entity &entity, const ComponentTypeID componentTypeID)
 	{
-		ecs.removeComponent(e, id);
-	}
-
-	void CommandBuffer::apply(ECS &ecs)
-	{
-		std::vector<std::unique_ptr<ThreadBuffer>> local_buffers;
-		{
-			const std::scoped_lock<std::mutex> lock(map_mutex_);
-			for (auto &[_, buf] : buffers_)
-			{
-				local_buffers.push_back(std::move(buf));
-			}
-			buffers_.clear();
-		}
-
-		for (auto &buf : local_buffers)
-		{
-			for (auto &cmd : buf->commands)
-			{
-				switch (cmd.type)
-				{
-					case CmdType::AddComponent:
-						dispatchAdd(ecs, cmd.entity, cmd.data.add.compId, cmd.data.add.buffer);
-						cmd.destroyBuffer();
-						break;
-					case CmdType::RemoveComponent:
-						dispatchRemove(ecs, cmd.entity, cmd.data.remove.compId);
-						break;
-					case CmdType::Destroy:
-						ecs.destroyEntity(cmd.entity);
-						break;
-					case CmdType::SetParent:
-						ecs.setParent(cmd.entity, cmd.data.setParent.parent);
-						break;
-					default:
-						break;
-				}
-			}
-		}
+		ecs.removeComponent(entity, componentTypeID);
 	}
 } // namespace Dimensia::ECS
