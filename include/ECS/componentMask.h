@@ -9,120 +9,142 @@
 #ifndef INCLUDE_ECS_COMPONENTMASK_H
 #define INCLUDE_ECS_COMPONENTMASK_H
 
-#include <cstdint>
 #include <functional>
+
+#include "Core/typedefs.h"
+
+#include "constants.h"
 
 namespace Dimensia::ECS
 {
+
+	using Dimensia::Core::ul;
+
 	struct ComponentMask
 	{
-			uint64_t low;
-			uint64_t high;
+			// MARK: Constructors
 
-			constexpr ComponentMask() : low(0), high(0) {}
+			explicit constexpr ComponentMask(const ul low) noexcept : mLow(low) {}
 
-			constexpr ComponentMask(uint64_t l) : low(l), high(0) {}
+			constexpr ComponentMask(const ul low, const ul high) noexcept : mLow(low), mHigh(high) {}
 
-			constexpr ComponentMask(uint64_t l, uint64_t h) : low(l), high(h) {}
+			// MARK: Bitwise Operator Overloads
 
-			// All operators now defined inline in the header
-			constexpr ComponentMask operator&(const ComponentMask &other) const
+			constexpr ComponentMask operator&(const ComponentMask &other) const noexcept
 			{
-				return {low & other.low, high & other.high};
+				return {mLow & other.mLow, mHigh & other.mHigh};
 			}
 
-			constexpr ComponentMask operator|(const ComponentMask &other) const
+			constexpr ComponentMask operator|(const ComponentMask &other) const noexcept
 			{
-				return {low | other.low, high | other.high};
+				return {mLow | other.mLow, mHigh | other.mHigh};
 			}
 
-			constexpr ComponentMask operator^(const ComponentMask &other) const
+			constexpr ComponentMask operator^(const ComponentMask &other) const noexcept
 			{
-				return {low ^ other.low, high ^ other.high};
+				return {mLow ^ other.mLow, mHigh ^ other.mHigh};
 			}
 
-			constexpr ComponentMask operator~() const
+			constexpr ComponentMask operator~() const noexcept
 			{
-				return {~low, ~high};
+				return {~mLow, ~mHigh};
 			}
 
-			constexpr ComponentMask operator<<(int shift) const
+			constexpr ComponentMask operator<<(const ul shift) const noexcept
 			{
-				if (shift < 64)
+				if (shift == 0)
 				{
-					return {low << shift, (high << shift) | (low >> (64 - shift))};
+					return *this;
 				}
-				else if (shift < 128)
+
+				if (shift < LOWER_HALF_BIT_MASK)
 				{
-					return {0, low << (shift - 64)};
+					return {mLow << shift, (mHigh << shift) | (mLow >> (LOWER_HALF_BIT_MASK - shift))};
 				}
-				else
+
+				if (shift < UPPER_HALF_BIT_MASK)
 				{
-					return {0, 0};
+					return {0, mLow << (shift - LOWER_HALF_BIT_MASK)};
 				}
+
+				return {0, 0};
 			}
 
-			constexpr ComponentMask operator>>(int shift) const
+			constexpr ComponentMask operator>>(const ul shift) const noexcept
 			{
-				if (shift < 64)
+				if (shift == 0)
 				{
-					return {(low >> shift) | (high << (64 - shift)), high >> shift};
+					return *this;
 				}
-				else if (shift < 128)
+
+				if (shift < LOWER_HALF_BIT_MASK)
 				{
-					return {high >> (shift - 64), 0};
+					return {(mLow >> shift) | (mHigh << (LOWER_HALF_BIT_MASK - shift)), mHigh >> shift};
 				}
-				else
+
+				if (shift < UPPER_HALF_BIT_MASK)
 				{
-					return {0, 0};
+					return {mHigh >> (shift - LOWER_HALF_BIT_MASK), 0};
 				}
+
+				return {0, 0};
 			}
 
-			constexpr ComponentMask &operator&=(const ComponentMask &other)
+			constexpr ComponentMask &operator&=(const ComponentMask &other) noexcept
 			{
-				low &= other.low;
-				high &= other.high;
+				mLow &= other.mLow;
+				mHigh &= other.mHigh;
 				return *this;
 			}
 
-			constexpr ComponentMask &operator|=(const ComponentMask &other)
+			constexpr ComponentMask &operator|=(const ComponentMask &other) noexcept
 			{
-				low |= other.low;
-				high |= other.high;
+				mLow |= other.mLow;
+				mHigh |= other.mHigh;
 				return *this;
 			}
 
-			constexpr ComponentMask &operator^=(const ComponentMask &other)
+			constexpr ComponentMask &operator^=(const ComponentMask &other) noexcept
 			{
-				low ^= other.low;
-				high ^= other.high;
+				mLow ^= other.mLow;
+				mHigh ^= other.mHigh;
 				return *this;
 			}
 
-			constexpr bool operator==(const ComponentMask &other) const
+			// MARK: Comparison Operator Overloads
+
+			constexpr bool operator==(const ComponentMask &other) const noexcept
 			{
-				return low == other.low && high == other.high;
+				return mLow == other.mLow && mHigh == other.mHigh;
 			}
 
-			constexpr bool operator!=(const ComponentMask &other) const
+			constexpr bool operator!=(const ComponentMask &other) const noexcept
 			{
-				return low != other.low || high != other.high;
+				return mLow != other.mLow || mHigh != other.mHigh;
 			}
 
-			constexpr explicit operator bool() const
+			// MARK: Conversion Operator Overload
+
+			constexpr explicit operator bool() const noexcept
 			{
-				return low != 0 || high != 0;
+				return mLow != 0 || mHigh != 0;
 			}
+
+			// NOLINTBEGIN(misc-non-private-member-variables-in-classes)
+
+			ul mLow{};
+			ul mHigh{};
+
+			// NOLINTEND(misc-non-private-member-variables-in-classes)
 	};
 } // namespace Dimensia::ECS
 
 namespace std
 {
-
 	template <>
 	struct hash<Dimensia::ECS::ComponentMask>
 	{
-			size_t operator()(const Dimensia::ECS::ComponentMask &m) const noexcept;
+			size_t operator()(const Dimensia::ECS::ComponentMask &componentMask) const noexcept;
 	};
 } // namespace std
 

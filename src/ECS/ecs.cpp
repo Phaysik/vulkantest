@@ -54,7 +54,7 @@ namespace Dimensia::ECS
 		auto [chunk, slot] = emptyArch->addEntity(e, noCopy, noMove, ComponentMask(0));
 		records_[idx] = {gen, emptyArch->getId(), chunk, slot};
 
-		std::lock_guard<std::mutex> lock(hierarchyMutex_);
+		const std::scoped_lock<std::mutex> lock(hierarchyMutex_);
 		if (parent_.size() <= idx)
 		{
 			parent_.resize(idx + 1, NULL_ENTITY);
@@ -75,7 +75,7 @@ namespace Dimensia::ECS
 		}
 
 		{
-			std::lock_guard<std::mutex> lock(hierarchyMutex_);
+			const std::scoped_lock<std::mutex> lock(hierarchyMutex_);
 			if (entity.index < parent_.size() && parent_[entity.index] != NULL_ENTITY)
 			{
 				Entity parent = parent_[entity.index];
@@ -111,7 +111,7 @@ namespace Dimensia::ECS
 	{
 		std::vector<Entity> childrenCopy;
 		{
-			std::lock_guard<std::mutex> lock(hierarchyMutex_);
+			const std::scoped_lock<std::mutex> lock(hierarchyMutex_);
 			if (entity.index < children_.size())
 			{
 				childrenCopy = children_[entity.index];
@@ -152,11 +152,11 @@ namespace Dimensia::ECS
 		bool hasComp;
 		if (compId < 64)
 		{
-			hasComp = (mask.low & (uint64_t(1) << compId)) != 0;
+			hasComp = (mask.mLow & (uint64_t(1) << compId)) != 0;
 		}
 		else
 		{
-			hasComp = (mask.high & (uint64_t(1) << (compId - 64))) != 0;
+			hasComp = (mask.mHigh & (uint64_t(1) << (compId - 64))) != 0;
 		}
 		if (!hasComp)
 		{
@@ -167,7 +167,7 @@ namespace Dimensia::ECS
 		{
 			return nullptr;
 		}
-		size_t size = ComponentInfos[compId].size;
+		std::size_t size = ComponentInfos[compId].size;
 		return static_cast<std::byte *>(arr) + rec.slotIndex * size;
 	}
 
@@ -184,11 +184,11 @@ namespace Dimensia::ECS
 		bool hasComp;
 		if (compId < 64)
 		{
-			hasComp = (mask.low & (uint64_t(1) << compId)) != 0;
+			hasComp = (mask.mLow & (uint64_t(1) << compId)) != 0;
 		}
 		else
 		{
-			hasComp = (mask.high & (uint64_t(1) << (compId - 64))) != 0;
+			hasComp = (mask.mHigh & (uint64_t(1) << (compId - 64))) != 0;
 		}
 		if (!hasComp)
 		{
@@ -199,7 +199,7 @@ namespace Dimensia::ECS
 		{
 			return nullptr;
 		}
-		size_t size = ComponentInfos[compId].size;
+		std::size_t size = ComponentInfos[compId].size;
 		return static_cast<const std::byte *>(arr) + rec.slotIndex * size;
 	}
 
@@ -222,11 +222,11 @@ namespace Dimensia::ECS
 		bool present;
 		if (compId < 64)
 		{
-			present = (oldRegular.low & (uint64_t(1) << compId)) != 0;
+			present = (oldRegular.mLow & (uint64_t(1) << compId)) != 0;
 		}
 		else
 		{
-			present = (oldRegular.high & (uint64_t(1) << (compId - 64))) != 0;
+			present = (oldRegular.mHigh & (uint64_t(1) << (compId - 64))) != 0;
 		}
 		if (!present)
 		{
@@ -236,11 +236,11 @@ namespace Dimensia::ECS
 		ComponentMask newRegular = oldRegular;
 		if (compId < 64)
 		{
-			newRegular.low &= ~(uint64_t(1) << compId);
+			newRegular.mLow &= ~(uint64_t(1) << compId);
 		}
 		else
 		{
-			newRegular.high &= ~(uint64_t(1) << (compId - 64));
+			newRegular.mHigh &= ~(uint64_t(1) << (compId - 64));
 		}
 
 		std::array<const void *, MAX_COMPONENTS> copyData{};
@@ -280,22 +280,22 @@ namespace Dimensia::ECS
 			{
 				if (id < 64)
 				{
-					moveOverrideMask.low |= (uint64_t(1) << id);
+					moveOverrideMask.mLow |= (uint64_t(1) << id);
 				}
 				else
 				{
-					moveOverrideMask.high |= (uint64_t(1) << (id - 64));
+					moveOverrideMask.mHigh |= (uint64_t(1) << (id - 64));
 				}
 			}
 			else if (copyData[id] != nullptr)
 			{
 				if (id < 64)
 				{
-					copyOverrideMask.low |= (uint64_t(1) << id);
+					copyOverrideMask.mLow |= (uint64_t(1) << id);
 				}
 				else
 				{
-					copyOverrideMask.high |= (uint64_t(1) << (id - 64));
+					copyOverrideMask.mHigh |= (uint64_t(1) << (id - 64));
 				}
 			}
 		}
@@ -337,7 +337,7 @@ namespace Dimensia::ECS
 			return;
 		}
 
-		std::lock_guard<std::mutex> lock(hierarchyMutex_);
+		const std::scoped_lock<std::mutex> lock(hierarchyMutex_);
 		uint32_t maxIdx = std::max(child.index, parent.index);
 		if (parent_.size() <= maxIdx)
 		{
@@ -369,7 +369,7 @@ namespace Dimensia::ECS
 
 	std::vector<Entity> ECS::getChildren(Entity parent) const
 	{
-		std::lock_guard<std::mutex> lock(hierarchyMutex_);
+		const std::scoped_lock<std::mutex> lock(hierarchyMutex_);
 		if (parent.index < children_.size())
 		{
 			return children_[parent.index];
@@ -379,7 +379,7 @@ namespace Dimensia::ECS
 
 	Entity ECS::getParent(Entity child) const
 	{
-		std::lock_guard<std::mutex> lock(hierarchyMutex_);
+		const std::scoped_lock<std::mutex> lock(hierarchyMutex_);
 		if (child.index < parent_.size())
 		{
 			return parent_[child.index];

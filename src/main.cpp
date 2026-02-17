@@ -141,7 +141,7 @@ int main()
 	std::cout << "\n=== Stress test: command buffer ===\n";
 
 	// const int NUM_ENTITIES = 10'000;
-	const int NUM_ENTITIES = 10'000;
+	const int NUM_ENTITIES = 1'000'000;
 	std::vector<Entity> entities;
 	entities.reserve(NUM_ENTITIES);
 
@@ -180,9 +180,9 @@ int main()
 				if (eID != 0)
 				{
 					const int parentIdx = eID / 2;
-					if (parentIdx < NUM_ENTITIES && ecs.alive(entities.at(static_cast<size_t>(parentIdx))))
+					if (parentIdx < NUM_ENTITIES && ecs.alive(entities.at(static_cast<std::size_t>(parentIdx))))
 					{
-						stressCmds.setParent(entity, entities.at(static_cast<size_t>(parentIdx)));
+						stressCmds.setParent(entity, entities.at(static_cast<std::size_t>(parentIdx)));
 					}
 				}
 				break;
@@ -244,7 +244,7 @@ int main()
 	std::cout << "\n--- Results ---\n";
 	std::cout << "Alive      : " << aliveCount << " (expected ~" << expectedAlive << ")\n";
 	std::cout << "Health     : " << healthCount << " (expected ~" << expectedHealth << ")\n";
-	std::cout << "Name    : " << nameCount << " (expected ~" << expectedName << ")\n";
+	std::cout << "Name       : " << nameCount << " (expected ~" << expectedName << ")\n";
 	std::cout << "Has parent : " << parentCount << " (expected ~" << expectedParent << ")\n";
 
 	// Cleanup remaining entities

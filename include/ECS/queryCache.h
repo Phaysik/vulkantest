@@ -22,14 +22,19 @@ namespace Dimensia::ECS
 	class QueryCache
 	{
 		public:
-			void addArchetype(ComponentMask regularMask, Archetype *arch);
-			void removeArchetype(Archetype *arch);
-			const std::vector<Archetype *> &get(ComponentMask requiredMask) const;
-			void clear();
+			// MARK: Member Functions
+
+			void addArchetype(const ComponentMask &regularMask, Archetype *arch);
+
+			void removeArchetype(const Archetype *arch);
+
+			const std::vector<Archetype *> &get(const ComponentMask &requiredMask) const;
+
+			void clearResults();
 
 		private:
-			std::vector<std::pair<ComponentMask, Archetype *>> archetypes_;
-			mutable std::unordered_map<ComponentMask, std::vector<Archetype *>> results_;
+			std::vector<std::pair<ComponentMask, Archetype *>> mArchetypes;
+			mutable std::unordered_map<ComponentMask, std::vector<Archetype *>> mResults;
 	};
 } // namespace Dimensia::ECS
 

@@ -8,45 +8,52 @@
 
 #include "ECS/queryCache.h"
 
-#include <algorithm>
+#include "ECS/componentMask.h"
 
 namespace Dimensia::ECS
 {
-	void QueryCache::addArchetype(ComponentMask regularMask, Archetype *arch)
+	// MARK: Member Functions
+
+	void QueryCache::addArchetype(const ComponentMask &regularMask, Archetype *arch)
 	{
-		archetypes_.emplace_back(regularMask, arch);
-		results_.clear();
+		mArchetypes.emplace_back(regularMask, arch);
+
+		clearResults();
 	}
 
-	void QueryCache::removeArchetype(Archetype *arch)
+	void QueryCache::removeArchetype(const Archetype *arch)
 	{
-		auto it = std::remove_if(archetypes_.begin(), archetypes_.end(), [arch](const auto &p) { return p.second == arch; });
-		archetypes_.erase(it, archetypes_.end());
-		results_.clear();
+		std::erase_if(mArchetypes, [arch](const std::pair<ComponentMask, Archetype *> &pred) { return pred.second == arch; });
+
+		clearResults();
 	}
 
-	const std::vector<Archetype *> &QueryCache::get(ComponentMask requiredMask) const
+	const std::vector<Archetype *> &QueryCache::get(const ComponentMask &requiredMask) const
 	{
-		auto it = results_.find(requiredMask);
-		if (it != results_.end())
+		auto iterator{mResults.find(requiredMask)};
+
+		if (iterator != mResults.end())
 		{
-			return it->second;
+			return iterator->second;
 		}
 
 		std::vector<Archetype *> matching;
-		for (auto &[mask, arch] : archetypes_)
+		matching.reserve(mArchetypes.size());
+
+		for (const auto &[mask, arch] : mArchetypes)
 		{
 			if ((mask & requiredMask) == requiredMask)
 			{
 				matching.push_back(arch);
 			}
 		}
-		auto emplaced = results_.emplace(requiredMask, std::move(matching));
+		auto emplaced{mResults.emplace(requiredMask, std::move(matching))};
+
 		return emplaced.first->second;
 	}
 
-	void QueryCache::clear()
+	void QueryCache::clearResults()
 	{
-		results_.clear();
+		mResults.clear();
 	}
 } // namespace Dimensia::ECS

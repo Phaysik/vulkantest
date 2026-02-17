@@ -10,9 +10,9 @@
 
 namespace Dimensia::Threading
 {
-	ThreadPool::ThreadPool(size_t numThreads) : stop(false)
+	ThreadPool::ThreadPool(std::size_t numThreads) : stop(false)
 	{
-		for (size_t i = 0; i < numThreads; ++i)
+		for (std::size_t i = 0; i < numThreads; ++i)
 		{
 			workers.emplace_back([this] {
 				while (true)

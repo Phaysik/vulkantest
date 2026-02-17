@@ -9,19 +9,21 @@
 #ifndef INCLUDE_ECS_ENTITYRECORD_H
 #define INCLUDE_ECS_ENTITYRECORD_H
 
-#include <cstdint>
+#include "Core/typedefs.h"
 
 namespace Dimensia::ECS
 {
+	using Dimensia::Core::ui;
+
 	// No forward declaration needed – we store an ID instead of a pointer.
-	static constexpr uint32_t INVALID_ARCHETYPE_ID = UINT32_MAX;
+	static constexpr ui INVALID_ARCHETYPE_ID{UINT32_MAX};
 
 	struct EntityRecord
 	{
-			uint32_t generation;
-			uint32_t archetypeId; // ID of the archetype (index into ECS::archetypePtrs_)
-			uint32_t chunkIndex;
-			uint32_t slotIndex;
+			ui generation{};
+			ui archetypeId{}; // ID of the archetype (index into ECS::archetypePtrs_)
+			ui chunkIndex{};
+			ui slotIndex{};
 	};
 } // namespace Dimensia::ECS
 

@@ -10,6 +10,7 @@
 #define INCLUDE_ECS_CHUNKVERSION_H
 
 #include <array>
+#include <cassert>
 #include <compare>
 
 #include "Core/attributeMacros.h"
@@ -26,7 +27,10 @@ namespace Dimensia::ECS
 		public:
 			// MARK: Constructor
 
-			explicit ChunkVersion();
+			explicit constexpr ChunkVersion()
+			{
+				mComponentVersions.fill(0);
+			}
 
 			// MARK: Comparison
 
@@ -34,23 +38,48 @@ namespace Dimensia::ECS
 
 			// MARK: Getters
 
-			ATTR_NODISCARD VersionType getVersion() const noexcept;
+			ATTR_NODISCARD constexpr VersionType getVersion() const noexcept
+			{
+				return mVersion;
+			}
 
-			ATTR_DEPRECATED ATTR_NODISCARD const std::array<VersionType, MAX_COMPONENTS> &getComponentVersions() const noexcept;
+			ATTR_DEPRECATED ATTR_NODISCARD constexpr const std::array<VersionType, MAX_COMPONENTS> &getComponentVersions() const noexcept
+			{
+				return mComponentVersions;
+			}
 
-			ATTR_NODISCARD VersionType getComponentVersion(const ComponentTypeID componentTypeID) const noexcept;
+			ATTR_NODISCARD constexpr VersionType getComponentVersion(const ComponentTypeID componentTypeID) const noexcept
+			{
+				assert(componentTypeID < MAX_COMPONENTS);
+
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				return mComponentVersions[componentTypeID];
+			}
 
 			// MARK: Member Functions
 
-			void bump() noexcept;
+			constexpr void bump() noexcept
+			{
+				++mVersion;
+			}
 
-			void bumpComponent(const ComponentTypeID componentTypeID) noexcept;
+			constexpr void bumpComponent(const ComponentTypeID componentTypeID) noexcept
+			{
+				assert(componentTypeID < MAX_COMPONENTS);
 
-			void reset() noexcept;
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				++mComponentVersions[componentTypeID];
+			}
+
+			constexpr void reset()
+			{
+				mVersion = 1;
+				mComponentVersions.fill(1);
+			}
 
 		private:
-			VersionType mVersion{1};
 			std::array<VersionType, MAX_COMPONENTS> mComponentVersions{};
+			VersionType mVersion{1};
 	};
 } // namespace Dimensia::ECS
 

@@ -8,10 +8,12 @@
 
 #include "ECS/componentMask.h"
 
+#include "Core/typedefs.h"
+
 namespace std
 {
-	size_t hash<Dimensia::ECS::ComponentMask>::operator()(const Dimensia::ECS::ComponentMask &m) const noexcept
+	std::size_t hash<Dimensia::ECS::ComponentMask>::operator()(const Dimensia::ECS::ComponentMask &componentMask) const noexcept
 	{
-		return hash<uint64_t>{}(m.low) ^ (hash<uint64_t>{}(m.high) << 1);
+		return hash<Dimensia::Core::ul>{}(componentMask.mLow) ^ (hash<Dimensia::Core::ul>{}(componentMask.mHigh) << 1U);
 	}
 } // namespace std

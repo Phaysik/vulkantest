@@ -89,15 +89,15 @@ template <typename T, typename Tuple>
 struct tuple_index;
 
 template <typename T, typename... Us>
-struct tuple_index<T, std::tuple<T, Us...>> : std::integral_constant<size_t, 0>
+struct tuple_index<T, std::tuple<T, Us...>> : std::integral_constant<std::size_t, 0>
 {};
 
 template <typename T, typename U, typename... Us>
-struct tuple_index<T, std::tuple<U, Us...>> : std::integral_constant<size_t, 1 + tuple_index<T, std::tuple<Us...>>::value>
+struct tuple_index<T, std::tuple<U, Us...>> : std::integral_constant<std::size_t, 1 + tuple_index<T, std::tuple<Us...>>::value>
 {};
 
 template <typename T>
-constexpr size_t componentId()
+constexpr std::size_t componentId()
 {
 	static_assert(tuple_index<T, ComponentTypes>::value < std::tuple_size_v<ComponentTypes>,
 				  "Component type not found in ComponentTypes list");
@@ -120,8 +120,8 @@ struct always_false : std::false_type
 // -----------------------------------------------------------------------------
 //  Configuration
 // -----------------------------------------------------------------------------
-constexpr size_t CHUNK_SIZE = 16'384;
-constexpr size_t MAX_COMPONENTS = 128;
+constexpr std::size_t CHUNK_SIZE = 16'384;
+constexpr std::size_t MAX_COMPONENTS = 128;
 using ComponentTypeID = uint32_t;
 using VersionType = uint64_t;
 
@@ -257,7 +257,7 @@ namespace std
 	template <>
 	struct hash<ComponentMask>
 	{
-			size_t operator()(const ComponentMask &m) const noexcept
+			std::size_t operator()(const ComponentMask &m) const noexcept
 			{
 				return hash<uint64_t>{}(m.low) ^ (hash<uint64_t>{}(m.high) << 1);
 			}
@@ -348,7 +348,7 @@ class WorkStealingQueue
 			return true;
 		}
 
-		size_t size() const
+		std::size_t size() const
 		{
 			std::unique_lock<std::mutex> lock(mutex);
 			return queue.size();
@@ -363,9 +363,9 @@ class WorkStealingQueue
 class WorkStealingPool
 {
 	public:
-		WorkStealingPool(size_t numThreads = std::thread::hardware_concurrency()) : stop(false), taskCount(0), queues(numThreads)
+		WorkStealingPool(std::size_t numThreads = std::thread::hardware_concurrency()) : stop(false), taskCount(0), queues(numThreads)
 		{
-			for (size_t i = 0; i < numThreads; ++i)
+			for (std::size_t i = 0; i < numThreads; ++i)
 			{
 				workers.emplace_back([this, i] { worker_loop(i); });
 			}
@@ -386,7 +386,8 @@ class WorkStealingPool
 
 		// Submit a batch of chunks
 		template <typename TaskFunc>
-		void submit_chunks(const std::vector<std::pair<Archetype *, uint32_t>> &chunks, TaskFunc &&func, Latch &latch, size_t batchSize = 4)
+		void submit_chunks(const std::vector<std::pair<Archetype *, uint32_t>> &chunks, TaskFunc &&func, Latch &latch,
+						   std::size_t batchSize = 4)
 		{
 			std::vector<std::pair<Archetype *, uint32_t>> batch;
 			batch.reserve(batchSize);
@@ -424,11 +425,11 @@ class WorkStealingPool
 	private:
 		void submit_task(std::function<void()> task)
 		{
-			size_t idx = taskCount++ % queues.size();
+			std::size_t idx = taskCount++ % queues.size();
 			queues[idx].push(std::move(task));
 		}
 
-		void worker_loop(size_t workerId)
+		void worker_loop(std::size_t workerId)
 		{
 			while (!stop)
 			{
@@ -444,9 +445,9 @@ class WorkStealingPool
 					continue;
 				}
 
-				for (size_t i = 1; i < queues.size(); ++i)
+				for (std::size_t i = 1; i < queues.size(); ++i)
 				{
-					size_t victimId = (workerId + i) % queues.size();
+					std::size_t victimId = (workerId + i) % queues.size();
 					if (queues[victimId].try_steal(task))
 					{
 						if (!task)
@@ -468,7 +469,7 @@ class WorkStealingPool
 		std::vector<std::thread> workers;
 		std::vector<WorkStealingQueue> queues;
 		std::atomic<bool> stop;
-		std::atomic<size_t> taskCount;
+		std::atomic<std::size_t> taskCount;
 };
 
 // Execution policy for forEach
@@ -485,8 +486,8 @@ enum class ExecutionPolicy
 // -----------------------------------------------------------------------------
 struct ComponentInfo
 {
-		size_t size;
-		size_t alignment;
+		std::size_t size;
+		std::size_t alignment;
 		void (*destructor)(void *);
 		void (*copyConstruct)(void *dest, const void *src);
 		void (*moveConstruct)(void *dest, void *src);
@@ -526,12 +527,12 @@ struct MaxSizeHelper;
 template <typename... Ts>
 struct MaxSizeHelper<std::tuple<Ts...>>
 {
-		static constexpr size_t size = std::max({sizeof(Ts)...});
-		static constexpr size_t alignment = std::max({alignof(Ts)...});
+		static constexpr std::size_t size = std::max({sizeof(Ts)...});
+		static constexpr std::size_t alignment = std::max({alignof(Ts)...});
 };
 
-constexpr size_t MAX_COMPONENT_SIZE = MaxSizeHelper<ComponentTypes>::size;
-constexpr size_t MAX_COMPONENT_ALIGN = MaxSizeHelper<ComponentTypes>::alignment;
+constexpr std::size_t MAX_COMPONENT_SIZE = MaxSizeHelper<ComponentTypes>::size;
+constexpr std::size_t MAX_COMPONENT_ALIGN = MaxSizeHelper<ComponentTypes>::alignment;
 
 // -----------------------------------------------------------------------------
 //  Entity – generational handle
@@ -704,9 +705,9 @@ class CommandBuffer
 class ThreadPool
 {
 	public:
-		ThreadPool(size_t numThreads = std::thread::hardware_concurrency()) : stop(false)
+		ThreadPool(std::size_t numThreads = std::thread::hardware_concurrency()) : stop(false)
 		{
-			for (size_t i = 0; i < numThreads; ++i)
+			for (std::size_t i = 0; i < numThreads; ++i)
 			{
 				workers.emplace_back([this] {
 					while (true)
@@ -899,10 +900,10 @@ class Archetype
 		std::vector<uint32_t> freeChunks_;
 		uint32_t chunkCapacity_ = 0;
 
-		std::array<size_t, MAX_COMPONENTS> componentOffsets_;
-		std::array<size_t, MAX_COMPONENTS> componentSizes_;
-		size_t entityArrayOffset_ = 0;
-		size_t tagBitsetOffset_ = 0;
+		std::array<std::size_t, MAX_COMPONENTS> componentOffsets_;
+		std::array<std::size_t, MAX_COMPONENTS> componentSizes_;
+		std::size_t entityArrayOffset_ = 0;
+		std::size_t tagBitsetOffset_ = 0;
 		std::vector<ComponentTypeID> sortedRegular_;
 
 		// Per-chunk versions
@@ -960,7 +961,7 @@ Archetype::~Archetype()
 
 uint32_t Archetype::computeCapacity() const
 {
-	size_t perEntity = sizeof(Entity);
+	std::size_t perEntity = sizeof(Entity);
 	for (ComponentTypeID id : sortedRegular_)
 	{
 		perEntity += ComponentInfos[id].size;
@@ -971,7 +972,7 @@ uint32_t Archetype::computeCapacity() const
 	uint32_t cap = static_cast<uint32_t>(CHUNK_SIZE / perEntity) + 1;
 	while (true)
 	{
-		size_t offset = 0;
+		std::size_t offset = 0;
 		offset += cap * sizeof(Entity);
 		offset = (offset + alignof(uint64_t) - 1) & ~(alignof(uint64_t) - 1);
 		offset += cap * sizeof(uint64_t);
@@ -994,7 +995,7 @@ uint32_t Archetype::computeCapacity() const
 
 void Archetype::computeLayout(uint32_t capacity)
 {
-	size_t offset = 0;
+	std::size_t offset = 0;
 	entityArrayOffset_ = offset;
 	offset += capacity * sizeof(Entity);
 
@@ -1065,8 +1066,8 @@ std::pair<uint32_t, uint32_t> Archetype::addEntity(Entity entity, const std::arr
 
 	for (ComponentTypeID id : sortedRegular_)
 	{
-		size_t offset = componentOffsets_[id];
-		size_t size = componentSizes_[id];
+		std::size_t offset = componentOffsets_[id];
+		std::size_t size = componentSizes_[id];
 		void *dest = chunk->buffer + offset + slot * size;
 
 		const auto &info = ComponentInfos[id];
@@ -1101,8 +1102,8 @@ std::pair<Entity, uint32_t> Archetype::removeEntity(uint32_t chunkIdx, uint32_t 
 
 	for (ComponentTypeID id : sortedRegular_)
 	{
-		size_t offset = componentOffsets_[id];
-		size_t size = componentSizes_[id];
+		std::size_t offset = componentOffsets_[id];
+		std::size_t size = componentSizes_[id];
 		void *ptr = chunk->buffer + offset + slotIdx * size;
 		ComponentInfos[id].destructor(ptr);
 	}
@@ -1116,16 +1117,16 @@ std::pair<Entity, uint32_t> Archetype::removeEntity(uint32_t chunkIdx, uint32_t 
 
 		for (ComponentTypeID id : sortedRegular_)
 		{
-			size_t offset = componentOffsets_[id];
-			size_t size = componentSizes_[id];
+			std::size_t offset = componentOffsets_[id];
+			std::size_t size = componentSizes_[id];
 			void *dest = chunk->buffer + offset + slotIdx * size;
 			void *src = chunk->buffer + offset + lastSlot * size;
 			ComponentInfos[id].moveConstruct(dest, src);
 		}
 		for (ComponentTypeID id : sortedRegular_)
 		{
-			size_t offset = componentOffsets_[id];
-			size_t size = componentSizes_[id];
+			std::size_t offset = componentOffsets_[id];
+			std::size_t size = componentSizes_[id];
 			void *ptr = chunk->buffer + offset + lastSlot * size;
 			ComponentInfos[id].destructor(ptr);
 		}
@@ -1186,7 +1187,7 @@ ComponentMask Archetype::getTags(uint32_t chunkIdx, uint32_t slotIdx) const
 
 void Archetype::compact(std::vector<EntityRecord> &globalRecords)
 {
-	size_t newSize = chunkCapacity_ == 0 ? 0 : (chunks_.size() - freeChunks_.size());
+	std::size_t newSize = chunkCapacity_ == 0 ? 0 : (chunks_.size() - freeChunks_.size());
 	if (freeChunks_.empty() && chunks_.size() == newSize)
 	{
 		return;
@@ -1618,7 +1619,7 @@ void *ECS::getComponentPtr(Entity entity, ComponentTypeID compId)
 	{
 		return nullptr;
 	}
-	size_t size = ComponentInfos[compId].size;
+	std::size_t size = ComponentInfos[compId].size;
 	return static_cast<std::byte *>(arr) + rec.slotIndex * size;
 }
 
@@ -1649,7 +1650,7 @@ const void *ECS::getComponentPtr(Entity entity, ComponentTypeID compId) const
 	{
 		return nullptr;
 	}
-	size_t size = ComponentInfos[compId].size;
+	std::size_t size = ComponentInfos[compId].size;
 	return static_cast<const std::byte *>(arr) + rec.slotIndex * size;
 }
 
@@ -2012,7 +2013,7 @@ void process_chunk_entities(EntityArr *entityArr, CompArrays &compArrays, uint32
 
 		bool tagsOk = true;
 		ComponentMask entityTags = arch->getTags(chunkIdx, s);
-		size_t i = 0;
+		std::size_t i = 0;
 		((tagsOk = tagsOk && (!is_tag_component<Components>::value || (entityTags.low & (uint64_t(1) << componentId<Components>()))), ++i),
 		 ...);
 		if (!tagsOk)
@@ -2020,7 +2021,7 @@ void process_chunk_entities(EntityArr *entityArr, CompArrays &compArrays, uint32
 			continue;
 		}
 
-		[&]<size_t... Is>(std::index_sequence<Is...>) {
+		[&]<std::size_t... Is>(std::index_sequence<Is...>) {
 			func(e, ([&]() -> std::conditional_t<is_tag_component<Components>::value,
 												 Components,	 // by value
 												 Components &> { // by reference
@@ -2049,7 +2050,7 @@ void process_chunk_entities_const(const EntityArr *entityArr, const CompArrays &
 
 		bool tagsOk = true;
 		ComponentMask entityTags = arch->getTags(chunkIdx, s);
-		size_t i = 0;
+		std::size_t i = 0;
 		((tagsOk = tagsOk && (!is_tag_component<Components>::value || (entityTags.low & (uint64_t(1) << componentId<Components>()))), ++i),
 		 ...);
 		if (!tagsOk)
@@ -2057,7 +2058,7 @@ void process_chunk_entities_const(const EntityArr *entityArr, const CompArrays &
 			continue;
 		}
 
-		[&]<size_t... Is>(std::index_sequence<Is...>) {
+		[&]<std::size_t... Is>(std::index_sequence<Is...>) {
 			func(e, ([&]() -> std::conditional_t<is_tag_component<Components>::value, Components, const Components &> {
 					 if constexpr (is_tag_component<Components>::value)
 					 {
@@ -2170,11 +2171,11 @@ void ECS::forEach(ExecutionPolicy policy, Func &&func)
 		}
 
 		Latch latch(static_cast<int>((allChunks.size() + 3) / 4)); // Batch size 4
-		const size_t batchSize = 4;
+		const std::size_t batchSize = 4;
 
-		for (size_t i = 0; i < allChunks.size(); i += batchSize)
+		for (std::size_t i = 0; i < allChunks.size(); i += batchSize)
 		{
-			size_t end = std::min(i + batchSize, allChunks.size());
+			std::size_t end = std::min(i + batchSize, allChunks.size());
 			std::vector<std::pair<Archetype *, uint32_t>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
 																allChunks.begin() + static_cast<std::ptrdiff_t>(end));
 
@@ -2303,11 +2304,11 @@ void ECS::forEach(ExecutionPolicy policy, Func &&func) const
 		}
 
 		Latch latch(static_cast<int>((allChunks.size() + 3) / 4));
-		const size_t batchSize = 4;
+		const std::size_t batchSize = 4;
 
-		for (size_t i = 0; i < allChunks.size(); i += batchSize)
+		for (std::size_t i = 0; i < allChunks.size(); i += batchSize)
 		{
-			size_t end = std::min(i + batchSize, allChunks.size());
+			std::size_t end = std::min(i + batchSize, allChunks.size());
 			std::vector<std::pair<Archetype *, uint32_t>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
 																allChunks.begin() + static_cast<std::ptrdiff_t>(end));
 
@@ -2457,11 +2458,11 @@ void ECS::forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
 		}
 
 		Latch latch(static_cast<int>((chunks.size() + 3) / 4));
-		const size_t batchSize = 4;
+		const std::size_t batchSize = 4;
 
-		for (size_t i = 0; i < chunks.size(); i += batchSize)
+		for (std::size_t i = 0; i < chunks.size(); i += batchSize)
 		{
-			size_t end = std::min(i + batchSize, chunks.size());
+			std::size_t end = std::min(i + batchSize, chunks.size());
 			std::vector<std::pair<Archetype *, uint32_t>> batch(chunks.begin() + static_cast<std::ptrdiff_t>(i),
 																chunks.begin() + static_cast<std::ptrdiff_t>(end));
 
@@ -2644,11 +2645,11 @@ void ECS::forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
 		}
 
 		Latch latch(static_cast<int>((allChunks.size() + 3) / 4));
-		const size_t batchSize = 4;
+		const std::size_t batchSize = 4;
 
-		for (size_t i = 0; i < allChunks.size(); i += batchSize)
+		for (std::size_t i = 0; i < allChunks.size(); i += batchSize)
 		{
-			size_t end = std::min(i + batchSize, allChunks.size());
+			std::size_t end = std::min(i + batchSize, allChunks.size());
 			std::vector<std::pair<Archetype *, uint32_t>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
 																allChunks.begin() + static_cast<std::ptrdiff_t>(end));
 

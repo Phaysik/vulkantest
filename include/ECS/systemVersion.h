@@ -10,6 +10,10 @@
 #define INCLUDE_ECS_SYSTEMVERSION_H
 
 #include <array>
+#include <cassert>
+
+#include "Core/attributeMacros.h"
+#include "ECS/processChunkHelpers.h"
 
 #include "chunkVersion.h"
 #include "componentMask.h"
@@ -17,16 +21,87 @@
 
 namespace Dimensia::ECS
 {
-	using Registry::VersionType;
+	using Dimensia::Registry::MAX_COMPONENTS;
+	using Dimensia::Registry::VersionType;
 
-	struct SystemVersion
+	class SystemVersion
 	{
-			VersionType version;
-			std::array<VersionType, Registry::MAX_COMPONENTS> componentVersions;
+		public:
+			// MARK: Constructor
 
-			SystemVersion();
-			bool needsUpdate(const ChunkVersion &chunk, ComponentMask requiredComponents) const;
-			void update(const ChunkVersion &chunk);
+			explicit constexpr SystemVersion()
+			{
+				mComponentVersions.fill(0);
+			}
+
+			// MARK: Getters
+
+			ATTR_NODISCARD constexpr VersionType getVersion() const noexcept
+			{
+				return mVersion;
+			}
+
+			ATTR_DEPRECATED ATTR_NODISCARD constexpr std::array<VersionType, MAX_COMPONENTS> getComponentVersions() const noexcept
+			{
+				return mComponentVersions;
+			}
+
+			ATTR_NODISCARD constexpr VersionType getComponentVersion(const ComponentTypeID componentTypeID) const noexcept
+			{
+				assert(componentTypeID < MAX_COMPONENTS);
+
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				return mComponentVersions[componentTypeID];
+			}
+
+			// MARK: Setters
+
+			constexpr void setVersion(const VersionType version) noexcept
+			{
+				mVersion = version;
+			}
+
+			constexpr void setComponentVersion(const ComponentTypeID componentTypeID, const VersionType version) noexcept
+			{
+				assert(componentTypeID < MAX_COMPONENTS);
+
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				mComponentVersions[componentTypeID] = version;
+			}
+
+			// MARK: Member Functions
+
+			ATTR_NODISCARD constexpr bool needsUpdate(const ChunkVersion &chunk, const ComponentMask &requiredComponents) const
+			{
+				if (chunk.getVersion() > mVersion)
+				{
+					return true;
+				}
+
+				bool needs{false};
+
+				forEachSetBit(requiredComponents, [&](const ComponentTypeID componentTypeID) {
+					assert(componentTypeID < MAX_COMPONENTS);
+
+					// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+					if (chunk.getComponentVersion(componentTypeID) > mComponentVersions[componentTypeID])
+					{
+						needs = true;
+					}
+				});
+
+				return needs;
+			}
+
+			constexpr void update(const ChunkVersion &chunk) noexcept
+			{
+				// mComponentVersions intentionally not updated here – they are updated per‑chunk after processing
+				mVersion = chunk.getVersion();
+			}
+
+		private:
+			std::array<VersionType, Registry::MAX_COMPONENTS> mComponentVersions{};
+			VersionType mVersion{0};
 	};
 } // namespace Dimensia::ECS
 

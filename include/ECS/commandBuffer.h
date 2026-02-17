@@ -62,8 +62,8 @@ namespace Dimensia::ECS
 
 			struct Command
 			{
-					CmdType type;
-					Entity entity;
+					CmdType type{};
+					Entity entity{};
 
 					union {
 							struct
@@ -81,7 +81,7 @@ namespace Dimensia::ECS
 							{
 									Entity parent;
 							} setParent;
-					} data;
+					} data{};
 
 					template <typename T>
 					static Command makeAdd(Entity e, T &&value)

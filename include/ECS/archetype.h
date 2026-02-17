@@ -75,7 +75,7 @@ namespace Dimensia::ECS
 			}
 
 		private:
-			static constexpr size_t CHUNK_SIZE = 16'384;
+			static constexpr std::size_t CHUNK_SIZE = 16'384;
 
 			struct Chunk
 			{
@@ -89,10 +89,10 @@ namespace Dimensia::ECS
 			std::vector<std::unique_ptr<Chunk>> chunks_;
 			std::vector<ui> freeChunks_;
 			ui chunkCapacity_;
-			std::array<size_t, MAX_COMPONENTS> componentOffsets_{};
-			std::array<size_t, MAX_COMPONENTS> componentSizes_{};
-			size_t entityArrayOffset_{0};
-			size_t tagBitsetOffset_{0};
+			std::array<std::size_t, MAX_COMPONENTS> componentOffsets_{};
+			std::array<std::size_t, MAX_COMPONENTS> componentSizes_{};
+			std::size_t entityArrayOffset_{0};
+			std::size_t tagBitsetOffset_{0};
 			std::vector<ComponentTypeID> sortedRegular_;
 			std::vector<ChunkVersion> chunkVersions_;
 

@@ -26,11 +26,11 @@ namespace Dimensia::Threading
 	class WorkStealingPool
 	{
 		public:
-			explicit WorkStealingPool(size_t numThreads = std::thread::hardware_concurrency());
+			explicit WorkStealingPool(std::size_t numThreads = std::thread::hardware_concurrency());
 			~WorkStealingPool();
 
 			template <typename TaskFunc>
-			void submit_chunks(const std::vector<std::pair<Archetype *, uint32_t>> &chunks, TaskFunc &&func, Latch &latch, size_t batchSize)
+			void submit_chunks(const std::vector<std::pair<Archetype *, uint32_t>> &chunks, TaskFunc &&func, Latch &latch, std::size_t batchSize)
 			{
 				std::vector<std::pair<Archetype *, uint32_t>> batch;
 				batch.reserve(batchSize);
@@ -65,12 +65,12 @@ namespace Dimensia::Threading
 
 		private:
 			void submit_task(std::function<void()> task);
-			void worker_loop(size_t workerId);
+			void worker_loop(std::size_t workerId);
 
 			std::vector<std::thread> workers;
 			std::vector<WorkStealingQueue> queues;
 			std::atomic<bool> stop;
-			std::atomic<size_t> taskCount;
+			std::atomic<std::size_t> taskCount;
 	};
 } // namespace Dimensia::Threading
 

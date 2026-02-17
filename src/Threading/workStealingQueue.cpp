@@ -40,7 +40,7 @@ namespace Dimensia::Threading
 		return true;
 	}
 
-	size_t WorkStealingQueue::size() const
+	std::size_t WorkStealingQueue::size() const
 	{
 		std::unique_lock<std::mutex> lock(mutex);
 		return queue.size();

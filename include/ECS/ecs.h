@@ -9,12 +9,13 @@
 #ifndef INCLUDE_ECS_ECS_H
 #define INCLUDE_ECS_ECS_H
 
-#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
 #include <vector>
 
+#include "Core/typedefs.h"
+#include "ECS/constants.h"
 #include "Threading/threadPool.h"
 #include "Threading/workStealingPool.h"
 
@@ -30,14 +31,16 @@
 
 namespace Dimensia::ECS
 {
-	using Registry::ComponentTypeID;
-	using Registry::MAX_COMPONENTS;
+	using Dimensia::Registry::ComponentTypeID;
+	using Dimensia::Registry::MAX_COMPONENTS;
 
-	using Threading::Latch;
-	using Threading::ThreadPool;
-	using Threading::WorkStealingPool;
+	using Dimensia::Threading::Latch;
+	using Dimensia::Threading::ThreadPool;
+	using Dimensia::Threading::WorkStealingPool;
 
-	enum class ExecutionPolicy
+	using Dimensia::Core::ui;
+
+	enum class ExecutionPolicy : Dimensia::Core::ub
 	{
 		Seq,
 		Par,
@@ -72,24 +75,24 @@ namespace Dimensia::ECS
 						 const auto &info = ComponentInfos[id];
 						 if (info.isTag)
 						 {
-							 if (id < 64)
+							 if (id < LOWER_HALF_BIT_MASK)
 							 {
-								 tagMask.low |= (uint64_t(1) << id);
+								 tagMask.mLow |= (1U << id);
 							 }
 							 else
 							 {
-								 tagMask.high |= (uint64_t(1) << (id - 64));
+								 tagMask.mHigh |= (1U << (id - LOWER_HALF_BIT_MASK));
 							 }
 						 }
 						 else
 						 {
-							 if (id < 64)
+							 if (id < LOWER_HALF_BIT_MASK)
 							 {
-								 regularMask.low |= (uint64_t(1) << id);
+								 regularMask.mLow |= (1U << id);
 							 }
 							 else
 							 {
-								 regularMask.high |= (uint64_t(1) << (id - 64));
+								 regularMask.mHigh |= (1U << (id - LOWER_HALF_BIT_MASK));
 							 }
 							 if constexpr (std::is_const_v<std::remove_reference_t<decltype(components)>>)
 							 {
@@ -139,13 +142,13 @@ namespace Dimensia::ECS
 				Archetype *arch = archetypePtrs_[records_[entity.index].archetypeId].get();
 				ComponentMask oldRegular = arch->getRegularMask();
 				ComponentMask newRegular = oldRegular;
-				if (compId < 64)
+				if (compId < LOWER_HALF_BIT_MASK)
 				{
-					newRegular.low |= (uint64_t(1) << compId);
+					newRegular.mLow |= (1U << compId);
 				}
 				else
 				{
-					newRegular.high |= (uint64_t(1) << (compId - 64));
+					newRegular.mHigh |= (1U << (compId - LOWER_HALF_BIT_MASK));
 				}
 
 				if (oldRegular == newRegular)
@@ -271,10 +274,10 @@ namespace Dimensia::ECS
 				{
 					for (Archetype *arch : matchingArchetypes)
 					{
-						uint32_t chunkCount = arch->getChunkCount();
-						for (uint32_t c = 0; c < chunkCount; ++c)
+						ui chunkCount = arch->getChunkCount();
+						for (ui c = 0; c < chunkCount; ++c)
 						{
-							uint32_t entityCount = arch->getEntityCount(c);
+							ui entityCount = arch->getEntityCount(c);
 							if (entityCount == 0)
 							{
 								continue;
@@ -291,10 +294,10 @@ namespace Dimensia::ECS
 					futures.reserve(matchingArchetypes.size() * 2);
 					for (Archetype *arch : matchingArchetypes)
 					{
-						uint32_t chunkCount = arch->getChunkCount();
-						for (uint32_t c = 0; c < chunkCount; ++c)
+						ui chunkCount = arch->getChunkCount();
+						for (ui c = 0; c < chunkCount; ++c)
 						{
-							uint32_t entityCount = arch->getEntityCount(c);
+							ui entityCount = arch->getEntityCount(c);
 							if (entityCount == 0)
 							{
 								continue;
@@ -313,11 +316,11 @@ namespace Dimensia::ECS
 				}
 				else if (policy == ExecutionPolicy::ParBatched)
 				{
-					std::vector<std::pair<Archetype *, uint32_t>> allChunks;
+					std::vector<std::pair<Archetype *, ui>> allChunks;
 					for (Archetype *arch : matchingArchetypes)
 					{
-						uint32_t chunkCount = arch->getChunkCount();
-						for (uint32_t c = 0; c < chunkCount; ++c)
+						ui chunkCount = arch->getChunkCount();
+						for (ui c = 0; c < chunkCount; ++c)
 						{
 							if (arch->getEntityCount(c) > 0)
 							{
@@ -330,17 +333,17 @@ namespace Dimensia::ECS
 						return;
 					}
 					Latch latch(static_cast<int>((allChunks.size() + 3) / 4)); // batch size 4
-					const size_t batchSize = 4;
-					for (size_t i = 0; i < allChunks.size(); i += batchSize)
+					const std::size_t batchSize = 4;
+					for (std::size_t i = 0; i < allChunks.size(); i += batchSize)
 					{
-						size_t end = std::min(i + batchSize, allChunks.size());
-						std::vector<std::pair<Archetype *, uint32_t>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
-																			allChunks.begin() + static_cast<std::ptrdiff_t>(end));
+						std::size_t end = std::min(i + batchSize, allChunks.size());
+						std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
+																	  allChunks.begin() + static_cast<std::ptrdiff_t>(end));
 						threadPool_.submit_with_latch(
 							[batch, func]() {
 								for (const auto &[arch, c] : batch)
 								{
-									uint32_t entityCount = arch->getEntityCount(c);
+									ui entityCount = arch->getEntityCount(c);
 									Entity *entityArr = arch->getEntityArray(c);
 									auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
 									process_chunk_entities<Components...>(entityArr, compArrays, entityCount, c, arch, func);
@@ -352,11 +355,11 @@ namespace Dimensia::ECS
 				}
 				else if (policy == ExecutionPolicy::ParStealing)
 				{
-					std::vector<std::pair<Archetype *, uint32_t>> allChunks;
+					std::vector<std::pair<Archetype *, ui>> allChunks;
 					for (Archetype *arch : matchingArchetypes)
 					{
-						uint32_t chunkCount = arch->getChunkCount();
-						for (uint32_t c = 0; c < chunkCount; ++c)
+						ui chunkCount = arch->getChunkCount();
+						for (ui c = 0; c < chunkCount; ++c)
 						{
 							if (arch->getEntityCount(c) > 0)
 							{
@@ -371,8 +374,8 @@ namespace Dimensia::ECS
 					Latch latch(static_cast<int>((allChunks.size() + 7) / 8)); // batch size 8
 					workStealingPool_.submit_chunks(
 						allChunks,
-						[func](Archetype *arch, uint32_t c) {
-							uint32_t entityCount = arch->getEntityCount(c);
+						[func](Archetype *arch, ui c) {
+							ui entityCount = arch->getEntityCount(c);
 							Entity *entityArr = arch->getEntityArray(c);
 							auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
 							process_chunk_entities<Components...>(entityArr, compArrays, entityCount, c, arch, func);
@@ -392,10 +395,10 @@ namespace Dimensia::ECS
 				{
 					for (Archetype *arch : matchingArchetypes)
 					{
-						uint32_t chunkCount = arch->getChunkCount();
-						for (uint32_t c = 0; c < chunkCount; ++c)
+						ui chunkCount = arch->getChunkCount();
+						for (ui c = 0; c < chunkCount; ++c)
 						{
-							uint32_t entityCount = arch->getEntityCount(c);
+							ui entityCount = arch->getEntityCount(c);
 							if (entityCount == 0)
 							{
 								continue;
@@ -412,10 +415,10 @@ namespace Dimensia::ECS
 					futures.reserve(matchingArchetypes.size() * 2);
 					for (Archetype *arch : matchingArchetypes)
 					{
-						uint32_t chunkCount = arch->getChunkCount();
-						for (uint32_t c = 0; c < chunkCount; ++c)
+						ui chunkCount = arch->getChunkCount();
+						for (ui c = 0; c < chunkCount; ++c)
 						{
-							uint32_t entityCount = arch->getEntityCount(c);
+							ui entityCount = arch->getEntityCount(c);
 							if (entityCount == 0)
 							{
 								continue;
@@ -434,11 +437,11 @@ namespace Dimensia::ECS
 				}
 				else if (policy == ExecutionPolicy::ParBatched)
 				{
-					std::vector<std::pair<Archetype *, uint32_t>> allChunks;
+					std::vector<std::pair<Archetype *, ui>> allChunks;
 					for (Archetype *arch : matchingArchetypes)
 					{
-						uint32_t chunkCount = arch->getChunkCount();
-						for (uint32_t c = 0; c < chunkCount; ++c)
+						ui chunkCount = arch->getChunkCount();
+						for (ui c = 0; c < chunkCount; ++c)
 						{
 							if (arch->getEntityCount(c) > 0)
 							{
@@ -451,17 +454,17 @@ namespace Dimensia::ECS
 						return;
 					}
 					Latch latch(static_cast<int>((allChunks.size() + 3) / 4));
-					const size_t batchSize = 4;
-					for (size_t i = 0; i < allChunks.size(); i += batchSize)
+					const std::size_t batchSize = 4;
+					for (std::size_t i = 0; i < allChunks.size(); i += batchSize)
 					{
-						size_t end = std::min(i + batchSize, allChunks.size());
-						std::vector<std::pair<Archetype *, uint32_t>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
-																			allChunks.begin() + static_cast<std::ptrdiff_t>(end));
+						std::size_t end = std::min(i + batchSize, allChunks.size());
+						std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
+																	  allChunks.begin() + static_cast<std::ptrdiff_t>(end));
 						threadPool_.submit_with_latch(
 							[batch, func]() {
 								for (const auto &[arch, c] : batch)
 								{
-									uint32_t entityCount = arch->getEntityCount(c);
+									ui entityCount = arch->getEntityCount(c);
 									const Entity *entityArr = arch->getEntityArray(c);
 									auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
 									process_chunk_entities_const<Components...>(entityArr, compArrays, entityCount, c, arch, func);
@@ -473,11 +476,11 @@ namespace Dimensia::ECS
 				}
 				else if (policy == ExecutionPolicy::ParStealing)
 				{
-					std::vector<std::pair<Archetype *, uint32_t>> allChunks;
+					std::vector<std::pair<Archetype *, ui>> allChunks;
 					for (Archetype *arch : matchingArchetypes)
 					{
-						uint32_t chunkCount = arch->getChunkCount();
-						for (uint32_t c = 0; c < chunkCount; ++c)
+						ui chunkCount = arch->getChunkCount();
+						for (ui c = 0; c < chunkCount; ++c)
 						{
 							if (arch->getEntityCount(c) > 0)
 							{
@@ -492,8 +495,8 @@ namespace Dimensia::ECS
 					Latch latch(static_cast<int>((allChunks.size() + 7) / 8));
 					workStealingPool_.submit_chunks(
 						allChunks,
-						[func](Archetype *arch, uint32_t c) {
-							uint32_t entityCount = arch->getEntityCount(c);
+						[func](Archetype *arch, ui c) {
+							ui entityCount = arch->getEntityCount(c);
 							const Entity *entityArr = arch->getEntityArray(c);
 							auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
 							process_chunk_entities_const<Components...>(entityArr, compArrays, entityCount, c, arch, func);
@@ -509,13 +512,13 @@ namespace Dimensia::ECS
 				constexpr ComponentMask requiredRegular = build_required_mask<Components...>();
 				const auto &matchingArchetypes = queryCache_.get(requiredRegular);
 
-				std::vector<std::tuple<Archetype *, uint32_t, const ChunkVersion *>> dirtyChunks;
+				std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> dirtyChunks;
 				for (Archetype *arch : matchingArchetypes)
 				{
-					uint32_t chunkCount = arch->getChunkCount();
-					for (uint32_t c = 0; c < chunkCount; ++c)
+					ui chunkCount = arch->getChunkCount();
+					for (ui c = 0; c < chunkCount; ++c)
 					{
-						uint32_t entityCount = arch->getEntityCount(c);
+						ui entityCount = arch->getEntityCount(c);
 						if (entityCount == 0)
 						{
 							continue;
@@ -532,8 +535,8 @@ namespace Dimensia::ECS
 					return;
 				}
 
-				auto processFunc = [&](Archetype *arch, uint32_t c) {
-					uint32_t entityCount = arch->getEntityCount(c);
+				auto processFunc = [&](Archetype *arch, ui c) {
+					ui entityCount = arch->getEntityCount(c);
 					Entity *entityArr = arch->getEntityArray(c);
 					auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
 					process_chunk_entities<Components...>(entityArr, compArrays, entityCount, c, arch, func);
@@ -544,15 +547,16 @@ namespace Dimensia::ECS
 					for (const auto &chunk : dirtyChunks)
 					{
 						Archetype *arch = std::get<0>(chunk);
-						uint32_t c = std::get<1>(chunk);
+						ui c = std::get<1>(chunk);
 						const ChunkVersion *chunkVer = std::get<2>(chunk);
 						processFunc(arch, c);
-						forEachSetBit(requiredRegular,
-									  [&](ComponentTypeID id) { version.componentVersions[id] = chunkVer->getComponentVersion(id); });
+						forEachSetBit(requiredRegular, [&](const ComponentTypeID componentTypeID) {
+							version.setComponentVersion(componentTypeID, chunkVer->getComponentVersion(componentTypeID));
+						});
 					}
 					const auto &lastChunk = dirtyChunks.back();
-					version.version
-						= std::max(version.version, std::get<0>(lastChunk)->getChunkVersion(std::get<1>(lastChunk)).getVersion());
+					version.setVersion(
+						std::max(version.getVersion(), std::get<0>(lastChunk)->getChunkVersion(std::get<1>(lastChunk)).getVersion()));
 				}
 				else if (policy == ExecutionPolicy::Par)
 				{
@@ -561,7 +565,7 @@ namespace Dimensia::ECS
 					for (const auto &chunk : dirtyChunks)
 					{
 						Archetype *arch = std::get<0>(chunk);
-						uint32_t c = std::get<1>(chunk);
+						ui c = std::get<1>(chunk);
 						futures.push_back(threadPool_.submit([arch, c, processFunc]() { processFunc(arch, c); }));
 					}
 					for (auto &fut : futures)
@@ -570,29 +574,30 @@ namespace Dimensia::ECS
 					}
 					for (const auto &chunk : dirtyChunks)
 					{
-						Archetype *arch = std::get<0>(chunk);
-						uint32_t c = std::get<1>(chunk);
+						const Archetype *arch = std::get<0>(chunk);
+						const ui c = std::get<1>(chunk);
 						const ChunkVersion *chunkVer = std::get<2>(chunk);
-						forEachSetBit(requiredRegular, [&](ComponentTypeID id) {
-							version.componentVersions[id] = std::max(version.componentVersions[id], chunkVer->getComponentVersion(id));
+						forEachSetBit(requiredRegular, [&](const ComponentTypeID componentTypeID) {
+							version.setComponentVersion(componentTypeID, std::max(version.getComponentVersion(componentTypeID),
+																				  chunkVer->getComponentVersion(componentTypeID)));
 						});
-						version.version = std::max(version.version, arch->getChunkVersion(c).getVersion());
+						version.setVersion(std::max(version.getVersion(), arch->getChunkVersion(c).getVersion()));
 					}
 				}
 				else if (policy == ExecutionPolicy::ParBatched || policy == ExecutionPolicy::ParStealing)
 				{
-					std::vector<std::pair<Archetype *, uint32_t>> chunks;
+					std::vector<std::pair<Archetype *, ui>> chunks;
 					for (const auto &chunk : dirtyChunks)
 					{
 						chunks.emplace_back(std::get<0>(chunk), std::get<1>(chunk));
 					}
 					Latch latch(static_cast<int>((chunks.size() + 3) / 4));
-					const size_t batchSize = 4;
-					for (size_t i = 0; i < chunks.size(); i += batchSize)
+					const std::size_t batchSize = 4;
+					for (std::size_t i = 0; i < chunks.size(); i += batchSize)
 					{
-						size_t end = std::min(i + batchSize, chunks.size());
-						std::vector<std::pair<Archetype *, uint32_t>> batch(chunks.begin() + static_cast<std::ptrdiff_t>(i),
-																			chunks.begin() + static_cast<std::ptrdiff_t>(end));
+						std::size_t end = std::min(i + batchSize, chunks.size());
+						std::vector<std::pair<Archetype *, ui>> batch(chunks.begin() + static_cast<std::ptrdiff_t>(i),
+																	  chunks.begin() + static_cast<std::ptrdiff_t>(end));
 						threadPool_.submit_with_latch(
 							[batch, processFunc]() {
 								for (const auto &[arch, c] : batch)
@@ -606,12 +611,13 @@ namespace Dimensia::ECS
 					for (const auto &chunk : dirtyChunks)
 					{
 						Archetype *arch = std::get<0>(chunk);
-						uint32_t c = std::get<1>(chunk);
+						ui c = std::get<1>(chunk);
 						const ChunkVersion *chunkVer = std::get<2>(chunk);
-						forEachSetBit(requiredRegular, [&](ComponentTypeID id) {
-							version.componentVersions[id] = std::max(version.componentVersions[id], chunkVer->getComponentVersion(id));
+						forEachSetBit(requiredRegular, [&](const ComponentTypeID componentTypeID) {
+							version.setComponentVersion(componentTypeID, std::max(version.getComponentVersion(componentTypeID),
+																				  chunkVer->getComponentVersion(componentTypeID)));
 						});
-						version.version = std::max(version.version, arch->getChunkVersion(c).getVersion());
+						version.setVersion(std::max(version.getVersion(), arch->getChunkVersion(c).getVersion()));
 					}
 				}
 			}
@@ -622,13 +628,13 @@ namespace Dimensia::ECS
 				constexpr ComponentMask requiredRegular = build_required_mask<Components...>();
 				const auto &matchingArchetypes = queryCache_.get(requiredRegular);
 
-				std::vector<std::tuple<Archetype *, uint32_t, const ChunkVersion *>> dirtyChunks;
+				std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> dirtyChunks;
 				for (Archetype *arch : matchingArchetypes)
 				{
-					uint32_t chunkCount = arch->getChunkCount();
-					for (uint32_t c = 0; c < chunkCount; ++c)
+					ui chunkCount = arch->getChunkCount();
+					for (ui c = 0; c < chunkCount; ++c)
 					{
-						uint32_t entityCount = arch->getEntityCount(c);
+						ui entityCount = arch->getEntityCount(c);
 						if (entityCount == 0)
 						{
 							continue;
@@ -645,8 +651,8 @@ namespace Dimensia::ECS
 					return;
 				}
 
-				auto processFunc = [&](Archetype *arch, uint32_t c) {
-					uint32_t entityCount = arch->getEntityCount(c);
+				auto processFunc = [&](Archetype *arch, ui c) {
+					ui entityCount = arch->getEntityCount(c);
 					const Entity *entityArr = arch->getEntityArray(c);
 					auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
 					process_chunk_entities_const<Components...>(entityArr, compArrays, entityCount, c, arch, func);
@@ -658,15 +664,16 @@ namespace Dimensia::ECS
 					for (const auto &chunk : dirtyChunks)
 					{
 						Archetype *arch = std::get<0>(chunk);
-						uint32_t c = std::get<1>(chunk);
+						ui c = std::get<1>(chunk);
 						const ChunkVersion *chunkVer = std::get<2>(chunk);
 						processFunc(arch, c);
-						forEachSetBit(requiredRegular,
-									  [&](ComponentTypeID id) { version.componentVersions[id] = chunkVer->mComponentVersions[id]; });
+						forEachSetBit(requiredRegular, [&](const ComponentTypeID componentTypeID) {
+							version.setComponentVersion(componentTypeID, chunkVer->getComponentVersion(componentTypeID));
+						});
 					}
 					const auto &lastChunk = dirtyChunks.back();
-					version.version
-						= std::max(version.version, std::get<0>(lastChunk)->getChunkVersion(std::get<1>(lastChunk)).getVersion());
+					version.setVersion(
+						std::max(version.getVersion(), std::get<0>(lastChunk)->getChunkVersion(std::get<1>(lastChunk)).getVersion()));
 				}
 				else
 				{
@@ -674,18 +681,19 @@ namespace Dimensia::ECS
 					for (const auto &chunk : dirtyChunks)
 					{
 						Archetype *arch = std::get<0>(chunk);
-						uint32_t c = std::get<1>(chunk);
+						ui c = std::get<1>(chunk);
 						processFunc(arch, c);
 					}
 					for (const auto &chunk : dirtyChunks)
 					{
 						Archetype *arch = std::get<0>(chunk);
-						uint32_t c = std::get<1>(chunk);
+						ui c = std::get<1>(chunk);
 						const ChunkVersion *chunkVer = std::get<2>(chunk);
-						forEachSetBit(requiredRegular, [&](ComponentTypeID id) {
-							version.componentVersions[id] = std::max(version.componentVersions[id], chunkVer->mComponentVersions[id]);
+						forEachSetBit(requiredRegular, [&](const ComponentTypeID componentTypeID) {
+							version.setComponentVersion(componentTypeID, std::max(version.getComponentVersion(componentTypeID),
+																				  chunkVer->getComponentVersion(componentTypeID)));
 						});
-						version.version = std::max(version.version, arch->getChunkVersion(c).getVersion());
+						version.setVersion(std::max(version.getVersion(), arch->getChunkVersion(c).getVersion()));
 					}
 				}
 			}
@@ -700,10 +708,10 @@ namespace Dimensia::ECS
 				{
 					for (Archetype *arch : matchingArchetypes)
 					{
-						uint32_t chunkCount = arch->getChunkCount();
-						for (uint32_t c = 0; c < chunkCount; ++c)
+						ui chunkCount = arch->getChunkCount();
+						for (ui c = 0; c < chunkCount; ++c)
 						{
-							uint32_t entityCount = arch->getEntityCount(c);
+							ui entityCount = arch->getEntityCount(c);
 							if (entityCount == 0)
 							{
 								continue;
@@ -721,10 +729,10 @@ namespace Dimensia::ECS
 					futures.reserve(matchingArchetypes.size() * 2);
 					for (Archetype *arch : matchingArchetypes)
 					{
-						uint32_t chunkCount = arch->getChunkCount();
-						for (uint32_t c = 0; c < chunkCount; ++c)
+						ui chunkCount = arch->getChunkCount();
+						for (ui c = 0; c < chunkCount; ++c)
 						{
-							uint32_t entityCount = arch->getEntityCount(c);
+							ui entityCount = arch->getEntityCount(c);
 							if (entityCount == 0)
 							{
 								continue;
@@ -744,11 +752,11 @@ namespace Dimensia::ECS
 				}
 				else if (policy == ExecutionPolicy::ParBatched)
 				{
-					std::vector<std::pair<Archetype *, uint32_t>> allChunks;
+					std::vector<std::pair<Archetype *, ui>> allChunks;
 					for (Archetype *arch : matchingArchetypes)
 					{
-						uint32_t chunkCount = arch->getChunkCount();
-						for (uint32_t c = 0; c < chunkCount; ++c)
+						ui chunkCount = arch->getChunkCount();
+						for (ui c = 0; c < chunkCount; ++c)
 						{
 							if (arch->getEntityCount(c) > 0)
 							{
@@ -761,17 +769,17 @@ namespace Dimensia::ECS
 						return;
 					}
 					Latch latch(static_cast<int>((allChunks.size() + 3) / 4));
-					const size_t batchSize = 4;
-					for (size_t i = 0; i < allChunks.size(); i += batchSize)
+					const std::size_t batchSize = 4;
+					for (std::size_t i = 0; i < allChunks.size(); i += batchSize)
 					{
-						size_t end = std::min(i + batchSize, allChunks.size());
-						std::vector<std::pair<Archetype *, uint32_t>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
-																			allChunks.begin() + static_cast<std::ptrdiff_t>(end));
+						std::size_t end = std::min(i + batchSize, allChunks.size());
+						std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
+																	  allChunks.begin() + static_cast<std::ptrdiff_t>(end));
 						threadPool_.submit_with_latch(
 							[batch, &cmds, func]() {
 								for (const auto &[arch, c] : batch)
 								{
-									uint32_t entityCount = arch->getEntityCount(c);
+									ui entityCount = arch->getEntityCount(c);
 									Entity *entityArr = arch->getEntityArray(c);
 									auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
 									process_chunk_entities<Components...>(entityArr, compArrays, entityCount, c, arch,
@@ -784,11 +792,11 @@ namespace Dimensia::ECS
 				}
 				else if (policy == ExecutionPolicy::ParStealing)
 				{
-					std::vector<std::pair<Archetype *, uint32_t>> allChunks;
+					std::vector<std::pair<Archetype *, ui>> allChunks;
 					for (Archetype *arch : matchingArchetypes)
 					{
-						uint32_t chunkCount = arch->getChunkCount();
-						for (uint32_t c = 0; c < chunkCount; ++c)
+						ui chunkCount = arch->getChunkCount();
+						for (ui c = 0; c < chunkCount; ++c)
 						{
 							if (arch->getEntityCount(c) > 0)
 							{
@@ -803,8 +811,8 @@ namespace Dimensia::ECS
 					Latch latch(static_cast<int>((allChunks.size() + 7) / 8));
 					workStealingPool_.submit_chunks(
 						allChunks,
-						[&cmds, func](Archetype *arch, uint32_t c) {
-							uint32_t entityCount = arch->getEntityCount(c);
+						[&cmds, func](Archetype *arch, ui c) {
+							ui entityCount = arch->getEntityCount(c);
 							Entity *entityArr = arch->getEntityArray(c);
 							auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
 							process_chunk_entities<Components...>(entityArr, compArrays, entityCount, c, arch,
@@ -819,11 +827,11 @@ namespace Dimensia::ECS
 
 		private:
 			std::vector<EntityRecord> records_;
-			std::vector<uint32_t> freeIndices_;
-			uint32_t nextEntityIndex_ = 0;
+			std::vector<ui> freeIndices_;
+			ui nextEntityIndex_ = 0;
 			// Archetype storage: stable IDs via vector, and a map from mask to ID.
 			std::vector<std::unique_ptr<Archetype>> archetypePtrs_;
-			std::unordered_map<ComponentMask, uint32_t> archetypeMaskToId_;
+			std::unordered_map<ComponentMask, ui> archetypeMaskToId_;
 			QueryCache queryCache_;
 			mutable ThreadPool threadPool_;
 			mutable WorkStealingPool workStealingPool_;

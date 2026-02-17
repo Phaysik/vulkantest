@@ -74,7 +74,7 @@ namespace Dimensia::ECS
 
 	ATTR_NODISCARD ui Archetype::computeCapacity() const
 	{
-		size_t perEntity = sizeof(Entity);
+		std::size_t perEntity = sizeof(Entity);
 		for (ComponentTypeID id : sortedRegular_)
 		{
 			perEntity += ComponentInfos[id].size;
@@ -84,7 +84,7 @@ namespace Dimensia::ECS
 		ui cap = static_cast<ui>(CHUNK_SIZE / perEntity) + 1;
 		while (true)
 		{
-			size_t offset = 0;
+			std::size_t offset = 0;
 			offset += cap * sizeof(Entity);
 			offset = (offset + alignof(ul) - 1) & ~(alignof(ul) - 1);
 			offset += cap * sizeof(ul);
@@ -107,7 +107,7 @@ namespace Dimensia::ECS
 
 	void Archetype::computeLayout(ui capacity)
 	{
-		size_t offset = 0;
+		std::size_t offset = 0;
 		entityArrayOffset_ = offset;
 		offset += capacity * sizeof(Entity);
 
@@ -177,8 +177,8 @@ namespace Dimensia::ECS
 
 		for (ComponentTypeID id : sortedRegular_)
 		{
-			size_t offset = componentOffsets_[id];
-			size_t size = componentSizes_[id];
+			std::size_t offset = componentOffsets_[id];
+			std::size_t size = componentSizes_[id];
 			void *dest = chunk->buffer + offset + slot * size;
 
 			const auto &info = ComponentInfos[id];
@@ -194,7 +194,7 @@ namespace Dimensia::ECS
 		}
 
 		ul *tagBits = getTagBitset(chunk);
-		tagBits[slot] = tags.low;
+		tagBits[slot] = tags.mLow;
 
 		chunkVersions_[chunkIdx].bump();
 		return {chunkIdx, slot};
@@ -211,8 +211,8 @@ namespace Dimensia::ECS
 
 		for (ComponentTypeID id : sortedRegular_)
 		{
-			size_t offset = componentOffsets_[id];
-			size_t size = componentSizes_[id];
+			std::size_t offset = componentOffsets_[id];
+			std::size_t size = componentSizes_[id];
 			void *ptr = chunk->buffer + offset + slotIdx * size;
 			ComponentInfos[id].destructor(ptr);
 		}
@@ -226,16 +226,16 @@ namespace Dimensia::ECS
 
 			for (ComponentTypeID id : sortedRegular_)
 			{
-				size_t offset = componentOffsets_[id];
-				size_t size = componentSizes_[id];
+				std::size_t offset = componentOffsets_[id];
+				std::size_t size = componentSizes_[id];
 				void *dest = chunk->buffer + offset + slotIdx * size;
 				void *src = chunk->buffer + offset + lastSlot * size;
 				ComponentInfos[id].moveConstruct(dest, src);
 			}
 			for (ComponentTypeID id : sortedRegular_)
 			{
-				size_t offset = componentOffsets_[id];
-				size_t size = componentSizes_[id];
+				std::size_t offset = componentOffsets_[id];
+				std::size_t size = componentSizes_[id];
 				void *ptr = chunk->buffer + offset + lastSlot * size;
 				ComponentInfos[id].destructor(ptr);
 			}
@@ -294,7 +294,7 @@ namespace Dimensia::ECS
 
 	void Archetype::compact(std::vector<EntityRecord> &globalRecords)
 	{
-		size_t newSize = chunkCapacity_ == 0 ? 0 : (chunks_.size() - freeChunks_.size());
+		std::size_t newSize = chunkCapacity_ == 0 ? 0 : (chunks_.size() - freeChunks_.size());
 		if (freeChunks_.empty() && chunks_.size() == newSize)
 		{
 			return;

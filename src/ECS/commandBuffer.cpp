@@ -29,17 +29,21 @@ namespace Dimensia::ECS
 
 	CommandBuffer::ThreadBuffer *CommandBuffer::getThreadBuffer()
 	{
-		std::lock_guard<std::mutex> lock(map_mutex_);
-		auto tid = std::this_thread::get_id();
-		auto it = buffers_.find(tid);
-		if (it != buffers_.end())
+		thread_local ThreadBuffer *tls = nullptr;
+		if (tls != nullptr)
 		{
-			return it->second.get();
+			return tls;
 		}
-		auto buf = std::make_unique<ThreadBuffer>();
-		auto ptr = buf.get();
-		buffers_[tid] = std::move(buf);
-		return ptr;
+
+		// slow path once per thread
+		const std::scoped_lock lock(map_mutex_);
+		auto &slot = buffers_[std::this_thread::get_id()];
+		if (!slot)
+		{
+			slot = std::make_unique<ThreadBuffer>();
+		}
+		tls = slot.get();
+		return tls;
 	}
 
 	void CommandBuffer::Command::destroyBuffer()
@@ -52,7 +56,7 @@ namespace Dimensia::ECS
 
 	void CommandBuffer::clear()
 	{
-		std::lock_guard<std::mutex> lock(map_mutex_);
+		const std::scoped_lock<std::mutex> lock(map_mutex_);
 		buffers_.clear();
 	}
 
@@ -87,13 +91,14 @@ namespace Dimensia::ECS
 	{
 		std::vector<std::unique_ptr<ThreadBuffer>> local_buffers;
 		{
-			std::lock_guard<std::mutex> lock(map_mutex_);
+			const std::scoped_lock<std::mutex> lock(map_mutex_);
 			for (auto &[_, buf] : buffers_)
 			{
 				local_buffers.push_back(std::move(buf));
 			}
 			buffers_.clear();
 		}
+
 		for (auto &buf : local_buffers)
 		{
 			for (auto &cmd : buf->commands)
@@ -112,6 +117,8 @@ namespace Dimensia::ECS
 						break;
 					case CmdType::SetParent:
 						ecs.setParent(cmd.entity, cmd.data.setParent.parent);
+						break;
+					default:
 						break;
 				}
 			}

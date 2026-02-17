@@ -10,7 +10,6 @@
 #define INCLUDE_COMPONENTS_TRANSFORM_TRANSFORMCOMPONENT_H
 
 #include "Core/attributeMacros.h"
-#include "ECS/component.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -18,10 +17,10 @@
 
 namespace Dimensia::Components
 {
-	class TransformComponent : public Dimensia::ECS::Component
+	class TransformComponent
 	{
 		public:
-			explicit TransformComponent() : Dimensia::ECS::Component("TransformComponent") {}
+			explicit TransformComponent() = default;
 
 			TransformComponent(const TransformComponent &other) = default;
 			TransformComponent(TransformComponent &&other) noexcept = default;
@@ -29,7 +28,7 @@ namespace Dimensia::Components
 			TransformComponent &operator=(const TransformComponent &other) = default;
 			TransformComponent &operator=(TransformComponent &&other) noexcept = default;
 
-			~TransformComponent() override = default;
+			~TransformComponent() = default;
 
 			void setPosition(const glm::vec3 &position);
 

@@ -10,9 +10,9 @@
 
 namespace Dimensia::Threading
 {
-	WorkStealingPool::WorkStealingPool(size_t numThreads) : stop(false), taskCount(0), queues(numThreads)
+	WorkStealingPool::WorkStealingPool(std::size_t numThreads) : stop(false), taskCount(0), queues(numThreads)
 	{
-		for (size_t i = 0; i < numThreads; ++i)
+		for (std::size_t i = 0; i < numThreads; ++i)
 		{
 			workers.emplace_back([this, i] { worker_loop(i); });
 		}
@@ -33,11 +33,11 @@ namespace Dimensia::Threading
 
 	void WorkStealingPool::submit_task(std::function<void()> task)
 	{
-		size_t idx = taskCount++ % queues.size();
+		std::size_t idx = taskCount++ % queues.size();
 		queues[idx].push(std::move(task));
 	}
 
-	void WorkStealingPool::worker_loop(size_t workerId)
+	void WorkStealingPool::worker_loop(std::size_t workerId)
 	{
 		while (!stop)
 		{
@@ -51,9 +51,9 @@ namespace Dimensia::Threading
 				task();
 				continue;
 			}
-			for (size_t i = 1; i < queues.size(); ++i)
+			for (std::size_t i = 1; i < queues.size(); ++i)
 			{
-				size_t victimId = (workerId + i) % queues.size();
+				std::size_t victimId = (workerId + i) % queues.size();
 				if (queues[victimId].try_steal(task))
 				{
 					if (!task)

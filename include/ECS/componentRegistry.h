@@ -42,15 +42,15 @@ namespace Dimensia::Registry
 	struct tuple_index;
 
 	template <typename T, typename... Us>
-	struct tuple_index<T, std::tuple<T, Us...>> : std::integral_constant<size_t, 0>
+	struct tuple_index<T, std::tuple<T, Us...>> : std::integral_constant<std::size_t, 0>
 	{};
 
 	template <typename T, typename U, typename... Us>
-	struct tuple_index<T, std::tuple<U, Us...>> : std::integral_constant<size_t, 1 + tuple_index<T, std::tuple<Us...>>::value>
+	struct tuple_index<T, std::tuple<U, Us...>> : std::integral_constant<std::size_t, 1 + tuple_index<T, std::tuple<Us...>>::value>
 	{};
 
 	template <typename T>
-	constexpr size_t componentId()
+	constexpr std::size_t componentId()
 	{
 		static_assert(tuple_index<T, ComponentTypes>::value < std::tuple_size_v<ComponentTypes>,
 					  "Component type not found in ComponentTypes list");
@@ -75,7 +75,7 @@ namespace Dimensia::Registry
 	// -----------------------------------------------------------------------------
 	//  Configuration constants
 	// -----------------------------------------------------------------------------
-	constexpr size_t MAX_COMPONENTS = 128;
+	constexpr std::size_t MAX_COMPONENTS = 128;
 	using ComponentTypeID = uint32_t;
 	using VersionType = uint64_t;
 
@@ -84,8 +84,8 @@ namespace Dimensia::Registry
 	// -----------------------------------------------------------------------------
 	struct ComponentInfo
 	{
-			size_t size;
-			size_t alignment;
+			std::size_t size;
+			std::size_t alignment;
 			void (*destructor)(void *);
 			void (*copyConstruct)(void *dest, const void *src);
 			void (*moveConstruct)(void *dest, void *src);
@@ -125,12 +125,12 @@ namespace Dimensia::Registry
 	template <typename... Ts>
 	struct MaxSizeHelper<std::tuple<Ts...>>
 	{
-			static constexpr size_t size = std::max({sizeof(Ts)...});
-			static constexpr size_t alignment = std::max({alignof(Ts)...});
+			static constexpr std::size_t size = std::max({sizeof(Ts)...});
+			static constexpr std::size_t alignment = std::max({alignof(Ts)...});
 	};
 
-	constexpr size_t MAX_COMPONENT_SIZE = MaxSizeHelper<ComponentTypes>::size;
-	constexpr size_t MAX_COMPONENT_ALIGN = MaxSizeHelper<ComponentTypes>::alignment;
+	constexpr std::size_t MAX_COMPONENT_SIZE = MaxSizeHelper<ComponentTypes>::size;
+	constexpr std::size_t MAX_COMPONENT_ALIGN = MaxSizeHelper<ComponentTypes>::alignment;
 } // namespace Dimensia::Registry
 
 #endif

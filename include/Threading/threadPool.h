@@ -25,7 +25,7 @@ namespace Dimensia::Threading
 	class ThreadPool
 	{
 		public:
-			explicit ThreadPool(size_t numThreads = std::thread::hardware_concurrency());
+			explicit ThreadPool(std::size_t numThreads = std::thread::hardware_concurrency());
 			~ThreadPool();
 
 			template <typename F>
