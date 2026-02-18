@@ -51,13 +51,38 @@ namespace Dimensia::ECS
 	class ECS
 	{
 		public:
-			ECS();
+			// MARK: Constructor, Destructor, and Assignment Operators
+
+			explicit ECS();
+
+			ECS(const ECS &) = delete;
+			ECS &operator=(const ECS &) = delete;
+			ECS(ECS &&) = delete;
+			ECS &operator=(ECS &&) = delete;
+
 			~ECS() = default;
 
-			// Entity management
+			// MARK: Getters
+
+			std::vector<Entity> getChildren(const Entity &parent) const;
+
+			Entity getParent(const Entity &child) const;
+
+			// MARK: Setter
+
+			void setParent(const Entity &child, Entity parent);
+
+			// MARK: Member Functions
+
 			Entity createEntity();
-			void destroyEntity(Entity entity, const bool destroyChildren = true);
-			bool alive(Entity entity) const;
+
+			void destroyEntity(const Entity &entity, const bool destroyChildren = true);
+
+			bool alive(const Entity &entity) const;
+
+			void compact();
+
+			void removeComponent(const Entity &entity, ComponentTypeID compId);
 
 			template <typename... Ts>
 			Entity createEntityWith(Ts &&...components)
@@ -134,12 +159,12 @@ namespace Dimensia::ECS
 				const auto &info = ComponentInfos[compId];
 				if (info.isTag)
 				{
-					auto &rec = records_[entity.index];
-					archetypePtrs_[rec.archetypeId]->setTag(rec.chunkIndex, rec.slotIndex, compId);
+					auto &rec = mRecords[entity.index];
+					mArchetypePtrs[rec.archetypeId]->setTag(rec.chunkIndex, rec.slotIndex, compId);
 					return;
 				}
 
-				Archetype *arch = archetypePtrs_[records_[entity.index].archetypeId].get();
+				Archetype *arch = mArchetypePtrs[mRecords[entity.index].archetypeId].get();
 				ComponentMask oldRegular = arch->getRegularMask();
 				ComponentMask newRegular = oldRegular;
 				if (compId < LOWER_HALF_BIT_MASK)
@@ -155,7 +180,7 @@ namespace Dimensia::ECS
 				{
 					T *ptr = static_cast<T *>(getComponentPtr(entity, compId));
 					*ptr = std::move(value);
-					archetypePtrs_[records_[entity.index].archetypeId]->bumpComponentVersion(records_[entity.index].chunkIndex, compId);
+					mArchetypePtrs[mRecords[entity.index].archetypeId]->bumpComponentVersion(mRecords[entity.index].chunkIndex, compId);
 					return;
 				}
 
@@ -176,14 +201,12 @@ namespace Dimensia::ECS
 				const auto &info = ComponentInfos[compId];
 				if (info.isTag)
 				{
-					auto &rec = records_[entity.index];
-					archetypePtrs_[rec.archetypeId]->clearTag(rec.chunkIndex, rec.slotIndex, compId);
+					auto &rec = mRecords[entity.index];
+					mArchetypePtrs[rec.archetypeId]->clearTag(rec.chunkIndex, rec.slotIndex, compId);
 					return;
 				}
 				removeComponent(entity, compId); // non‑template version already updated
 			}
-
-			void removeComponent(Entity entity, ComponentTypeID compId); // non‑template
 
 			template <typename T>
 			T *getComponent(Entity entity)
@@ -210,8 +233,8 @@ namespace Dimensia::ECS
 				{
 					return;
 				}
-				auto &rec = records_[entity.index];
-				archetypePtrs_[rec.archetypeId]->setTag(rec.chunkIndex, rec.slotIndex, tagId);
+				auto &rec = mRecords[entity.index];
+				mArchetypePtrs[rec.archetypeId]->setTag(rec.chunkIndex, rec.slotIndex, tagId);
 			}
 
 			template <typename Tag>
@@ -226,8 +249,8 @@ namespace Dimensia::ECS
 				{
 					return;
 				}
-				auto &rec = records_[entity.index];
-				archetypePtrs_[rec.archetypeId]->clearTag(rec.chunkIndex, rec.slotIndex, tagId);
+				auto &rec = mRecords[entity.index];
+				mArchetypePtrs[rec.archetypeId]->clearTag(rec.chunkIndex, rec.slotIndex, tagId);
 			}
 
 			template <typename Tag>
@@ -242,14 +265,9 @@ namespace Dimensia::ECS
 				{
 					return false;
 				}
-				const auto &rec = records_[entity.index];
-				return archetypePtrs_[rec.archetypeId]->hasTag(rec.chunkIndex, rec.slotIndex, tagId);
+				const auto &rec = mRecords[entity.index];
+				return mArchetypePtrs[rec.archetypeId]->hasTag(rec.chunkIndex, rec.slotIndex, tagId);
 			}
-
-			// Hierarchy
-			void setParent(Entity child, Entity parent);
-			std::vector<Entity> getChildren(Entity parent) const;
-			Entity getParent(Entity child) const;
 
 			// Queries (forEach)
 			template <typename... Components, typename Func>
@@ -268,7 +286,7 @@ namespace Dimensia::ECS
 			void forEach(ExecutionPolicy policy, Func &&func)
 			{
 				constexpr ComponentMask requiredRegular = build_required_mask<Components...>();
-				const auto &matchingArchetypes = queryCache_.get(requiredRegular);
+				const auto &matchingArchetypes = mQueryCache.get(requiredRegular);
 
 				if (policy == ExecutionPolicy::Seq)
 				{
@@ -301,7 +319,7 @@ namespace Dimensia::ECS
 							{
 								continue;
 							}
-							futures.push_back(threadPool_.submit([arch, c, entityCount, func]() {
+							futures.push_back(mThreadPool.submit([arch, c, entityCount, func]() {
 								Entity *entityArr = arch->getEntityArray(c);
 								processChunkEntities<Components...>(entityArr, entityCount, c, arch, func);
 							}));
@@ -346,7 +364,7 @@ namespace Dimensia::ECS
 						std::size_t end = std::min(i + batchSize, allChunks.size());
 						std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
 																	  allChunks.begin() + static_cast<std::ptrdiff_t>(end));
-						threadPool_.submit_with_latch(
+						mThreadPool.submit_with_latch(
 							[batch, func = std::forward<Func>(func)]() mutable {
 								for (const auto &[arch, c] : batch)
 								{
@@ -380,7 +398,7 @@ namespace Dimensia::ECS
 					// Use the work stealing pool; batch size may be adaptive but we keep it simple
 					const std::size_t batchSize = 8; // could also compute adaptively
 					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
-					workStealingPool_.submit_chunks(
+					mWorkStealingPool.submit_chunks(
 						allChunks,
 						[func = std::forward<Func>(func)](Archetype *arch, ui c) {
 							ui entityCount = arch->getEntityCount(c);
@@ -396,7 +414,7 @@ namespace Dimensia::ECS
 			void forEach(ExecutionPolicy policy, Func &&func) const
 			{
 				constexpr ComponentMask requiredRegular = build_required_mask<Components...>();
-				const auto &matchingArchetypes = queryCache_.get(requiredRegular);
+				const auto &matchingArchetypes = mQueryCache.get(requiredRegular);
 
 				if (policy == ExecutionPolicy::Seq)
 				{
@@ -429,7 +447,7 @@ namespace Dimensia::ECS
 							{
 								continue;
 							}
-							futures.push_back(threadPool_.submit([arch, c, entityCount, func]() {
+							futures.push_back(mThreadPool.submit([arch, c, entityCount, func]() {
 								const Entity *entityArr = arch->getEntityArray(c);
 								processChunkEntitiesConst<Components...>(entityArr, entityCount, c, arch, func);
 							}));
@@ -473,7 +491,7 @@ namespace Dimensia::ECS
 						std::size_t end = std::min(i + batchSize, allChunks.size());
 						std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
 																	  allChunks.begin() + static_cast<std::ptrdiff_t>(end));
-						threadPool_.submit_with_latch(
+						mThreadPool.submit_with_latch(
 							[batch, func = std::forward<Func>(func)]() mutable {
 								for (const auto &[arch, c] : batch)
 								{
@@ -506,7 +524,7 @@ namespace Dimensia::ECS
 					}
 					const std::size_t batchSize = 8;
 					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
-					workStealingPool_.submit_chunks(
+					mWorkStealingPool.submit_chunks(
 						allChunks,
 						[func = std::forward<Func>(func)](Archetype *arch, ui c) {
 							ui entityCount = arch->getEntityCount(c);
@@ -522,7 +540,7 @@ namespace Dimensia::ECS
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
 			{
 				constexpr ComponentMask requiredRegular = build_required_mask<Components...>();
-				const auto &matchingArchetypes = queryCache_.get(requiredRegular);
+				const auto &matchingArchetypes = mQueryCache.get(requiredRegular);
 
 				std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> dirtyChunks;
 				for (Archetype *arch : matchingArchetypes)
@@ -577,7 +595,7 @@ namespace Dimensia::ECS
 					{
 						Archetype *arch = std::get<0>(chunk);
 						ui c = std::get<1>(chunk);
-						futures.push_back(threadPool_.submit([arch, c, processFunc]() { processFunc(arch, c); }));
+						futures.push_back(mThreadPool.submit([arch, c, processFunc]() { processFunc(arch, c); }));
 					}
 					for (auto &fut : futures)
 					{
@@ -610,7 +628,7 @@ namespace Dimensia::ECS
 						std::size_t end = std::min(i + batchSize, chunks.size());
 						std::vector<std::pair<Archetype *, ui>> batch(chunks.begin() + static_cast<std::ptrdiff_t>(i),
 																	  chunks.begin() + static_cast<std::ptrdiff_t>(end));
-						threadPool_.submit_with_latch(
+						mThreadPool.submit_with_latch(
 							[batch, processFunc]() {
 								for (const auto &[arch, c] : batch)
 								{
@@ -638,7 +656,7 @@ namespace Dimensia::ECS
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
 			{
 				constexpr ComponentMask requiredRegular = build_required_mask<Components...>();
-				const auto &matchingArchetypes = queryCache_.get(requiredRegular);
+				const auto &matchingArchetypes = mQueryCache.get(requiredRegular);
 
 				std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> dirtyChunks;
 				for (Archetype *arch : matchingArchetypes)
@@ -713,7 +731,7 @@ namespace Dimensia::ECS
 			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
 			{
 				constexpr ComponentMask requiredRegular = build_required_mask<Components...>();
-				const auto &matchingArchetypes = queryCache_.get(requiredRegular);
+				const auto &matchingArchetypes = mQueryCache.get(requiredRegular);
 
 				if (policy == ExecutionPolicy::Seq)
 				{
@@ -747,7 +765,7 @@ namespace Dimensia::ECS
 							{
 								continue;
 							}
-							futures.push_back(threadPool_.submit([arch, c, entityCount, &cmds, func]() {
+							futures.push_back(mThreadPool.submit([arch, c, entityCount, &cmds, func]() {
 								Entity *entityArr = arch->getEntityArray(c);
 								processChunkEntities<Components...>(entityArr, entityCount, c, arch,
 																	[&](Entity e, auto &...comps) { func(e, comps...); });
@@ -791,7 +809,7 @@ namespace Dimensia::ECS
 						std::size_t end = std::min(i + batchSize, allChunks.size());
 						std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
 																	  allChunks.begin() + static_cast<std::ptrdiff_t>(end));
-						threadPool_.submit_with_latch(
+						mThreadPool.submit_with_latch(
 							[batch, &cmds, func = std::forward<Func>(func)]() mutable {
 								for (const auto &[arch, c] : batch)
 								{
@@ -825,7 +843,7 @@ namespace Dimensia::ECS
 					}
 					const std::size_t batchSize = 8;
 					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
-					workStealingPool_.submit_chunks(
+					mWorkStealingPool.submit_chunks(
 						allChunks,
 						[&cmds, func = std::forward<Func>(func)](Archetype *arch, ui c) {
 							ui entityCount = arch->getEntityCount(c);
@@ -838,32 +856,38 @@ namespace Dimensia::ECS
 				}
 			}
 
-			void compact();
-
 		private:
-			std::vector<EntityRecord> records_;
-			std::vector<ui> freeIndices_;
-			ui nextEntityIndex_ = 0;
-			// Archetype storage: stable IDs via vector, and a map from mask to ID.
-			std::vector<std::unique_ptr<Archetype>> archetypePtrs_;
-			std::unordered_map<ComponentMask, ui> archetypeMaskToId_;
-			QueryCache queryCache_;
-			mutable ThreadPool threadPool_;
-			mutable WorkStealingPool workStealingPool_;
-
-			mutable std::mutex hierarchyMutex_;
-			std::vector<Entity> parent_;
-			std::vector<std::vector<Entity>> children_;
-
-			// Helpers
+			// MARK: Private Getters
+			void *getComponentPtr(const Entity &entity, ComponentTypeID compId);
+			const void *getComponentPtr(const Entity &entity, ComponentTypeID compId) const;
 			Archetype *getOrCreateArchetype(ComponentMask regularMask);
-			void moveEntity(Entity entity, ComponentMask newRegularMask, const std::array<const void *, MAX_COMPONENTS> &copyData,
+
+			// MARK: Private Member Functions
+			void moveEntity(const Entity &entity, ComponentMask newRegularMask, const std::array<const void *, MAX_COMPONENTS> &copyData,
 							const std::array<void *, MAX_COMPONENTS> &moveData, ComponentMask newTags = ComponentMask(0));
-			void *getComponentPtr(Entity entity, ComponentTypeID compId);
-			const void *getComponentPtr(Entity entity, ComponentTypeID compId) const;
-			void destroyHierarchy(Entity entity);
+			void destroyHierarchy(const Entity &entity);
 
 			friend class CommandBuffer;
+
+		private:
+			QueryCache mQueryCache{};
+
+			// NOLINTBEGIN(readability-redundant-member-init)
+			mutable ThreadPool mThreadPool{};
+			mutable WorkStealingPool mWorkStealingPool{};
+
+			mutable std::mutex mHierarchyMutex{};
+
+			std::unordered_map<ComponentMask, ui> mArchetypeMaskToID{};
+			// NOLINTEND(readability-redundant-member-init)
+
+			std::vector<EntityRecord> mRecords;
+			std::vector<ui> mFreeIndices;
+			std::vector<std::unique_ptr<Archetype>> mArchetypePtrs;
+			std::vector<Entity> mParent;
+			std::vector<std::vector<Entity>> mChildren;
+
+			ui mNextEntityIndex{0};
 	};
 } // namespace Dimensia::ECS
 

@@ -25,11 +25,17 @@ int main()
 	using Dimensia::ECS::ExecutionPolicy;
 	using Dimensia::ECS::SystemVersion;
 
-	std::cout << alignof(Dimensia::ECS::ComponentMask) << '\n';
+	std::cout << alignof(Dimensia::ECS::QueryCache) << '\n';
+	std::cout << alignof(Dimensia::ECS::ThreadPool) << '\n';
+	std::cout << alignof(Dimensia::ECS::WorkStealingPool) << '\n';
+	std::cout << alignof(std::mutex) << '\n';
+	std::cout << alignof(std::unordered_map<Dimensia::ECS::ComponentMask, Dimensia::Core::ui>) << '\n';
+	std::cout << alignof(std::vector<Dimensia::ECS::EntityRecord>) << '\n';
+	std::cout << alignof(std::vector<Dimensia::Core::ui>) << '\n';
+	std::cout << alignof(std::vector<std::unique_ptr<Dimensia::ECS::Archetype>>) << '\n';
+	std::cout << alignof(std::vector<Dimensia::ECS::Entity>) << '\n';
+	std::cout << alignof(std::vector<std::vector<Dimensia::ECS::Entity>>) << '\n';
 	std::cout << alignof(Dimensia::Core::ui) << '\n';
-	std::cout << alignof(std::size_t) << '\n';
-	std::cout << alignof(std::vector<Dimensia::ECS::ComponentTypeID>) << '\n';
-	std::cout << alignof(std::vector<Dimensia::ECS::ChunkVersion>) << '\n';
 	// std::cout << alignof(AddFunc) << '\n';
 	// std::cout << alignof(bool) << '\n';
 	// std::cout << alignof(std::atomic<bool>) << '\n';
