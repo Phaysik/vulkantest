@@ -10,7 +10,7 @@
 
 #include <cassert>
 
-#include "Core/attributeMacros.h"
+#include "ECS/componentRegistry.h"
 #include "ECS/ecs.h"
 
 namespace Dimensia::ECS
@@ -31,47 +31,69 @@ namespace Dimensia::ECS
 
 	void CommandBuffer::apply(ECS &ecs)
 	{
-		std::vector<std::unique_ptr<ThreadBuffer>> local_buffers;
+		std::vector<std::vector<Command>> local_command_lists;
 		{
-			const std::scoped_lock<std::mutex> lock(mMapMutex);
+			const std::scoped_lock lock(mMapMutex);
+			local_command_lists.reserve(mBuffers.size());
 			for (auto &[threadID, buf] : mBuffers)
 			{
-				local_buffers.push_back(std::move(buf));
+				// Move the commands vector out – buf->commands becomes empty.
+				local_command_lists.push_back(std::move(buf->commands));
+				// The ThreadBuffer itself stays in mBuffers, ready for reuse.
 			}
-			mBuffers.clear();
 		}
 
-		for (auto &buf : local_buffers)
+		for (auto &commands : local_command_lists)
 		{
-			for (auto &cmd : buf->commands)
+			if (commands.empty())
 			{
-				switch (cmd.getType())
-				{
-					case CmdType::AddComponent:
-						{
-							auto &addData = std::get<AddData>(cmd.getData());
-							dispatchAdd(ecs, cmd.getEntity(), addData.compId, addData.buffer.data());
-							cmd.destroyBuffer();
-							break;
-						}
-					case CmdType::RemoveComponent:
-						{
-							const auto &removeData = std::get<RemoveData>(cmd.getData());
-							dispatchRemove(ecs, cmd.getEntity(), removeData.compId);
-							break;
-						}
-					case CmdType::Destroy:
-						ecs.destroyEntity(cmd.getEntity());
-						break;
-					case CmdType::SetParent:
-						{
-							const auto &setParentData = std::get<SetParentData>(cmd.getData());
-							ecs.setParent(cmd.getEntity(), setParentData.parent);
-							break;
-						}
-					default:
-						break;
-				}
+				continue;
+			}
+
+			// ---- 1️⃣ Partition Adds to front ----
+			// NOLINTBEGIN(modernize-use-ranges,boost-use-ranges,llvm-use-ranges)
+			auto addEnd{std::partition(commands.begin(), commands.end(),
+									   [](const Command &command) { return command.getType() == CmdType::AddComponent; })};
+			// NOLINTEND(modernize-use-ranges,boost-use-ranges,llvm-use-ranges)
+
+			// ---- Process Adds ----
+			for (auto it{commands.begin()}; it != addEnd; ++it)
+			{
+				auto &cmd{*it};
+				auto &addData{std::get<AddData>(cmd.getData())};
+
+				processAdd(ecs, cmd.getEntity(), addData.compId, addData.buffer.data());
+			}
+
+			// ---- 2️⃣ Partition Removes in remaining range ----
+			auto removeEnd{std::partition(addEnd, commands.end(),
+										  [](const Command &command) { return command.getType() == CmdType::RemoveComponent; })};
+
+			// ---- Process Removes ----
+			for (auto it{addEnd}; it != removeEnd; ++it)
+			{
+				auto &cmd{*it};
+				const auto &removeData{std::get<RemoveData>(cmd.getData())};
+
+				dispatchRemove(ecs, cmd.getEntity(), removeData.compId);
+			}
+
+			// ---- 3️⃣ Partition Destroy in remaining range ----
+			auto destroyEnd{
+				std::partition(removeEnd, commands.end(), [](const Command &command) { return command.getType() == CmdType::Destroy; })};
+
+			// ---- Process Destroy ----
+			for (auto it{removeEnd}; it != destroyEnd; ++it)
+			{
+				ecs.destroyEntity(it->getEntity());
+			}
+
+			// ---- 4️⃣ Remaining are SetParent ----
+			for (auto it{destroyEnd}; it != commands.end(); ++it)
+			{
+				const auto &setParentData{std::get<SetParentData>(it->getData())};
+
+				ecs.setParent(it->getEntity(), setParentData.parent);
 			}
 		}
 	}
@@ -103,29 +125,19 @@ namespace Dimensia::ECS
 		return tls;
 	}
 
-	template <typename... Ts>
-	void CommandBuffer::dispatchAddImpl(ECS &ecs, const Entity &entity, const ComponentTypeID componentTypeID, std::byte *buffer,
-										std::tuple<Ts...> /* componentTypes */)
+	void CommandBuffer::processAdd(ECS &ecs, const Entity &entity, const ComponentTypeID componentTypeID, std::byte *buffer)
 	{
-		ATTR_MAYBE_UNUSED bool handled{false};
-		(
-			[&] {
-				if (componentId<Ts>() == componentTypeID)
-				{
-					// NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-					Ts &value = *std::launder(reinterpret_cast<Ts *>(buffer));
-					ecs.addComponent(entity, std::move(value));
-					handled = true;
-				}
-			}(),
-			...);
+		const auto &infos{Dimensia::Registry::ComponentInfos};
 
-		assert(handled && "Unknown component ID in CommandBuffer::apply");
-	}
+		assert(componentTypeID < infos.size());
 
-	void CommandBuffer::dispatchAdd(ECS &ecs, const Entity &entity, const ComponentTypeID componentTypeID, std::byte *buffer)
-	{
-		dispatchAddImpl(ecs, entity, componentTypeID, buffer, Registry::ComponentTypes{});
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		const auto &info{infos[componentTypeID]};
+
+		assert(info.addFunc != nullptr && "No addFunc registered for this component type");
+
+		info.addFunc(&ecs, entity, buffer);
+		info.destructor(buffer);
 	}
 
 	void CommandBuffer::dispatchRemove(ECS &ecs, const Entity &entity, const ComponentTypeID componentTypeID)
