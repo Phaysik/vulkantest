@@ -26,8 +26,18 @@ namespace Dimensia::Threading
 	class WorkStealingPool
 	{
 		public:
-			explicit WorkStealingPool(std::size_t numThreads = std::thread::hardware_concurrency());
+			// MARK: Constructor, Destructor, and Assignment Operators
+
+			explicit WorkStealingPool(const std::size_t numThreads = std::thread::hardware_concurrency());
+
+			WorkStealingPool(const WorkStealingPool &other) = delete;
+			WorkStealingPool(WorkStealingPool &&other) noexcept = delete;
+			WorkStealingPool &operator=(const WorkStealingPool &other) = delete;
+			WorkStealingPool &operator=(WorkStealingPool &&other) noexcept = delete;
+
 			~WorkStealingPool();
+
+			// MARK: Template Function
 
 			template <typename TaskFunc>
 			void submit_chunks(const std::vector<std::pair<Archetype *, uint32_t>> &chunks, TaskFunc &&func, std::latch &latch,
@@ -35,43 +45,53 @@ namespace Dimensia::Threading
 			{
 				std::vector<std::pair<Archetype *, uint32_t>> batch;
 				batch.reserve(batchSize);
+
 				for (const auto &chunk : chunks)
 				{
 					batch.push_back(chunk);
+
 					if (batch.size() >= batchSize)
 					{
-						auto task = [batch, func, &latch]() {
+						auto task = [batch, func = std::forward<TaskFunc>(func), &latch]() {
 							for (const auto &[arch, idx] : batch)
 							{
 								func(arch, idx);
 							}
+
 							latch.count_down();
 						};
+
 						submit_task(std::move(task));
 						batch.clear();
 					}
 				}
+
 				if (!batch.empty())
 				{
-					auto task = [batch, func, &latch]() {
+					auto task = [batch, func = std::forward<TaskFunc>(func), &latch]() {
 						for (const auto &[arch, idx] : batch)
 						{
 							func(arch, idx);
 						}
+
 						latch.count_down();
 					};
+
 					submit_task(std::move(task));
 				}
 			}
 
 		private:
-			void submit_task(std::function<void()> task);
-			void worker_loop(std::size_t workerId);
+			// MARK: Private Member Functions
 
-			std::vector<std::thread> workers;
-			std::vector<WorkStealingQueue> queues;
-			std::atomic<bool> stop;
-			std::atomic<std::size_t> taskCount;
+			void submit_task(std::function<void()> &&task);
+			void worker_loop(const std::size_t workerID);
+
+		private:
+			std::vector<std::thread> mWorkers;
+			std::vector<WorkStealingQueue> mQueues;
+			std::atomic<std::size_t> mTaskCount;
+			std::atomic<bool> mStop;
 	};
 } // namespace Dimensia::Threading
 

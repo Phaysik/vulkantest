@@ -73,15 +73,16 @@ namespace Dimensia::ECS
 			}
 
 		private:
-			std::unordered_map<std::thread::id, std::unique_ptr<ThreadBuffer>> mBuffers;
-			std::mutex mMapMutex;
-
 			// MARK: Private Member Functions
 
 			ThreadBuffer *getThreadBuffer();
 
 			static void processAdd(ECS &ecs, const Entity &entity, const ComponentTypeID componentTypeID, std::byte *buffer);
 			static void dispatchRemove(ECS &ecs, const Entity &entity, const ComponentTypeID componentTypeID);
+
+		private:
+			std::unordered_map<std::thread::id, std::unique_ptr<ThreadBuffer>> mBuffers;
+			std::mutex mMapMutex;
 	};
 } // namespace Dimensia::ECS
 

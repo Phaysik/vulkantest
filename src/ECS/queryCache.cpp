@@ -52,7 +52,7 @@ namespace Dimensia::ECS
 		return emplaced.first->second;
 	}
 
-	void QueryCache::clearResults()
+	void QueryCache::clearResults() noexcept
 	{
 		mResults.clear();
 	}

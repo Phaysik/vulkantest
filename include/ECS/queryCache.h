@@ -30,7 +30,7 @@ namespace Dimensia::ECS
 
 			const std::vector<Archetype *> &get(const ComponentMask &requiredMask) const;
 
-			void clearResults();
+			void clearResults() noexcept;
 
 		private:
 			std::vector<std::pair<ComponentMask, Archetype *>> mArchetypes;

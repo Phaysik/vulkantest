@@ -8,62 +8,84 @@
 
 #include "Threading/workStealingPool.h"
 
+#include "Threading/workStealingQueue.h"
+
 namespace Dimensia::Threading
 {
-	WorkStealingPool::WorkStealingPool(std::size_t numThreads) : stop(false), taskCount(0), queues(numThreads)
+	// MARK: Constructor and Destructor
+
+	WorkStealingPool::WorkStealingPool(const std::size_t numThreads) : mQueues(numThreads), mTaskCount(0), mStop(false)
 	{
-		for (std::size_t i = 0; i < numThreads; ++i)
+		for (std::size_t i{0}; i < numThreads; ++i)
 		{
-			workers.emplace_back([this, i] { worker_loop(i); });
+			mWorkers.emplace_back([this, i] { worker_loop(i); });
 		}
 	}
 
 	WorkStealingPool::~WorkStealingPool()
 	{
-		stop = true;
-		for (auto &q : queues)
+		mStop = true;
+
+		for (WorkStealingQueue &queue : mQueues)
 		{
-			q.push(nullptr); // Sentinel
+			queue.push(nullptr); // Sentinel
 		}
-		for (auto &w : workers)
+		for (std::thread &worker : mWorkers)
 		{
-			w.join();
+			worker.join();
 		}
 	}
 
-	void WorkStealingPool::submit_task(std::function<void()> task)
+	// MARK: Private Member Functions
+
+	void WorkStealingPool::submit_task(std::function<void()> &&task)
 	{
-		std::size_t idx = taskCount++ % queues.size();
-		queues[idx].push(std::move(task));
+		const std::size_t idx{mTaskCount++ % mQueues.size()};
+
+		assert(idx < mQueues.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		mQueues[idx].push(std::move(task));
 	}
 
-	void WorkStealingPool::worker_loop(std::size_t workerId)
+	void WorkStealingPool::worker_loop(const std::size_t workerID)
 	{
-		while (!stop)
+		while (!mStop)
 		{
 			std::function<void()> task;
-			if (queues[workerId].try_pop(task))
+			assert(workerID < mQueues.size());
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			if (mQueues[workerID].try_pop(task))
 			{
 				if (!task)
 				{
 					break;
 				}
+
 				task();
 				continue;
 			}
-			for (std::size_t i = 1; i < queues.size(); ++i)
+
+			for (std::size_t i{1}; i < mQueues.size(); ++i)
 			{
-				std::size_t victimId = (workerId + i) % queues.size();
-				if (queues[victimId].try_steal(task))
+				const std::size_t victimId{(workerID + i) % mQueues.size()};
+
+				assert(victimId < mQueues.size());
+
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				if (mQueues[victimId].try_steal(task))
 				{
 					if (!task)
 					{
 						break;
 					}
+
 					task();
 					break;
 				}
 			}
+
 			if (!task)
 			{
 				std::this_thread::yield();
