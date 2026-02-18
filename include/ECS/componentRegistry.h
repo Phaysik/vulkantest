@@ -23,9 +23,16 @@
 #include "Components/Name/nameComponent.h"
 #include "Components/Position/positionComponent.h"
 #include "Components/Velocity/velocityComponent.h"
+#include "ECS/entity.h"
 #include "Tags/Alive/aliveTag.h"
 #include "Tags/Buffed/buffedTag.h"
 #include "Tags/Debug/debugTag.h"
+
+// Forward declaration of ECS
+namespace Dimensia::ECS
+{
+	class ECS;
+} // namespace Dimensia::ECS
 
 namespace Dimensia::Registry
 {
@@ -89,34 +96,12 @@ namespace Dimensia::Registry
 			void (*destructor)(void *);
 			void (*copyConstruct)(void *dest, const void *src);
 			void (*moveConstruct)(void *dest, void *src);
+			void (*addFunc)(Dimensia::ECS::ECS *, const Dimensia::ECS::Entity &, std::byte *);
 			bool isTag;
 	};
 
-	// Build a constexpr array of ComponentInfo from the type list
-	template <typename... Ts>
-	constexpr std::array<ComponentInfo, sizeof...(Ts)> make_component_infos(std::tuple<Ts...>)
-	{
-		return {{{sizeof(Ts), alignof(Ts), [](void *ptr) { static_cast<Ts *>(ptr)->~Ts(); },
-				  [](void *dest, const void *src) { new (dest) Ts(*static_cast<const Ts *>(src)); },
-				  [](void *dest, void *src) {
-					  if constexpr (std::is_move_constructible_v<Ts>)
-					  {
-						  new (dest) Ts(std::move(*static_cast<Ts *>(src)));
-					  }
-					  else if constexpr (std::is_copy_constructible_v<Ts>)
-					  {
-						  new (dest) Ts(*static_cast<const Ts *>(src));
-					  }
-					  else
-					  {
-						  static_assert(always_false<Ts>::value, "Component must be copy or move constructible");
-					  }
-				  },
-				  is_tag_component<Ts>::value}...}};
-	}
-
-	// Global compile‑time info array (indexed by componentId)
-	constexpr std::array<ComponentInfo, std::tuple_size_v<ComponentTypes>> ComponentInfos{make_component_infos(ComponentTypes{})};
+	// Declaration only – definition in ComponentRegistry.cpp
+	extern const std::array<ComponentInfo, std::tuple_size_v<ComponentTypes>> ComponentInfos;
 
 	// Compute maximum component size and alignment at compile time
 	template <typename>

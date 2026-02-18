@@ -76,10 +76,6 @@ namespace Dimensia::ECS
 				return mData;
 			}
 
-			// MARK: Member Function
-
-			void destroyBuffer();
-
 			// MARK: Template Member Functions
 
 			template <typename T>

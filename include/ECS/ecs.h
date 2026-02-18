@@ -283,8 +283,7 @@ namespace Dimensia::ECS
 								continue;
 							}
 							Entity *entityArr = arch->getEntityArray(c);
-							auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
-							process_chunk_entities<Components...>(entityArr, compArrays, entityCount, c, arch, func);
+							process_chunk_entities<Components...>(entityArr, entityCount, c, arch, func);
 						}
 					}
 				}
@@ -304,8 +303,7 @@ namespace Dimensia::ECS
 							}
 							futures.push_back(threadPool_.submit([arch, c, entityCount, func]() {
 								Entity *entityArr = arch->getEntityArray(c);
-								auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
-								process_chunk_entities<Components...>(entityArr, compArrays, entityCount, c, arch, func);
+								process_chunk_entities<Components...>(entityArr, entityCount, c, arch, func);
 							}));
 						}
 					}
@@ -332,21 +330,29 @@ namespace Dimensia::ECS
 					{
 						return;
 					}
-					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + 3) / 4)); // batch size 4
-					const std::size_t batchSize = 4;
+					// Adaptive batch size based on hardware concurrency
+					const std::size_t numThreads = std::thread::hardware_concurrency();
+					const std::size_t targetTasks = numThreads * 4;
+					std::size_t batchSize = (allChunks.size() + targetTasks - 1) / targetTasks;
+					if (batchSize < 1)
+					{
+						batchSize = 1;
+					}
+
+					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
+
 					for (std::size_t i = 0; i < allChunks.size(); i += batchSize)
 					{
 						std::size_t end = std::min(i + batchSize, allChunks.size());
 						std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
 																	  allChunks.begin() + static_cast<std::ptrdiff_t>(end));
 						threadPool_.submit_with_latch(
-							[batch, func]() {
+							[batch, func = std::forward<Func>(func)]() mutable {
 								for (const auto &[arch, c] : batch)
 								{
 									ui entityCount = arch->getEntityCount(c);
 									Entity *entityArr = arch->getEntityArray(c);
-									auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
-									process_chunk_entities<Components...>(entityArr, compArrays, entityCount, c, arch, func);
+									process_chunk_entities<Components...>(entityArr, entityCount, c, arch, func);
 								}
 							},
 							latch);
@@ -371,16 +377,17 @@ namespace Dimensia::ECS
 					{
 						return;
 					}
-					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + 7) / 8)); // batch size 8
+					// Use the work stealing pool; batch size may be adaptive but we keep it simple
+					const std::size_t batchSize = 8; // could also compute adaptively
+					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
 					workStealingPool_.submit_chunks(
 						allChunks,
-						[func](Archetype *arch, ui c) {
+						[func = std::forward<Func>(func)](Archetype *arch, ui c) {
 							ui entityCount = arch->getEntityCount(c);
 							Entity *entityArr = arch->getEntityArray(c);
-							auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
-							process_chunk_entities<Components...>(entityArr, compArrays, entityCount, c, arch, func);
+							process_chunk_entities<Components...>(entityArr, entityCount, c, arch, func);
 						},
-						latch, 8);
+						latch, batchSize);
 					latch.wait();
 				}
 			}
@@ -404,8 +411,7 @@ namespace Dimensia::ECS
 								continue;
 							}
 							const Entity *entityArr = arch->getEntityArray(c);
-							auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
-							process_chunk_entities_const<Components...>(entityArr, compArrays, entityCount, c, arch, func);
+							process_chunk_entities_const<Components...>(entityArr, entityCount, c, arch, func);
 						}
 					}
 				}
@@ -425,8 +431,7 @@ namespace Dimensia::ECS
 							}
 							futures.push_back(threadPool_.submit([arch, c, entityCount, func]() {
 								const Entity *entityArr = arch->getEntityArray(c);
-								auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
-								process_chunk_entities_const<Components...>(entityArr, compArrays, entityCount, c, arch, func);
+								process_chunk_entities_const<Components...>(entityArr, entityCount, c, arch, func);
 							}));
 						}
 					}
@@ -453,21 +458,28 @@ namespace Dimensia::ECS
 					{
 						return;
 					}
-					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + 3) / 4));
-					const std::size_t batchSize = 4;
+					const std::size_t numThreads = std::thread::hardware_concurrency();
+					const std::size_t targetTasks = numThreads * 4;
+					std::size_t batchSize = (allChunks.size() + targetTasks - 1) / targetTasks;
+					if (batchSize < 1)
+					{
+						batchSize = 1;
+					}
+
+					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
+
 					for (std::size_t i = 0; i < allChunks.size(); i += batchSize)
 					{
 						std::size_t end = std::min(i + batchSize, allChunks.size());
 						std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
 																	  allChunks.begin() + static_cast<std::ptrdiff_t>(end));
 						threadPool_.submit_with_latch(
-							[batch, func]() {
+							[batch, func = std::forward<Func>(func)]() mutable {
 								for (const auto &[arch, c] : batch)
 								{
 									ui entityCount = arch->getEntityCount(c);
 									const Entity *entityArr = arch->getEntityArray(c);
-									auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
-									process_chunk_entities_const<Components...>(entityArr, compArrays, entityCount, c, arch, func);
+									process_chunk_entities_const<Components...>(entityArr, entityCount, c, arch, func);
 								}
 							},
 							latch);
@@ -492,16 +504,16 @@ namespace Dimensia::ECS
 					{
 						return;
 					}
-					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + 7) / 8));
+					const std::size_t batchSize = 8;
+					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
 					workStealingPool_.submit_chunks(
 						allChunks,
-						[func](Archetype *arch, ui c) {
+						[func = std::forward<Func>(func)](Archetype *arch, ui c) {
 							ui entityCount = arch->getEntityCount(c);
 							const Entity *entityArr = arch->getEntityArray(c);
-							auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
-							process_chunk_entities_const<Components...>(entityArr, compArrays, entityCount, c, arch, func);
+							process_chunk_entities_const<Components...>(entityArr, entityCount, c, arch, func);
 						},
-						latch, 8);
+						latch, batchSize);
 					latch.wait();
 				}
 			}
@@ -538,8 +550,7 @@ namespace Dimensia::ECS
 				auto processFunc = [&](Archetype *arch, ui c) {
 					ui entityCount = arch->getEntityCount(c);
 					Entity *entityArr = arch->getEntityArray(c);
-					auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
-					process_chunk_entities<Components...>(entityArr, compArrays, entityCount, c, arch, func);
+					process_chunk_entities<Components...>(entityArr, entityCount, c, arch, func);
 				};
 
 				if (policy == ExecutionPolicy::Seq)
@@ -591,8 +602,9 @@ namespace Dimensia::ECS
 					{
 						chunks.emplace_back(std::get<0>(chunk), std::get<1>(chunk));
 					}
-					std::latch latch(static_cast<std::ptrdiff_t>((chunks.size() + 3) / 4));
+					// Use adaptive batching for ParBatched, but here we keep it simple
 					const std::size_t batchSize = 4;
+					std::latch latch(static_cast<std::ptrdiff_t>((chunks.size() + batchSize - 1) / batchSize));
 					for (std::size_t i = 0; i < chunks.size(); i += batchSize)
 					{
 						std::size_t end = std::min(i + batchSize, chunks.size());
@@ -654,8 +666,7 @@ namespace Dimensia::ECS
 				auto processFunc = [&](Archetype *arch, ui c) {
 					ui entityCount = arch->getEntityCount(c);
 					const Entity *entityArr = arch->getEntityArray(c);
-					auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
-					process_chunk_entities_const<Components...>(entityArr, compArrays, entityCount, c, arch, func);
+					process_chunk_entities_const<Components...>(entityArr, entityCount, c, arch, func);
 				};
 
 				// For simplicity, const version only implements sequential.
@@ -677,7 +688,7 @@ namespace Dimensia::ECS
 				}
 				else
 				{
-					// fallback to sequential for other policies (or could implement parallel similarly)
+					// fallback to sequential for other policies
 					for (const auto &chunk : dirtyChunks)
 					{
 						Archetype *arch = std::get<0>(chunk);
@@ -717,8 +728,7 @@ namespace Dimensia::ECS
 								continue;
 							}
 							Entity *entityArr = arch->getEntityArray(c);
-							auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
-							process_chunk_entities<Components...>(entityArr, compArrays, entityCount, c, arch,
+							process_chunk_entities<Components...>(entityArr, entityCount, c, arch,
 																  [&](Entity e, auto &...comps) { func(e, comps...); });
 						}
 					}
@@ -739,8 +749,7 @@ namespace Dimensia::ECS
 							}
 							futures.push_back(threadPool_.submit([arch, c, entityCount, &cmds, func]() {
 								Entity *entityArr = arch->getEntityArray(c);
-								auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
-								process_chunk_entities<Components...>(entityArr, compArrays, entityCount, c, arch,
+								process_chunk_entities<Components...>(entityArr, entityCount, c, arch,
 																	  [&](Entity e, auto &...comps) { func(e, comps...); });
 							}));
 						}
@@ -768,21 +777,27 @@ namespace Dimensia::ECS
 					{
 						return;
 					}
-					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + 3) / 4));
-					const std::size_t batchSize = 4;
+					const std::size_t numThreads = std::thread::hardware_concurrency();
+					const std::size_t targetTasks = numThreads * 4;
+					std::size_t batchSize = (allChunks.size() + targetTasks - 1) / targetTasks;
+					if (batchSize < 1)
+					{
+						batchSize = 1;
+					}
+
+					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
 					for (std::size_t i = 0; i < allChunks.size(); i += batchSize)
 					{
 						std::size_t end = std::min(i + batchSize, allChunks.size());
 						std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
 																	  allChunks.begin() + static_cast<std::ptrdiff_t>(end));
 						threadPool_.submit_with_latch(
-							[batch, &cmds, func]() {
+							[batch, &cmds, func = std::forward<Func>(func)]() mutable {
 								for (const auto &[arch, c] : batch)
 								{
 									ui entityCount = arch->getEntityCount(c);
 									Entity *entityArr = arch->getEntityArray(c);
-									auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
-									process_chunk_entities<Components...>(entityArr, compArrays, entityCount, c, arch,
+									process_chunk_entities<Components...>(entityArr, entityCount, c, arch,
 																		  [&](Entity e, auto &...comps) { func(e, comps...); });
 								}
 							},
@@ -808,17 +823,17 @@ namespace Dimensia::ECS
 					{
 						return;
 					}
-					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + 7) / 8));
+					const std::size_t batchSize = 8;
+					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
 					workStealingPool_.submit_chunks(
 						allChunks,
-						[&cmds, func](Archetype *arch, ui c) {
+						[&cmds, func = std::forward<Func>(func)](Archetype *arch, ui c) {
 							ui entityCount = arch->getEntityCount(c);
 							Entity *entityArr = arch->getEntityArray(c);
-							auto compArrays = std::make_tuple(arch->getComponentArray(c, componentId<Components>())...);
-							process_chunk_entities<Components...>(entityArr, compArrays, entityCount, c, arch,
+							process_chunk_entities<Components...>(entityArr, entityCount, c, arch,
 																  [&](Entity e, auto &...comps) { func(e, comps...); });
 						},
-						latch, 8);
+						latch, batchSize);
 					latch.wait();
 				}
 			}

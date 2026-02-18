@@ -142,6 +142,154 @@ int main()
 	ecs.compact();
 
 	// ------------------------------------------------------------------------
+	//  Stress test: forEach iteration speed (raw overhead)
+	// ------------------------------------------------------------------------
+	std::cout << "\n=== Stress test: forEach iteration speed ===\n";
+
+	const int NUM_ENTITIES_FOR_ITER = 1'000'000;
+	std::vector<Entity> iterEntities;
+	iterEntities.reserve(NUM_ENTITIES_FOR_ITER);
+
+	// Create many entities with a Name component
+	for (int i = 0; i < NUM_ENTITIES_FOR_ITER; ++i)
+	{
+		iterEntities.emplace_back(ecs.createEntityWith(Name{"dummy"}));
+	}
+
+	// Sequential iteration with trivial work
+	{
+		size_t counter = 0;
+		Dimensia::Utility::Clock::Timer::start();
+		ecs.forEach<Name>([&](Entity, Name &) {
+			++counter; // extremely cheap operation
+		});
+		auto time = Dimensia::Utility::Clock::Timer::stop<std::milli>();
+		std::cout << "Sequential forEach (counter=" << counter << ") took " << time << " ms.\n";
+	}
+
+	// Parallel (Par) iteration with trivial work
+	{
+		std::atomic<size_t> counter = 0;
+		Dimensia::Utility::Clock::Timer::start();
+		ecs.forEach<Name>(ExecutionPolicy::Par, [&](Entity, Name &) { ++counter; });
+		auto time = Dimensia::Utility::Clock::Timer::stop<std::milli>();
+		std::cout << "Parallel (Par) forEach (counter=" << counter.load() << ") took " << time << " ms.\n";
+	}
+
+	// Parallel batched (ParBatched) iteration
+	{
+		std::atomic<size_t> counter = 0;
+		Dimensia::Utility::Clock::Timer::start();
+		ecs.forEach<Name>(ExecutionPolicy::ParBatched, [&](Entity, Name &) { ++counter; });
+		auto time = Dimensia::Utility::Clock::Timer::stop<std::milli>();
+		std::cout << "Parallel (ParBatched) forEach (counter=" << counter.load() << ") took " << time << " ms.\n";
+	}
+
+	// Work‑stealing (ParStealing) iteration
+	{
+		std::atomic<size_t> counter = 0;
+		Dimensia::Utility::Clock::Timer::start();
+		ecs.forEach<Name>(ExecutionPolicy::ParStealing, [&](Entity, Name &) { ++counter; });
+		auto time = Dimensia::Utility::Clock::Timer::stop<std::milli>();
+		std::cout << "Parallel (ParStealing) forEach (counter=" << counter.load() << ") took " << time << " ms.\n";
+	}
+
+	// Cleanup
+	for (Entity e : iterEntities)
+	{
+		if (ecs.alive(e))
+		{
+			ecs.destroyEntity(e, false);
+		}
+	}
+
+	// ------------------------------------------------------------------------
+	//  Stress test: forEach with moderate workload (parallel should shine)
+	// ------------------------------------------------------------------------
+	std::cout << "\n=== Stress test: forEach with moderate workload ===\n";
+
+	const int NUM_ENTITIES_MODERATE = 1'000'000;
+	const int WORKLOAD_MODERATE = 10'000; // iterations per entity
+
+	std::vector<Entity> modEntities;
+	modEntities.reserve(NUM_ENTITIES_MODERATE);
+
+	// Create entities with Health component
+	for (int i = 0; i < NUM_ENTITIES_MODERATE; ++i)
+	{
+		modEntities.emplace_back(ecs.createEntityWith(Health{i}));
+	}
+
+	// Sequential execution
+	{
+		Dimensia::Utility::Clock::Timer::start();
+		ecs.forEach<Health>([&](Entity, Health &health) {
+			volatile float dummy = health.hp;
+			for (int iter = 0; iter < WORKLOAD_MODERATE; ++iter)
+			{
+				dummy = dummy * 1.000001f + 0.000001f; // cheap but non‑trivial math
+			}
+			health.hp = dummy; // write back to prevent complete elimination
+		});
+		auto time = Dimensia::Utility::Clock::Timer::stop<std::milli>();
+		std::cout << "Sequential forEach took " << time << " ms.\n";
+	}
+
+	// Parallel (Par) – one task per chunk
+	{
+		Dimensia::Utility::Clock::Timer::start();
+		ecs.forEach<Health>(ExecutionPolicy::Par, [&](Entity, Health &health) {
+			volatile float dummy = health.hp;
+			for (int iter = 0; iter < WORKLOAD_MODERATE; ++iter)
+			{
+				dummy = dummy * 1.000001f + 0.000001f;
+			}
+			health.hp = dummy;
+		});
+		auto time = Dimensia::Utility::Clock::Timer::stop<std::milli>();
+		std::cout << "Parallel (Par) forEach took " << time << " ms.\n";
+	}
+
+	// Parallel batched (ParBatched) – adaptive batching
+	{
+		Dimensia::Utility::Clock::Timer::start();
+		ecs.forEach<Health>(ExecutionPolicy::ParBatched, [&](Entity, Health &health) {
+			volatile float dummy = health.hp;
+			for (int iter = 0; iter < WORKLOAD_MODERATE; ++iter)
+			{
+				dummy = dummy * 1.000001f + 0.000001f;
+			}
+			health.hp = dummy;
+		});
+		auto time = Dimensia::Utility::Clock::Timer::stop<std::milli>();
+		std::cout << "Parallel (ParBatched) forEach took " << time << " ms.\n";
+	}
+
+	// Work‑stealing (ParStealing)
+	{
+		Dimensia::Utility::Clock::Timer::start();
+		ecs.forEach<Health>(ExecutionPolicy::ParStealing, [&](Entity, Health &health) {
+			volatile float dummy = health.hp;
+			for (int iter = 0; iter < WORKLOAD_MODERATE; ++iter)
+			{
+				dummy = dummy * 1.000001f + 0.000001f;
+			}
+			health.hp = dummy;
+		});
+		auto time = Dimensia::Utility::Clock::Timer::stop<std::milli>();
+		std::cout << "Parallel (ParStealing) forEach took " << time << " ms.\n";
+	}
+
+	// Cleanup
+	for (Entity e : modEntities)
+	{
+		if (ecs.alive(e))
+		{
+			ecs.destroyEntity(e, false);
+		}
+	}
+
+	// ------------------------------------------------------------------------
 	//  Stress test: command buffer with parallel forEach (modified to ensure one operation per entity)
 	// ------------------------------------------------------------------------
 	std::cout << "\n=== Stress test: command buffer ===\n";
@@ -198,7 +346,7 @@ int main()
 	});
 
 	auto time{Dimensia::Utility::Clock::Timer::stop<std::milli>()};
-	std::cout << "ParStealing forEach " << NUM_ENTITIES << " queued commands in " << time << " ms.\n";
+	std::cout << "ParStealing forEach " << NUM_ENTITIES << " queued commands with a workload of " << WORKLOAD << " in " << time << " ms.\n";
 
 	Dimensia::Utility::Clock::Timer::start();
 	stressCmds.apply(ecs);

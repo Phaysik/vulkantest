@@ -1,5 +1,5 @@
 /*! \file processChunkHelpers.h
-	\brief Contains the function declarations for creating a Detailed file description
+	\brief Contains optimized chunk processing helpers
 	\date 02/14/2026
 	\version x.x.x
 	\since x.x.x
@@ -31,6 +31,37 @@ namespace Dimensia::ECS
 	using Dimensia::Core::ui;
 	using Dimensia::Core::ul;
 
+	// ------------------------------------------------------------------------
+	//  Tag detection helpers
+	// ------------------------------------------------------------------------
+	template <typename T>
+	constexpr bool is_tag_v = is_tag_component<T>::value;
+
+	template <typename... Components>
+	constexpr bool has_tags_v = (is_tag_v<Components> || ...);
+
+	template <typename... Components>
+	constexpr ComponentMask build_tag_mask()
+	{
+		ComponentMask mask{0, 0};
+		(([&] {
+			 if constexpr (is_tag_v<Components>)
+			 {
+				 ComponentTypeID id = componentId<Components>();
+				 if (id < LOWER_HALF_BIT_MASK)
+				 {
+					 mask.mLow |= (1U << id);
+				 }
+				 else
+				 {
+					 mask.mHigh |= (1U << (id - LOWER_HALF_BIT_MASK));
+				 }
+			 }
+		 }()),
+		 ...);
+		return mask;
+	}
+
 	// Helper to iterate over set bits in a ComponentMask
 	template <typename F>
 	constexpr void forEachSetBit(const ComponentMask &mask, F &&func) noexcept
@@ -56,13 +87,13 @@ namespace Dimensia::ECS
 		}
 	}
 
-	// Build required mask for a set of component types
+	// Build required mask for a set of component types (non‑tags only)
 	template <typename... Components>
 	constexpr ComponentMask build_required_mask()
 	{
 		ComponentMask mask{0, 0};
 		(([&] {
-			 if constexpr (!is_tag_component<Components>::value)
+			 if constexpr (!is_tag_v<Components>)
 			 {
 				 ComponentTypeID componentTypeID{componentId<Components>()};
 				 if (componentTypeID < LOWER_HALF_BIT_MASK)
@@ -79,99 +110,153 @@ namespace Dimensia::ECS
 		return mask;
 	}
 
-	// Process a chunk of entities (non‑const version)
-	template <typename... Components, typename Func, typename EntityArr, typename CompArrays>
-	void process_chunk_entities(const EntityArr *entityArr, const CompArrays &compArrays, ui entityCount, ui chunkIdx,
-								const Archetype *arch, Func &&func)
+	// ------------------------------------------------------------------------
+	//  Process chunk with tag checks (used when has_tags_v is true)
+	// ------------------------------------------------------------------------
+	template <typename... Components, typename Func, std::size_t... Is>
+	void process_chunk_entities_with_tags_impl(Entity *entityArr, ui entityCount, ui chunkIdx, Archetype *arch, Func &&func,
+											   std::index_sequence<Is...>)
 	{
-		for (ui slotIndex{0}; slotIndex < entityCount; ++slotIndex)
+		const ul *tagBits = arch->getTagBitset(chunkIdx);
+		const ComponentMask requiredTags = build_tag_mask<Components...>();
+
+		// Store pointers as std::byte* in a tuple with deduced type
+		auto byteArrays = std::tuple{static_cast<std::byte *>(arch->getComponentArray(chunkIdx, componentId<Components>()))...};
+
+		for (ui slot = 0; slot < entityCount; ++slot)
 		{
-			Entity entity{entityArr[slotIndex]};
-			bool tagsOk{true};
-			const ComponentMask entityTags{arch->getTags(chunkIdx, slotIndex)};
-
-			// Check if entity has all required tag components
-			(
-				[&] {
-					if constexpr (is_tag_component<Components>::value)
-					{
-						const ComponentTypeID compId = componentId<Components>();
-						if (!(entityTags.mLow & (1U << compId)))
-						{
-							tagsOk = false;
-						}
-					}
-				}(),
-				...);
-
-			if (!tagsOk)
+			Entity entity = entityArr[slot];
+			ComponentMask entityTags{tagBits[slot], 0};
+			if ((entityTags & requiredTags) != requiredTags)
 			{
 				continue;
 			}
 
-			[&]<std::size_t... Is>(std::index_sequence<Is...>) {
-				std::forward<Func>(func)(entity,
-										 ([&]() -> std::conditional_t<is_tag_component<Components>::value, Components, Components &> {
-											 if constexpr (is_tag_component<Components>::value)
-											 {
-												 return Components{};
-											 }
-											 else
-											 {
-												 void *ptr = static_cast<std::byte *>(std::get<Is>(compArrays))
-														   + (slotIndex * ComponentInfos[componentId<Components>()].size);
-												 return (*static_cast<Components *>(ptr));
-											 }
-										 }())...);
-			}(std::index_sequence_for<Components...>{});
+			// Call user function with correctly typed pointers
+			std::apply([&](auto *...bytePtrs) noexcept { func(entity, (*reinterpret_cast<Components *>(bytePtrs))...); }, byteArrays);
+
+			// Advance each pointer by component size
+			((std::get<Is>(byteArrays) += ComponentInfos[componentId<Components>()].size), ...);
 		}
 	}
 
-	// Process a chunk of entities (const version)
-	template <typename... Components, typename Func, typename EntityArr, typename CompArrays>
-	void process_chunk_entities_const(const EntityArr *entityArr, const CompArrays &compArrays, ui entityCount, ui chunkIdx,
-									  const Archetype *arch, Func &&func)
+	template <typename... Components, typename Func>
+	void process_chunk_entities_with_tags(Entity *entityArr, ui entityCount, ui chunkIdx, Archetype *arch, Func &&func)
 	{
-		for (ui slotIndex{0}; slotIndex < entityCount; ++slotIndex)
+		process_chunk_entities_with_tags_impl<Components...>(entityArr, entityCount, chunkIdx, arch, std::forward<Func>(func),
+															 std::index_sequence_for<Components...>{});
+	}
+
+	// ------------------------------------------------------------------------
+	//  Process chunk without tag checks (used when has_tags_v is false)
+	// ------------------------------------------------------------------------
+	template <typename... Components, typename Func, std::size_t... Is>
+	void process_chunk_entities_no_tags_impl(Entity *entityArr, ui entityCount, ui chunkIdx, Archetype *arch, Func &&func,
+											 std::index_sequence<Is...>)
+	{
+		auto byteArrays = std::tuple{static_cast<std::byte *>(arch->getComponentArray(chunkIdx, componentId<Components>()))...};
+
+		for (ui slot = 0; slot < entityCount; ++slot)
 		{
-			Entity entity{entityArr[slotIndex]};
-			bool tagsOk{true};
-			const ComponentMask entityTags{arch->getTags(chunkIdx, slotIndex)};
+			Entity entity = entityArr[slot];
 
-			// Check if entity has all required tag components
-			(
-				[&] {
-					if constexpr (is_tag_component<Components>::value)
-					{
-						const ComponentTypeID compId = componentId<Components>();
-						if (!(entityTags.mLow & (1U << compId)))
-						{
-							tagsOk = false;
-						}
-					}
-				}(),
-				...);
+			std::apply([&](auto *...bytePtrs) noexcept { func(entity, (*reinterpret_cast<Components *>(bytePtrs))...); }, byteArrays);
 
-			if (!tagsOk)
+			((std::get<Is>(byteArrays) += ComponentInfos[componentId<Components>()].size), ...);
+		}
+	}
+
+	template <typename... Components, typename Func>
+	void process_chunk_entities_no_tags(Entity *entityArr, ui entityCount, ui chunkIdx, Archetype *arch, Func &&func)
+	{
+		process_chunk_entities_no_tags_impl<Components...>(entityArr, entityCount, chunkIdx, arch, std::forward<Func>(func),
+														   std::index_sequence_for<Components...>{});
+	}
+
+	// ------------------------------------------------------------------------
+	//  Public dispatch for non‑const version
+	// ------------------------------------------------------------------------
+	template <typename... Components, typename Func>
+	void process_chunk_entities(Entity *entityArr, ui entityCount, ui chunkIdx, Archetype *arch, Func &&func)
+	{
+		if constexpr (has_tags_v<Components...>)
+		{
+			process_chunk_entities_with_tags<Components...>(entityArr, entityCount, chunkIdx, arch, std::forward<Func>(func));
+		}
+		else
+		{
+			process_chunk_entities_no_tags<Components...>(entityArr, entityCount, chunkIdx, arch, std::forward<Func>(func));
+		}
+	}
+
+	// ------------------------------------------------------------------------
+	//  Const versions – use const std::byte* pointers
+	// ------------------------------------------------------------------------
+	template <typename... Components, typename Func, std::size_t... Is>
+	void process_chunk_entities_with_tags_const_impl(const Entity *entityArr, ui entityCount, ui chunkIdx, const Archetype *arch,
+													 Func &&func, std::index_sequence<Is...>)
+	{
+		const ul *tagBits = arch->getTagBitset(chunkIdx);
+		const ComponentMask requiredTags = build_tag_mask<Components...>();
+
+		auto byteArrays = std::tuple{static_cast<const std::byte *>(arch->getComponentArray(chunkIdx, componentId<Components>()))...};
+
+		for (ui slot = 0; slot < entityCount; ++slot)
+		{
+			Entity entity = entityArr[slot];
+			ComponentMask entityTags{tagBits[slot], 0};
+			if ((entityTags & requiredTags) != requiredTags)
 			{
 				continue;
 			}
 
-			[&]<std::size_t... Is>(std::index_sequence<Is...>) {
-				std::forward<Func>(func)(entity,
-										 ([&]() -> std::conditional_t<is_tag_component<Components>::value, Components, const Components &> {
-											 if constexpr (is_tag_component<Components>::value)
-											 {
-												 return Components{};
-											 }
-											 else
-											 {
-												 const void *ptr = static_cast<const std::byte *>(std::get<Is>(compArrays))
-																 + (slotIndex * ComponentInfos[componentId<Components>()].size);
-												 return (*static_cast<const Components *>(ptr));
-											 }
-										 }())...);
-			}(std::index_sequence_for<Components...>{});
+			std::apply([&](auto *...bytePtrs) noexcept { func(entity, (*reinterpret_cast<const Components *>(bytePtrs))...); }, byteArrays);
+
+			// Advance each pointer by component size
+			((const_cast<const std::byte *&>(std::get<Is>(byteArrays)) += ComponentInfos[componentId<Components>()].size), ...);
+		}
+	}
+
+	template <typename... Components, typename Func>
+	void process_chunk_entities_with_tags_const(const Entity *entityArr, ui entityCount, ui chunkIdx, const Archetype *arch, Func &&func)
+	{
+		process_chunk_entities_with_tags_const_impl<Components...>(entityArr, entityCount, chunkIdx, arch, std::forward<Func>(func),
+																   std::index_sequence_for<Components...>{});
+	}
+
+	template <typename... Components, typename Func, std::size_t... Is>
+	void process_chunk_entities_no_tags_const_impl(const Entity *entityArr, ui entityCount, ui chunkIdx, const Archetype *arch, Func &&func,
+												   std::index_sequence<Is...>)
+	{
+		auto byteArrays = std::tuple{static_cast<const std::byte *>(arch->getComponentArray(chunkIdx, componentId<Components>()))...};
+
+		for (ui slot = 0; slot < entityCount; ++slot)
+		{
+			Entity entity = entityArr[slot];
+
+			std::apply([&](auto *...bytePtrs) noexcept { func(entity, (*reinterpret_cast<const Components *>(bytePtrs))...); }, byteArrays);
+
+			((const_cast<const std::byte *&>(std::get<Is>(byteArrays)) += ComponentInfos[componentId<Components>()].size), ...);
+		}
+	}
+
+	template <typename... Components, typename Func>
+	void process_chunk_entities_no_tags_const(const Entity *entityArr, ui entityCount, ui chunkIdx, const Archetype *arch, Func &&func)
+	{
+		process_chunk_entities_no_tags_const_impl<Components...>(entityArr, entityCount, chunkIdx, arch, std::forward<Func>(func),
+																 std::index_sequence_for<Components...>{});
+	}
+
+	template <typename... Components, typename Func>
+	void process_chunk_entities_const(const Entity *entityArr, ui entityCount, ui chunkIdx, const Archetype *arch, Func &&func)
+	{
+		if constexpr (has_tags_v<Components...>)
+		{
+			process_chunk_entities_with_tags_const<Components...>(entityArr, entityCount, chunkIdx, arch, std::forward<Func>(func));
+		}
+		else
+		{
+			process_chunk_entities_no_tags_const<Components...>(entityArr, entityCount, chunkIdx, arch, std::forward<Func>(func));
 		}
 	}
 } // namespace Dimensia::ECS

@@ -74,6 +74,11 @@ namespace Dimensia::ECS
 				forEachSetBit(regularMask_, std::forward<F>(func));
 			}
 
+			const ul *getTagBitset(ui chunkIdx) const
+			{
+				return reinterpret_cast<const ul *>(chunks_[chunkIdx]->buffer + tagBitsetOffset_);
+			}
+
 		private:
 			static constexpr std::size_t CHUNK_SIZE = 16'384;
 

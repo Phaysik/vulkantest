@@ -24,8 +24,8 @@ namespace Dimensia::ECS
 	// Forward declaration
 	class ECS;
 
-	using Registry::componentId;
-	using Registry::ComponentTypeID;
+	using Dimensia::Registry::componentId;
+	using Dimensia::Registry::ComponentTypeID;
 
 	struct ThreadBuffer
 	{
@@ -80,10 +80,7 @@ namespace Dimensia::ECS
 
 			ThreadBuffer *getThreadBuffer();
 
-			template <typename... Ts>
-			static void dispatchAddImpl(ECS &ecs, const Entity &entity, const ComponentTypeID componentTypeID, std::byte *buffer,
-										std::tuple<Ts...> /* componentTypes */);
-			static void dispatchAdd(ECS &ecs, const Entity &entity, const ComponentTypeID componentTypeID, std::byte *buffer);
+			static void processAdd(ECS &ecs, const Entity &entity, const ComponentTypeID componentTypeID, std::byte *buffer);
 			static void dispatchRemove(ECS &ecs, const Entity &entity, const ComponentTypeID componentTypeID);
 	};
 } // namespace Dimensia::ECS
