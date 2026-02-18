@@ -283,7 +283,7 @@ namespace Dimensia::ECS
 								continue;
 							}
 							Entity *entityArr = arch->getEntityArray(c);
-							process_chunk_entities<Components...>(entityArr, entityCount, c, arch, func);
+							processChunkEntities<Components...>(entityArr, entityCount, c, arch, func);
 						}
 					}
 				}
@@ -303,7 +303,7 @@ namespace Dimensia::ECS
 							}
 							futures.push_back(threadPool_.submit([arch, c, entityCount, func]() {
 								Entity *entityArr = arch->getEntityArray(c);
-								process_chunk_entities<Components...>(entityArr, entityCount, c, arch, func);
+								processChunkEntities<Components...>(entityArr, entityCount, c, arch, func);
 							}));
 						}
 					}
@@ -352,7 +352,7 @@ namespace Dimensia::ECS
 								{
 									ui entityCount = arch->getEntityCount(c);
 									Entity *entityArr = arch->getEntityArray(c);
-									process_chunk_entities<Components...>(entityArr, entityCount, c, arch, func);
+									processChunkEntities<Components...>(entityArr, entityCount, c, arch, func);
 								}
 							},
 							latch);
@@ -385,7 +385,7 @@ namespace Dimensia::ECS
 						[func = std::forward<Func>(func)](Archetype *arch, ui c) {
 							ui entityCount = arch->getEntityCount(c);
 							Entity *entityArr = arch->getEntityArray(c);
-							process_chunk_entities<Components...>(entityArr, entityCount, c, arch, func);
+							processChunkEntities<Components...>(entityArr, entityCount, c, arch, func);
 						},
 						latch, batchSize);
 					latch.wait();
@@ -411,7 +411,7 @@ namespace Dimensia::ECS
 								continue;
 							}
 							const Entity *entityArr = arch->getEntityArray(c);
-							process_chunk_entities_const<Components...>(entityArr, entityCount, c, arch, func);
+							processChunkEntitiesConst<Components...>(entityArr, entityCount, c, arch, func);
 						}
 					}
 				}
@@ -431,7 +431,7 @@ namespace Dimensia::ECS
 							}
 							futures.push_back(threadPool_.submit([arch, c, entityCount, func]() {
 								const Entity *entityArr = arch->getEntityArray(c);
-								process_chunk_entities_const<Components...>(entityArr, entityCount, c, arch, func);
+								processChunkEntitiesConst<Components...>(entityArr, entityCount, c, arch, func);
 							}));
 						}
 					}
@@ -479,7 +479,7 @@ namespace Dimensia::ECS
 								{
 									ui entityCount = arch->getEntityCount(c);
 									const Entity *entityArr = arch->getEntityArray(c);
-									process_chunk_entities_const<Components...>(entityArr, entityCount, c, arch, func);
+									processChunkEntitiesConst<Components...>(entityArr, entityCount, c, arch, func);
 								}
 							},
 							latch);
@@ -511,7 +511,7 @@ namespace Dimensia::ECS
 						[func = std::forward<Func>(func)](Archetype *arch, ui c) {
 							ui entityCount = arch->getEntityCount(c);
 							const Entity *entityArr = arch->getEntityArray(c);
-							process_chunk_entities_const<Components...>(entityArr, entityCount, c, arch, func);
+							processChunkEntitiesConst<Components...>(entityArr, entityCount, c, arch, func);
 						},
 						latch, batchSize);
 					latch.wait();
@@ -550,7 +550,7 @@ namespace Dimensia::ECS
 				auto processFunc = [&](Archetype *arch, ui c) {
 					ui entityCount = arch->getEntityCount(c);
 					Entity *entityArr = arch->getEntityArray(c);
-					process_chunk_entities<Components...>(entityArr, entityCount, c, arch, func);
+					processChunkEntities<Components...>(entityArr, entityCount, c, arch, func);
 				};
 
 				if (policy == ExecutionPolicy::Seq)
@@ -666,7 +666,7 @@ namespace Dimensia::ECS
 				auto processFunc = [&](Archetype *arch, ui c) {
 					ui entityCount = arch->getEntityCount(c);
 					const Entity *entityArr = arch->getEntityArray(c);
-					process_chunk_entities_const<Components...>(entityArr, entityCount, c, arch, func);
+					processChunkEntitiesConst<Components...>(entityArr, entityCount, c, arch, func);
 				};
 
 				// For simplicity, const version only implements sequential.
@@ -728,8 +728,8 @@ namespace Dimensia::ECS
 								continue;
 							}
 							Entity *entityArr = arch->getEntityArray(c);
-							process_chunk_entities<Components...>(entityArr, entityCount, c, arch,
-																  [&](Entity e, auto &...comps) { func(e, comps...); });
+							processChunkEntities<Components...>(entityArr, entityCount, c, arch,
+																[&](Entity e, auto &...comps) { func(e, comps...); });
 						}
 					}
 				}
@@ -749,8 +749,8 @@ namespace Dimensia::ECS
 							}
 							futures.push_back(threadPool_.submit([arch, c, entityCount, &cmds, func]() {
 								Entity *entityArr = arch->getEntityArray(c);
-								process_chunk_entities<Components...>(entityArr, entityCount, c, arch,
-																	  [&](Entity e, auto &...comps) { func(e, comps...); });
+								processChunkEntities<Components...>(entityArr, entityCount, c, arch,
+																	[&](Entity e, auto &...comps) { func(e, comps...); });
 							}));
 						}
 					}
@@ -797,8 +797,8 @@ namespace Dimensia::ECS
 								{
 									ui entityCount = arch->getEntityCount(c);
 									Entity *entityArr = arch->getEntityArray(c);
-									process_chunk_entities<Components...>(entityArr, entityCount, c, arch,
-																		  [&](Entity e, auto &...comps) { func(e, comps...); });
+									processChunkEntities<Components...>(entityArr, entityCount, c, arch,
+																		[&](Entity e, auto &...comps) { func(e, comps...); });
 								}
 							},
 							latch);
@@ -830,8 +830,8 @@ namespace Dimensia::ECS
 						[&cmds, func = std::forward<Func>(func)](Archetype *arch, ui c) {
 							ui entityCount = arch->getEntityCount(c);
 							Entity *entityArr = arch->getEntityArray(c);
-							process_chunk_entities<Components...>(entityArr, entityCount, c, arch,
-																  [&](Entity e, auto &...comps) { func(e, comps...); });
+							processChunkEntities<Components...>(entityArr, entityCount, c, arch,
+																[&](Entity e, auto &...comps) { func(e, comps...); });
 						},
 						latch, batchSize);
 					latch.wait();

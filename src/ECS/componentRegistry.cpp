@@ -13,9 +13,10 @@
 namespace Dimensia::Registry
 {
 	template <typename... Ts>
-	constexpr std::array<ComponentInfo, sizeof...(Ts)> makeComponentInfos(std::tuple<Ts...>)
+	// NOLINTNEXTLINE(misc-use-internal-linkage)
+	constexpr std::array<ComponentInfo, sizeof...(Ts)> makeComponentInfos(const std::tuple<Ts...> & /* componentInfos */)
 	{
-		return {{{sizeof(Ts), alignof(Ts), [](void *ptr) { static_cast<Ts *>(ptr)->~Ts(); },
+		return {{{[](void *ptr) { static_cast<Ts *>(ptr)->~Ts(); },
 				  [](void *dest, const void *src) { new (dest) Ts(*static_cast<const Ts *>(src)); },
 				  [](void *dest, void *src) {
 					  if constexpr (std::is_move_constructible_v<Ts>)
@@ -28,11 +29,13 @@ namespace Dimensia::Registry
 					  }
 				  },
 				  [](Dimensia::ECS::ECS *ecs, const Dimensia::ECS::Entity &entity, std::byte *buffer) {
+					  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
 					  Ts &value = *std::launder(reinterpret_cast<Ts *>(buffer));
 					  ecs->addComponent(entity, std::move(value));
 				  },
-				  is_tag_component<Ts>::value}...}};
+				  sizeof(Ts), alignof(Ts), is_tag_component<Ts>::value}...}};
 	}
 
+	// NOLINTNEXTLINE(fuchsia-statically-constructed-objects)
 	constexpr std::array<ComponentInfo, std::tuple_size_v<ComponentTypes>> ComponentInfos{makeComponentInfos(ComponentTypes{})};
 } // namespace Dimensia::Registry

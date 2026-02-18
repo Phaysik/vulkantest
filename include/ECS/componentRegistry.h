@@ -39,8 +39,10 @@ namespace Dimensia::Registry
 	// -----------------------------------------------------------------------------
 	//  Compile‑time component registry
 	// -----------------------------------------------------------------------------
-	using ComponentTypes = std::tuple<Components::Position, Components::Velocity, Components::Health, Components::Mana, Components::Buff,
-									  Components::Buffs, Components::Name, Tags::AliveTag, Tags::DebugTag, Tags::BuffedTag>;
+	using ComponentTypes
+		= std::tuple<Dimensia::Components::Position, Dimensia::Components::Velocity, Dimensia::Components::Health,
+					 Dimensia::Components::Mana, Dimensia::Components::Buff, Dimensia::Components::Buffs, Dimensia::Components::Name,
+					 Dimensia::Tags::AliveTag, Dimensia::Tags::DebugTag, Dimensia::Tags::BuffedTag>;
 
 	// -----------------------------------------------------------------------------
 	//  Type utilities
@@ -61,6 +63,7 @@ namespace Dimensia::Registry
 	{
 		static_assert(tuple_index<T, ComponentTypes>::value < std::tuple_size_v<ComponentTypes>,
 					  "Component type not found in ComponentTypes list");
+
 		return tuple_index<T, ComponentTypes>::value;
 	}
 
@@ -75,28 +78,31 @@ namespace Dimensia::Registry
 	struct is_tag_component<T, std::void_t<decltype(T::is_tag)>> : std::integral_constant<bool, T::is_tag>
 	{};
 
-	template <typename>
-	struct always_false : std::false_type
-	{};
-
 	// -----------------------------------------------------------------------------
 	//  Configuration constants
 	// -----------------------------------------------------------------------------
-	constexpr std::size_t MAX_COMPONENTS = 128;
+	constexpr std::size_t MAX_COMPONENTS{128};
 	using ComponentTypeID = uint32_t;
 	using VersionType = uint64_t;
 
 	// -----------------------------------------------------------------------------
 	//  ComponentInfo – type‑erased operations
 	// -----------------------------------------------------------------------------
+
+	using DestructorFunc = void (*)(void *);
+	using CopyConstructFunc = void (*)(void *dest, const void *src);
+	using MoveConstructFunc = void (*)(void *dest, void *src);
+	using AddFunc = void (*)(Dimensia::ECS::ECS *, const Dimensia::ECS::Entity &, std::byte *);
+
 	struct ComponentInfo
 	{
+		public:
+			DestructorFunc destructor;
+			CopyConstructFunc copyConstruct;
+			MoveConstructFunc moveConstruct;
+			AddFunc addFunc;
 			std::size_t size;
 			std::size_t alignment;
-			void (*destructor)(void *);
-			void (*copyConstruct)(void *dest, const void *src);
-			void (*moveConstruct)(void *dest, void *src);
-			void (*addFunc)(Dimensia::ECS::ECS *, const Dimensia::ECS::Entity &, std::byte *);
 			bool isTag;
 	};
 
@@ -110,12 +116,13 @@ namespace Dimensia::Registry
 	template <typename... Ts>
 	struct MaxSizeHelper<std::tuple<Ts...>>
 	{
-			static constexpr std::size_t size = std::max({sizeof(Ts)...});
-			static constexpr std::size_t alignment = std::max({alignof(Ts)...});
+		public:
+			static constexpr std::size_t size{std::max({sizeof(Ts)...})};
+			static constexpr std::size_t alignment{std::max({alignof(Ts)...})};
 	};
 
-	constexpr std::size_t MAX_COMPONENT_SIZE = MaxSizeHelper<ComponentTypes>::size;
-	constexpr std::size_t MAX_COMPONENT_ALIGN = MaxSizeHelper<ComponentTypes>::alignment;
+	constexpr std::size_t MAX_COMPONENT_SIZE{MaxSizeHelper<ComponentTypes>::size};
+	constexpr std::size_t MAX_COMPONENT_ALIGN{MaxSizeHelper<ComponentTypes>::alignment};
 } // namespace Dimensia::Registry
 
 #endif
