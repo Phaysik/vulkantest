@@ -17,340 +17,553 @@
 
 namespace Dimensia::ECS
 {
-	Archetype::Archetype(ComponentMask regularMask, uint32_t id)
-		: regularMask_(regularMask), archetypeId_(id), chunks_(), freeChunks_(), chunkCapacity_(0), chunkVersions_()
-	{
-		componentOffsets_.fill(SIZE_MAX);
-		componentSizes_.fill(0);
+	// MARK: Constructor and Destructor
 
-		forEachSetBit(regularMask_, [this](ComponentTypeID typeID) {
-			const auto &info = ComponentInfos.at(typeID);
+	Archetype::Archetype(const ComponentMask &regularMask, const ui archetypeID)
+		: mRegularMask(regularMask), mArchetypeID(archetypeID), mChunkCapacity(0)
+	{
+		mComponentOffsets.fill(SIZE_MAX);
+		mComponentSizes.fill(0);
+
+		forEachSetBit(mRegularMask, [this](const ComponentTypeID typeID) {
+			assert(typeID < ComponentInfos.size());
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			const auto &info{ComponentInfos[typeID]};
 			if (info.size > 0)
 			{
-				sortedRegular_.push_back(typeID);
+				mSortedRegular.push_back(typeID);
 			}
 		});
 
-		std::ranges::sort(sortedRegular_);
-		chunkCapacity_ = computeCapacity();
-		computeLayout(chunkCapacity_);
+		std::ranges::sort(mSortedRegular);
+
+		// NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
+		mChunkCapacity = computeCapacity(); // Initialized here because it relies on the forEachSetBit above
+
+		computeLayout(mChunkCapacity);
 	}
 
 	Archetype::~Archetype()
 	{
-		for (auto &chunk : chunks_)
+		for (auto &chunk : mChunks)
 		{
 			for (ui slot = 0; slot < chunk->count; ++slot)
 			{
-				for (const ComponentTypeID &compId : sortedRegular_)
+				for (const ComponentTypeID &compID : mSortedRegular)
 				{
-					void *ptr
-						= static_cast<std::byte *>(chunk->buffer) + componentOffsets_.at(compId) + (slot * componentSizes_.at(compId));
-					ComponentInfos.at(compId).destructor(ptr);
+					assert(compID < mComponentOffsets.size());
+					assert(compID < mComponentSizes.size());
+
+					// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+					void *ptr = &chunk->buffer[mComponentOffsets[compID] + (slot * mComponentSizes[compID])];
+
+					assert(compID < ComponentInfos.size());
+
+					// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+					ComponentInfos[compID].destructor(ptr);
 				}
 			}
 		}
 	}
 
-	ATTR_NODISCARD ComponentMask Archetype::getRegularMask() const
+	// MARK: Getters
+
+	ATTR_NODISCARD ui Archetype::getChunkCount() const noexcept
 	{
-		return regularMask_;
+		return static_cast<ui>(mChunks.size());
 	}
 
-	ATTR_NODISCARD ui Archetype::getChunkCount() const
+	ATTR_NODISCARD const ChunkVersion &Archetype::getChunkVersion(const ui chunkIndex) const
 	{
-		return static_cast<ui>(chunks_.size());
+		assert(chunkIndex < mChunkVersions.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		return mChunkVersions[chunkIndex];
 	}
 
-	ATTR_NODISCARD ui Archetype::getId() const
+	ATTR_NODISCARD ui Archetype::getEntityCount(const ui chunkIndex) const
 	{
-		return archetypeId_;
+		assert(chunkIndex < mChunks.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		return mChunks[chunkIndex]->count;
 	}
 
-	ATTR_NODISCARD const ChunkVersion &Archetype::getChunkVersion(ui chunkIdx) const
+	ATTR_NODISCARD void *Archetype::getComponentArray(const ui chunkIndex, const ComponentTypeID compID) const
 	{
-		return chunkVersions_.at(chunkIdx);
+		assert(compID < mComponentOffsets.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		if (mComponentOffsets[compID] == SIZE_MAX)
+		{
+			return nullptr;
+		}
+
+		assert(chunkIndex < mChunks.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		return &mChunks[chunkIndex]->buffer[mComponentOffsets[compID]];
 	}
+
+	ATTR_NODISCARD Entity *Archetype::getEntityArray(const ui chunkIndex) const
+	{
+		assert(chunkIndex < mChunks.size());
+		assert(mEntityArrayOffset < mChunks[chunkIndex]->buffer.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,cppcoreguidelines-pro-type-reinterpret-cast)
+		return reinterpret_cast<Entity *>(&mChunks[chunkIndex]->buffer[mEntityArrayOffset]);
+	}
+
+	ATTR_NODISCARD ComponentMask Archetype::getTags(const ui chunkIndex, const ui slotIndex) const
+	{
+		assert(chunkIndex < mChunks.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		const ul *tagBits{getTagBitset(mChunks[chunkIndex].get())};
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+		return {tagBits[slotIndex], 0};
+	}
+
+	ATTR_NODISCARD const ul *Archetype::getTagBitset(const ui chunkIndex) const
+	{
+		assert(chunkIndex < mChunks.size());
+		assert(mTagBitsetOffset < mChunks[chunkIndex]->buffer.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,cppcoreguidelines-pro-type-reinterpret-cast)
+		return reinterpret_cast<const ul *>(&mChunks[chunkIndex]->buffer[mTagBitsetOffset]);
+	}
+
+	// MARK: Setter
+
+	void Archetype::setTag(const ui chunkIndex, const ui slotIndex, const ComponentTypeID tagID)
+	{
+		assert(chunkIndex < mChunks.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		ul *tagBits{getTagBitset(mChunks[chunkIndex].get())};
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+		tagBits[slotIndex] |= (1U << tagID);
+
+		assert(chunkIndex < mChunkVersions.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		mChunkVersions[chunkIndex].bump();
+	}
+
+	// MARK: Member Functions
+
+	ATTR_NODISCARD bool Archetype::hasTag(const ui chunkIndex, const ui slotIndex, const ComponentTypeID tagID) const
+	{
+		assert(chunkIndex < mChunks.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		const ul *tagBits{getTagBitset(mChunks[chunkIndex].get())};
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+		return (tagBits[slotIndex] & (1U << tagID)) != 0;
+	}
+
+	void Archetype::clearTag(const ui chunkIndex, const ui slotIndex, const ComponentTypeID tagID)
+	{
+		assert(chunkIndex < mChunks.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		ul *tagBits{getTagBitset(mChunks[chunkIndex].get())};
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+		tagBits[slotIndex] &= ~(1U << tagID);
+
+		assert(chunkIndex < mChunkVersions.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		mChunkVersions[chunkIndex].bump();
+	}
+
+	void Archetype::bumpChunkVersion(const ui chunkIndex)
+	{
+		assert(chunkIndex < mChunkVersions.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		mChunkVersions[chunkIndex].bump();
+	}
+
+	void Archetype::bumpComponentVersion(const ui chunkIndex, const ComponentTypeID compID)
+	{
+		assert(chunkIndex < mChunkVersions.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		mChunkVersions[chunkIndex].bumpComponent(compID);
+	}
+
+	std::pair<ui, ui> Archetype::addEntity(const Entity &entity, const std::array<const void *, MAX_COMPONENTS> &copyData,
+										   const std::array<void *, MAX_COMPONENTS> &moveData, const ComponentMask &tags)
+	{
+		Chunk *chunk{nullptr};
+		std::size_t chunkIndex{0};
+
+		for (; chunkIndex < mChunks.size(); ++chunkIndex)
+		{
+			assert(chunkIndex < mChunks.size());
+
+			// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			if (mChunks[chunkIndex]->count < mChunkCapacity)
+			{
+				chunk = mChunks[chunkIndex].get();
+				break;
+			}
+			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		}
+
+		if ((chunk == nullptr) && !mFreeChunks.empty())
+		{
+			chunkIndex = mFreeChunks.back();
+			mFreeChunks.pop_back();
+
+			if (chunkIndex >= mChunks.size())
+			{
+				chunkIndex = mChunks.size();
+				auto newChunk{std::make_unique<Chunk>()};
+
+				newChunk->capacity = mChunkCapacity;
+				chunk = newChunk.get();
+
+				mChunks.push_back(std::move(newChunk));
+				mChunkVersions.emplace_back();
+			}
+			else
+			{
+				assert(chunkIndex < mChunks.size());
+
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				chunk = mChunks[chunkIndex].get();
+				chunk->count = 0;
+			}
+		}
+
+		if (chunk == nullptr)
+		{
+			auto newChunk{std::make_unique<Chunk>()};
+			newChunk->capacity = mChunkCapacity;
+
+			chunk = newChunk.get();
+			mChunks.push_back(std::move(newChunk));
+			mChunkVersions.emplace_back();
+
+			chunkIndex = mChunks.size() - 1;
+		}
+
+		ui slot{chunk->count++};
+
+		assert(mEntityArrayOffset < chunk->buffer.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,cppcoreguidelines-pro-type-reinterpret-cast)
+		Entity *entityArr{reinterpret_cast<Entity *>(&chunk->buffer[mEntityArrayOffset])};
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+		new (&entityArr[slot]) Entity(entity);
+
+		for (const ComponentTypeID componentTypeID : mSortedRegular)
+		{
+			assert(componentTypeID < mComponentOffsets.size());
+			assert(componentTypeID < mComponentSizes.size());
+			assert(componentTypeID < ComponentInfos.size());
+			assert(componentTypeID < moveData.size());
+			assert(componentTypeID < copyData.size());
+
+			// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			const std::size_t offset{mComponentOffsets[componentTypeID]};
+			const std::size_t size{mComponentSizes[componentTypeID]};
+
+			assert(offset + (slot * size) <= chunk->buffer.size());
+
+			void *dest = &chunk->buffer[offset + (slot * size)];
+
+			const auto &info = ComponentInfos[componentTypeID];
+			if (moveData[componentTypeID] != nullptr)
+			{
+				info.moveConstruct(dest, moveData[componentTypeID]);
+			}
+			else
+			{
+				assert(copyData[componentTypeID] != nullptr);
+				info.copyConstruct(dest, copyData[componentTypeID]);
+			}
+			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		}
+
+		ul *tagBits{getTagBitset(chunk)};
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+		tagBits[slot] = tags.mLow;
+
+		assert(chunkIndex < mChunkVersions.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		mChunkVersions[chunkIndex].bump();
+
+		return {chunkIndex, slot};
+	}
+
+	std::pair<Entity, ui> Archetype::removeEntity(const ui chunkIndex, const ui slotIndex)
+	{
+		assert(chunkIndex < mChunks.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		Chunk *chunk{mChunks[chunkIndex].get()};
+
+		assert(slotIndex < chunk->count);
+
+		const ui lastSlot{chunk->count - 1};
+
+		assert(mEntityArrayOffset < chunk->buffer.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,cppcoreguidelines-pro-type-reinterpret-cast)
+		Entity *entityArr{reinterpret_cast<Entity *>(&chunk->buffer[mEntityArrayOffset])};
+
+		ul *tagBits{getTagBitset(chunk)};
+
+		for (const ComponentTypeID componentTypeID : mSortedRegular)
+		{
+			assert(componentTypeID < mComponentOffsets.size());
+			assert(componentTypeID < mComponentSizes.size());
+			assert(componentTypeID < ComponentInfos.size());
+
+			// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			const std::size_t offset{mComponentOffsets[componentTypeID]};
+			const std::size_t size{mComponentSizes[componentTypeID]};
+
+			assert(offset + (slotIndex * size) < chunk->buffer.size());
+
+			void *ptr{&chunk->buffer[offset + (slotIndex * size)]};
+
+			ComponentInfos[componentTypeID].destructor(ptr);
+			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		}
+
+		Entity movedEntity{.index = 0, .generation = 0};
+
+		if (slotIndex != lastSlot)
+		{
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+			movedEntity = entityArr[lastSlot];
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+			entityArr[slotIndex] = movedEntity;
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+			tagBits[slotIndex] = tagBits[lastSlot];
+
+			for (const ComponentTypeID componentTypeID : mSortedRegular)
+			{
+				assert(componentTypeID < mComponentOffsets.size());
+				assert(componentTypeID < mComponentSizes.size());
+				assert(componentTypeID < ComponentInfos.size());
+
+				// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				const std::size_t offset{mComponentOffsets[componentTypeID]};
+				const std::size_t size{mComponentSizes[componentTypeID]};
+
+				assert(offset + (slotIndex * size) < chunk->buffer.size());
+				assert(offset + (lastSlot * size) < chunk->buffer.size());
+
+				void *dest{&chunk->buffer[offset + (slotIndex * size)]};
+				void *src{&chunk->buffer[offset + (lastSlot * size)]};
+
+				ComponentInfos[componentTypeID].moveConstruct(dest, src);
+				// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			}
+
+			for (const ComponentTypeID componentTypeID : mSortedRegular)
+			{
+				assert(componentTypeID < mComponentOffsets.size());
+				assert(componentTypeID < mComponentSizes.size());
+				assert(componentTypeID < ComponentInfos.size());
+
+				// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				const std::size_t offset{mComponentOffsets[componentTypeID]};
+				const std::size_t size{mComponentSizes[componentTypeID]};
+
+				assert(offset + (lastSlot * size) < chunk->buffer.size());
+
+				void *ptr{&chunk->buffer[offset + (lastSlot * size)]};
+
+				ComponentInfos[componentTypeID].destructor(ptr);
+				// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			}
+		}
+
+		--chunk->count;
+
+		assert(chunkIndex < mChunkVersions.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		mChunkVersions[chunkIndex].bump();
+
+		if (chunk->count == 0)
+		{
+			mFreeChunks.push_back(chunkIndex);
+		}
+
+		return {movedEntity, slotIndex};
+	}
+
+	void Archetype::compact(std::vector<EntityRecord> &globalRecords)
+	{
+		const std::size_t newSize{mChunkCapacity == 0 ? 0 : (mChunks.size() - mFreeChunks.size())};
+
+		if (mFreeChunks.empty() && mChunks.size() == newSize)
+		{
+			return;
+		}
+
+		ui writeIndex{0};
+
+		for (ui readIndex{0}; readIndex < mChunks.size(); ++readIndex)
+		{
+			assert(readIndex < mChunks.size());
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			if (mChunks[readIndex]->count > 0)
+			{
+				if (writeIndex != readIndex)
+				{
+					assert(writeIndex < mChunks.size());
+					assert(readIndex < mChunks.size());
+					assert(writeIndex < mChunkVersions.size());
+					assert(readIndex < mChunkVersions.size());
+					assert(mEntityArrayOffset < mChunks[writeIndex]->buffer.size());
+
+					// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+					mChunks[writeIndex] = std::move(mChunks[readIndex]);
+					mChunkVersions[writeIndex] = mChunkVersions[readIndex];
+
+					// NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+					const Entity *entityArr{reinterpret_cast<Entity *>(&mChunks[writeIndex]->buffer[mEntityArrayOffset])};
+
+					for (ui subscript{0}; subscript < mChunks[writeIndex]->count; ++subscript)
+					// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+					{
+						// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+						const Entity subscriptEntity{entityArr[subscript]};
+
+						assert(subscriptEntity.index < globalRecords.size());
+
+						// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+						EntityRecord &rec{globalRecords[subscriptEntity.index]};
+
+						// Compare using archetypeId_ instead of pointer
+						if (rec.archetypeId == mArchetypeID && rec.chunkIndex == readIndex)
+						{
+							rec.chunkIndex = writeIndex;
+						}
+					}
+				}
+
+				++writeIndex;
+			}
+		}
+
+		mChunks.resize(writeIndex);
+		mChunkVersions.resize(writeIndex);
+		mFreeChunks.clear();
+	}
+
+	// MARK: Private Getters
+
+	ATTR_NODISCARD ul *Archetype::getTagBitset(Chunk *chunk) const
+	{
+		assert(mTagBitsetOffset < chunk->buffer.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,cppcoreguidelines-pro-type-reinterpret-cast)
+		return reinterpret_cast<ul *>(&chunk->buffer[mTagBitsetOffset]);
+	}
+
+	ATTR_NODISCARD const ul *Archetype::getTagBitset(const Chunk *chunk) const
+	{
+		assert(mTagBitsetOffset < chunk->buffer.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,cppcoreguidelines-pro-type-reinterpret-cast)
+		return reinterpret_cast<const ul *>(&chunk->buffer[mTagBitsetOffset]);
+	}
+
+	// MARK: Private Member Functions
 
 	ATTR_NODISCARD ui Archetype::computeCapacity() const
 	{
-		std::size_t perEntity = sizeof(Entity);
-		for (ComponentTypeID id : sortedRegular_)
-		{
-			perEntity += ComponentInfos[id].size;
-		}
-		perEntity += sizeof(ul); // tag bitset
+		std::size_t perEntity{sizeof(Entity)};
 
-		ui cap = static_cast<ui>(CHUNK_SIZE / perEntity) + 1;
+		for (const ComponentTypeID componentTypeID : mSortedRegular)
+		{
+			assert(componentTypeID < ComponentInfos.size());
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			perEntity += ComponentInfos[componentTypeID].size;
+		}
+
+		perEntity += sizeof(ul); // tag bitset
+		ui cap{static_cast<ui>(CHUNK_SIZE / perEntity) + 1};
+
 		while (true)
 		{
-			std::size_t offset = 0;
+			std::size_t offset{0};
 			offset += cap * sizeof(Entity);
 			offset = (offset + alignof(ul) - 1) & ~(alignof(ul) - 1);
 			offset += cap * sizeof(ul);
 
-			for (ComponentTypeID id : sortedRegular_)
+			for (const ComponentTypeID componentTypeID : mSortedRegular)
 			{
-				const auto &info = ComponentInfos[id];
+				assert(componentTypeID < ComponentInfos.size());
+
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				const auto &info{ComponentInfos[componentTypeID]};
+
 				offset = (offset + info.alignment - 1) & ~(info.alignment - 1);
 				offset += cap * info.size;
 			}
+
 			if (offset <= CHUNK_SIZE)
 			{
 				break;
 			}
+
 			--cap;
 			assert(cap > 0);
 		}
+
 		return cap;
 	}
 
 	void Archetype::computeLayout(ui capacity)
 	{
-		std::size_t offset = 0;
-		entityArrayOffset_ = offset;
+		std::size_t offset{0};
+		mEntityArrayOffset = offset;
 		offset += capacity * sizeof(Entity);
 
 		offset = (offset + alignof(ul) - 1) & ~(alignof(ul) - 1);
-		tagBitsetOffset_ = offset;
+		mTagBitsetOffset = offset;
 		offset += capacity * sizeof(ul);
 
-		for (ComponentTypeID id : sortedRegular_)
+		for (const ComponentTypeID componentTypeID : mSortedRegular)
 		{
-			const auto &info = ComponentInfos[id];
+			assert(componentTypeID < ComponentInfos.size());
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			const auto &info = ComponentInfos[componentTypeID];
 			offset = (offset + info.alignment - 1) & ~(info.alignment - 1);
-			componentOffsets_[id] = offset;
-			componentSizes_[id] = info.size;
+
+			assert(componentTypeID < mComponentOffsets.size());
+			assert(componentTypeID < mComponentSizes.size());
+
+			// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			mComponentOffsets[componentTypeID] = offset;
+			mComponentSizes[componentTypeID] = info.size;
+			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+
 			offset += capacity * info.size;
 		}
 		assert(offset <= CHUNK_SIZE);
-	}
-
-	std::pair<ui, ui> Archetype::addEntity(Entity entity, const std::array<const void *, MAX_COMPONENTS> &copyData,
-										   const std::array<void *, MAX_COMPONENTS> &moveData, ComponentMask tags)
-	{
-		Chunk *chunk = nullptr;
-		ui chunkIdx = 0;
-
-		for (; chunkIdx < chunks_.size(); ++chunkIdx)
-		{
-			if (chunks_[chunkIdx]->count < chunkCapacity_)
-			{
-				chunk = chunks_[chunkIdx].get();
-				break;
-			}
-		}
-
-		if (!chunk && !freeChunks_.empty())
-		{
-			chunkIdx = freeChunks_.back();
-			freeChunks_.pop_back();
-			if (chunkIdx >= chunks_.size())
-			{
-				chunkIdx = chunks_.size();
-				auto newChunk = std::make_unique<Chunk>();
-				newChunk->capacity = chunkCapacity_;
-				chunk = newChunk.get();
-				chunks_.push_back(std::move(newChunk));
-				chunkVersions_.emplace_back();
-			}
-			else
-			{
-				chunk = chunks_[chunkIdx].get();
-				chunk->count = 0;
-			}
-		}
-
-		if (!chunk)
-		{
-			auto newChunk = std::make_unique<Chunk>();
-			newChunk->capacity = chunkCapacity_;
-			chunk = newChunk.get();
-			chunks_.push_back(std::move(newChunk));
-			chunkVersions_.emplace_back();
-			chunkIdx = static_cast<ui>(chunks_.size() - 1);
-		}
-
-		ui slot = chunk->count++;
-		Entity *entityArr = reinterpret_cast<Entity *>(chunk->buffer + entityArrayOffset_);
-		new (&entityArr[slot]) Entity(entity);
-
-		for (ComponentTypeID id : sortedRegular_)
-		{
-			std::size_t offset = componentOffsets_[id];
-			std::size_t size = componentSizes_[id];
-			void *dest = chunk->buffer + offset + slot * size;
-
-			const auto &info = ComponentInfos[id];
-			if (moveData[id] != nullptr)
-			{
-				info.moveConstruct(dest, moveData[id]);
-			}
-			else
-			{
-				assert(copyData[id] != nullptr);
-				info.copyConstruct(dest, copyData[id]);
-			}
-		}
-
-		ul *tagBits = getTagBitset(chunk);
-		tagBits[slot] = tags.mLow;
-
-		chunkVersions_[chunkIdx].bump();
-		return {chunkIdx, slot};
-	}
-
-	std::pair<Entity, ui> Archetype::removeEntity(ui chunkIdx, ui slotIdx)
-	{
-		Chunk *chunk = chunks_[chunkIdx].get();
-		assert(slotIdx < chunk->count);
-
-		ui lastSlot = chunk->count - 1;
-		Entity *entityArr = reinterpret_cast<Entity *>(chunk->buffer + entityArrayOffset_);
-		ul *tagBits = getTagBitset(chunk);
-
-		for (ComponentTypeID id : sortedRegular_)
-		{
-			std::size_t offset = componentOffsets_[id];
-			std::size_t size = componentSizes_[id];
-			void *ptr = chunk->buffer + offset + slotIdx * size;
-			ComponentInfos[id].destructor(ptr);
-		}
-
-		Entity movedEntity{0, 0};
-		if (slotIdx != lastSlot)
-		{
-			movedEntity = entityArr[lastSlot];
-			entityArr[slotIdx] = movedEntity;
-			tagBits[slotIdx] = tagBits[lastSlot];
-
-			for (ComponentTypeID id : sortedRegular_)
-			{
-				std::size_t offset = componentOffsets_[id];
-				std::size_t size = componentSizes_[id];
-				void *dest = chunk->buffer + offset + slotIdx * size;
-				void *src = chunk->buffer + offset + lastSlot * size;
-				ComponentInfos[id].moveConstruct(dest, src);
-			}
-			for (ComponentTypeID id : sortedRegular_)
-			{
-				std::size_t offset = componentOffsets_[id];
-				std::size_t size = componentSizes_[id];
-				void *ptr = chunk->buffer + offset + lastSlot * size;
-				ComponentInfos[id].destructor(ptr);
-			}
-		}
-
-		--chunk->count;
-		chunkVersions_[chunkIdx].bump();
-
-		if (chunk->count == 0)
-		{
-			freeChunks_.push_back(chunkIdx);
-		}
-
-		return {movedEntity, slotIdx};
-	}
-
-	ATTR_NODISCARD void *Archetype::getComponentArray(ui chunkIdx, ComponentTypeID compId) const
-	{
-		if (componentOffsets_[compId] == SIZE_MAX)
-		{
-			return nullptr;
-		}
-		return chunks_[chunkIdx]->buffer + componentOffsets_[compId];
-	}
-
-	ATTR_NODISCARD Entity *Archetype::getEntityArray(ui chunkIdx) const
-	{
-		return reinterpret_cast<Entity *>(chunks_[chunkIdx]->buffer + entityArrayOffset_);
-	}
-
-	ATTR_NODISCARD bool Archetype::hasTag(ui chunkIdx, ui slotIdx, ComponentTypeID tagId) const
-	{
-		const ul *tagBits = getTagBitset(chunks_[chunkIdx].get());
-		return (tagBits[slotIdx] & (ul(1) << tagId)) != 0;
-	}
-
-	void Archetype::setTag(ui chunkIdx, ui slotIdx, ComponentTypeID tagId)
-	{
-		ul *tagBits = getTagBitset(chunks_[chunkIdx].get());
-		tagBits[slotIdx] |= (ul(1) << tagId);
-		chunkVersions_[chunkIdx].bump();
-	}
-
-	void Archetype::clearTag(ui chunkIdx, ui slotIdx, ComponentTypeID tagId)
-	{
-		ul *tagBits = getTagBitset(chunks_[chunkIdx].get());
-		tagBits[slotIdx] &= ~(ul(1) << tagId);
-		chunkVersions_[chunkIdx].bump();
-	}
-
-	ATTR_NODISCARD ComponentMask Archetype::getTags(ui chunkIdx, ui slotIdx) const
-	{
-		const ul *tagBits = getTagBitset(chunks_[chunkIdx].get());
-		return {tagBits[slotIdx], 0};
-	}
-
-	void Archetype::compact(std::vector<EntityRecord> &globalRecords)
-	{
-		std::size_t newSize = chunkCapacity_ == 0 ? 0 : (chunks_.size() - freeChunks_.size());
-		if (freeChunks_.empty() && chunks_.size() == newSize)
-		{
-			return;
-		}
-
-		uint32_t writeIdx = 0;
-		for (uint32_t readIdx = 0; readIdx < chunks_.size(); ++readIdx)
-		{
-			if (chunks_[readIdx]->count > 0)
-			{
-				if (writeIdx != readIdx)
-				{
-					chunks_[writeIdx] = std::move(chunks_[readIdx]);
-					chunkVersions_[writeIdx] = chunkVersions_[readIdx];
-					Entity *entityArr = reinterpret_cast<Entity *>(chunks_[writeIdx]->buffer + entityArrayOffset_);
-					for (uint32_t s = 0; s < chunks_[writeIdx]->count; ++s)
-					{
-						Entity e = entityArr[s];
-						auto &rec = globalRecords[e.index];
-						// Compare using archetypeId_ instead of pointer
-						if (rec.archetypeId == archetypeId_ && rec.chunkIndex == readIdx)
-						{
-							rec.chunkIndex = writeIdx;
-						}
-					}
-				}
-				++writeIdx;
-			}
-		}
-		chunks_.resize(writeIdx);
-		chunkVersions_.resize(writeIdx);
-		freeChunks_.clear();
-	}
-
-	ul *Archetype::getTagBitset(Chunk *chunk) const
-	{
-		return reinterpret_cast<ul *>(chunk->buffer + tagBitsetOffset_);
-	}
-
-	const ul *Archetype::getTagBitset(const Chunk *chunk) const
-	{
-		return reinterpret_cast<const ul *>(chunk->buffer + tagBitsetOffset_);
-	}
-
-	ATTR_NODISCARD ui Archetype::getEntityCount(ui chunkIdx) const
-	{
-		return chunks_[chunkIdx]->count;
-	}
-
-	void Archetype::bumpComponentVersion(ui chunkIdx, ComponentTypeID compId)
-	{
-		chunkVersions_[chunkIdx].bumpComponent(compId);
-	}
-
-	void Archetype::bumpChunkVersion(ui chunkIdx)
-	{
-		chunkVersions_.at(chunkIdx).bump();
 	}
 } // namespace Dimensia::ECS

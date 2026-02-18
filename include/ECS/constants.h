@@ -17,6 +17,11 @@ namespace Dimensia::ECS
 	constexpr ul UPPER_HALF_BIT_MASK{128};
 
 	constexpr ul LOWER_HALF_BIT_MASK{64};
+
+	constexpr std::size_t CHUNK_SIZE{16'384}; // 16KB per chunk, can be tuned for better cache performance
+
+	constexpr ul CHUNK_ALIGNMENT{64};
+
 } // namespace Dimensia::ECS
 
 #endif

@@ -25,10 +25,13 @@ int main()
 	using Dimensia::ECS::ExecutionPolicy;
 	using Dimensia::ECS::SystemVersion;
 
-	// std::cout << alignof(std::queue<void()>) << '\n';
-	// std::cout << alignof(std::mutex) << '\n';
-	// std::cout << alignof(std::condition_variable) << '\n';
-	// std::cout << alignof(std::vector<std::thread>) << '\n';
+	std::cout << alignof(Dimensia::ECS::ComponentMask) << '\n';
+	std::cout << alignof(Dimensia::Core::ui) << '\n';
+	std::cout << alignof(std::size_t) << '\n';
+	std::cout << alignof(std::vector<Dimensia::ECS::ComponentTypeID>) << '\n';
+	std::cout << alignof(std::vector<Dimensia::ECS::ChunkVersion>) << '\n';
+	// std::cout << alignof(AddFunc) << '\n';
+	// std::cout << alignof(bool) << '\n';
 	// std::cout << alignof(std::atomic<bool>) << '\n';
 
 	ECS ecs;
