@@ -20,10 +20,15 @@ namespace Dimensia::Threading
 		public:
 			using Task = std::function<void()>;
 
-			void push(Task task);
+			// MARK: Member Functions
+
+			void push(Task &&task);
+
 			bool try_pop(Task &task);
+
 			bool try_steal(Task &task);
-			size_t size() const;
+
+			std::size_t size() const;
 
 		private:
 			std::deque<Task> queue;
