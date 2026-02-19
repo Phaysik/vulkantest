@@ -14,7 +14,7 @@ namespace Dimensia::Components
 	struct Health
 	{
 		public:
-			int hp;
+			float hp;
 	};
 } // namespace Dimensia::Components
 

@@ -143,7 +143,7 @@ int main()
 	std::cout << "\n--- Command buffer example ---\n";
 	CommandBuffer cmds;
 	ecs.forEach<Name>(ExecutionPolicy::Seq, cmds, [&](Entity entity, Name &) {
-		cmds.addComponent(entity, Health{200}); // defer adding Health
+		cmds.addComponent(entity, Health{200.0F}); // defer adding Health
 	});
 	cmds.apply(ecs);
 	std::cout << "Goblin HP after command buffer: " << ecs.getComponent<Health>(goblin)->hp << "\n";
@@ -155,12 +155,12 @@ int main()
 	// ------------------------------------------------------------------------
 	std::cout << "\n=== Stress test: forEach iteration speed ===\n";
 
-	const int NUM_ENTITIES_FOR_ITER = 1'000'000;
+	const int ITERATIONS{1'000};
 	std::vector<Entity> iterEntities;
-	iterEntities.reserve(NUM_ENTITIES_FOR_ITER);
+	iterEntities.reserve(ITERATIONS);
 
 	// Create many entities with a Name component
-	for (int i = 0; i < NUM_ENTITIES_FOR_ITER; ++i)
+	for (int i = 0; i < ITERATIONS; ++i)
 	{
 		iterEntities.emplace_back(ecs.createEntityWith(Name{"dummy"}));
 	}
@@ -204,11 +204,11 @@ int main()
 	}
 
 	// Cleanup
-	for (Entity e : iterEntities)
+	for (const Entity &entity : iterEntities)
 	{
-		if (ecs.alive(e))
+		if (ecs.alive(entity))
 		{
-			ecs.destroyEntity(e, false);
+			ecs.destroyEntity(entity, false);
 		}
 	}
 
@@ -217,17 +217,19 @@ int main()
 	// ------------------------------------------------------------------------
 	std::cout << "\n=== Stress test: forEach with moderate workload ===\n";
 
-	const int NUM_ENTITIES_MODERATE = 1'000'000;
 	const int WORKLOAD_MODERATE = 10'000; // iterations per entity
 
 	std::vector<Entity> modEntities;
-	modEntities.reserve(NUM_ENTITIES_MODERATE);
+	modEntities.reserve(ITERATIONS);
 
 	// Create entities with Health component
-	for (int i = 0; i < NUM_ENTITIES_MODERATE; ++i)
+	for (int i = 0; i < ITERATIONS; ++i)
 	{
-		modEntities.emplace_back(ecs.createEntityWith(Health{i}));
+		modEntities.emplace_back(ecs.createEntityWith(Health{static_cast<float>(i)}));
 	}
+
+	const float mult{1.000001F};
+	const float adder{0.000001F};
 
 	// Sequential execution
 	{
@@ -236,7 +238,7 @@ int main()
 			volatile float dummy = health.hp;
 			for (int iter = 0; iter < WORKLOAD_MODERATE; ++iter)
 			{
-				dummy = dummy * 1.000001f + 0.000001f; // cheap but non‑trivial math
+				dummy = (dummy * mult) + adder; // cheap but non‑trivial math
 			}
 			health.hp = dummy; // write back to prevent complete elimination
 		});
@@ -251,7 +253,7 @@ int main()
 			volatile float dummy = health.hp;
 			for (int iter = 0; iter < WORKLOAD_MODERATE; ++iter)
 			{
-				dummy = dummy * 1.000001f + 0.000001f;
+				dummy = (dummy * mult) + adder;
 			}
 			health.hp = dummy;
 		});
@@ -266,7 +268,7 @@ int main()
 			volatile float dummy = health.hp;
 			for (int iter = 0; iter < WORKLOAD_MODERATE; ++iter)
 			{
-				dummy = dummy * 1.000001f + 0.000001f;
+				dummy = (dummy * mult) + adder;
 			}
 			health.hp = dummy;
 		});
@@ -281,7 +283,7 @@ int main()
 			volatile float dummy = health.hp;
 			for (int iter = 0; iter < WORKLOAD_MODERATE; ++iter)
 			{
-				dummy = dummy * 1.000001f + 0.000001f;
+				dummy = (dummy * mult) + adder;
 			}
 			health.hp = dummy;
 		});
@@ -290,11 +292,11 @@ int main()
 	}
 
 	// Cleanup
-	for (Entity e : modEntities)
+	for (const Entity &entity : modEntities)
 	{
-		if (ecs.alive(e))
+		if (ecs.alive(entity))
 		{
-			ecs.destroyEntity(e, false);
+			ecs.destroyEntity(entity, false);
 		}
 	}
 
@@ -303,13 +305,11 @@ int main()
 	// ------------------------------------------------------------------------
 	std::cout << "\n=== Stress test: command buffer ===\n";
 
-	// const int NUM_ENTITIES = 10'000;
-	const int NUM_ENTITIES = 1'000'000;
 	std::vector<Entity> entities;
-	entities.reserve(NUM_ENTITIES);
+	entities.reserve(ITERATIONS);
 
 	// Create many entities with only a Name (or any component, just to have data)
-	for (int i = 0; i < NUM_ENTITIES; ++i)
+	for (int i = 0; i < ITERATIONS; ++i)
 	{
 		entities.emplace_back(ecs.createEntityWith(Name{"dummy"}));
 	}
@@ -320,10 +320,10 @@ int main()
 	constexpr int WORKLOAD{5'000};
 
 	ecs.forEach<Name>(ExecutionPolicy::ParStealing, stressCmds, [&](Entity entity, Name &) {
-		volatile double dummy = 1.0;
+		volatile float dummy = 1.0;
 		for (int iter = 0; iter < WORKLOAD; ++iter)
 		{
-			dummy = (dummy * 1.000001) + 0.000001; // some meaningless math
+			dummy = (dummy * mult) + adder; // some meaningless math
 		}
 		(void) dummy;									// prevent optimization
 		const int eID = static_cast<int>(entity.index); // use entity index as unique ID
@@ -334,7 +334,7 @@ int main()
 		switch (operation)
 		{
 			case 0: // add Health
-				stressCmds.addComponent(entity, Health{eID * 2});
+				stressCmds.addComponent(entity, Health{static_cast<float>(eID) * 2});
 				break;
 			case 2: // destroy
 				stressCmds.destroy(entity);
@@ -343,7 +343,7 @@ int main()
 				if (eID != 0)
 				{
 					const int parentIdx = eID / 2;
-					if (parentIdx < NUM_ENTITIES && ecs.alive(entities.at(static_cast<std::size_t>(parentIdx))))
+					if (parentIdx < ITERATIONS && ecs.alive(entities.at(static_cast<std::size_t>(parentIdx))))
 					{
 						stressCmds.setParent(entity, entities.at(static_cast<std::size_t>(parentIdx)));
 					}
@@ -355,7 +355,7 @@ int main()
 	});
 
 	auto time{Dimensia::Utility::Clock::Timer::stop<std::milli>()};
-	std::cout << "ParStealing forEach " << NUM_ENTITIES << " queued commands with a workload of " << WORKLOAD << " in " << time << " ms.\n";
+	std::cout << "ParStealing forEach " << ITERATIONS << " queued commands with a workload of " << WORKLOAD << " in " << time << " ms.\n";
 
 	Dimensia::Utility::Clock::Timer::start();
 	stressCmds.apply(ecs);
@@ -391,18 +391,17 @@ int main()
 	// - case 2: destroy → 20%
 	// - case 3: set parent → 20% (excluding id=0, so ~19.98%)
 	// - case 4: no op → 20% (name remains)
-	const int expectedAlive = NUM_ENTITIES - (NUM_ENTITIES / 5); // destroyed 20%
-	const int expectedHealth = NUM_ENTITIES / 5;				 // case 0
+	const int expectedAlive = ITERATIONS - (ITERATIONS / 5); // destroyed 20%
+	const int expectedHealth = ITERATIONS / 5;				 // case 0
 	const int expectedName
-		= NUM_ENTITIES
-		- (NUM_ENTITIES
-		   / 5); // not removed (case 1 removed) + no op (case 4) = 40% remain? Wait, case 1 removes, case 4 keeps. So total name =
-				 // case 4 (20%) + case 0? case 0 adds Health but does not remove Name, so name remains. Also case 2 destroys, so
-				 // they are gone. So name count = case 0 (20%) + case 3 (20%) + case 4 (20%) = 60%? But careful: case 3 sets parent
-				 // but does not remove Name, so name remains. So total name = entities not in case 1 and not destroyed.
-				 // Destroyed (case 2) are 20%, case 1 removes 20%, so remaining 60% should have Name. Also entities with Health (case
-				 // 0) are a subset of those (20%). So expectedName = NUM_ENTITIES * 3/5 = 6000 for 10000.
-	const int expectedParent = (NUM_ENTITIES / 5) - 1; // case 3, exclude id 0 (approximately)
+		= ITERATIONS
+		- (ITERATIONS / 5); // not removed (case 1 removed) + no op (case 4) = 40% remain? Wait, case 1 removes, case 4 keeps. So total name
+							// = case 4 (20%) + case 0? case 0 adds Health but does not remove Name, so name remains. Also case 2 destroys,
+							// so they are gone. So name count = case 0 (20%) + case 3 (20%) + case 4 (20%) = 60%? But careful: case 3 sets
+							// parent but does not remove Name, so name remains. So total name = entities not in case 1 and not destroyed.
+							// Destroyed (case 2) are 20%, case 1 removes 20%, so remaining 60% should have Name. Also entities with Health
+							// (case 0) are a subset of those (20%). So expectedName = ITERATIONS * 3/5 = 6000 for 10000.
+	const int expectedParent = (ITERATIONS / 5) - 1; // case 3, exclude id 0 (approximately)
 
 	std::cout << "\n--- Results ---\n";
 	std::cout << "Alive      : " << aliveCount << " (expected ~" << expectedAlive << ")\n";

@@ -23,7 +23,7 @@ namespace Dimensia::ECS
 
 	void QueryCache::removeArchetype(const Archetype *arch)
 	{
-		std::erase_if(mArchetypes, [arch](const std::pair<ComponentMask, Archetype *> &pred) { return pred.second == arch; });
+		std::erase_if(mArchetypes, [arch](const std::pair<ComponentMask, Archetype *> &pred) noexcept { return pred.second == arch; });
 
 		clearResults();
 	}

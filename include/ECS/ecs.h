@@ -12,7 +12,9 @@
 #include <latch>
 #include <memory>
 #include <mutex>
+#include <tuple>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "Core/typedefs.h"
@@ -32,6 +34,7 @@
 
 namespace Dimensia::ECS
 {
+	using Dimensia::Registry::ComponentInfo;
 	using Dimensia::Registry::ComponentTypeID;
 	using Dimensia::Registry::MAX_COMPONENTS;
 
@@ -60,7 +63,8 @@ namespace Dimensia::ECS
 			ECS(ECS &&) = delete;
 			ECS &operator=(ECS &&) = delete;
 
-			~ECS() = default;
+			// NOLINTNEXTLINE(hicpp-use-equals-default,modernize-use-equals-default)
+			~ECS() {}
 
 			// MARK: Getters
 
@@ -84,67 +88,90 @@ namespace Dimensia::ECS
 
 			void removeComponent(const Entity &entity, const ComponentTypeID compID);
 
+			// MARK: Template Member Functions
+
 			template <typename... Ts>
 			Entity createEntityWith(Ts &&...components)
 			{
 				std::array<ComponentTypeID, sizeof...(Ts)> compIds{componentId<std::decay_t<Ts>>()...};
-				ComponentMask regularMask{0, 0}, tagMask{0, 0};
+
+				ComponentMask regularMask{0, 0};
+				ComponentMask tagMask{0, 0};
+
 				std::array<const void *, MAX_COMPONENTS> copyData{};
 				std::array<void *, MAX_COMPONENTS> moveData{};
+
 				copyData.fill(nullptr);
 				moveData.fill(nullptr);
 
+				// Store forwarded component values in a tuple so we can safely take
+				// addresses and preserve move semantics for rvalues.
+				std::tuple<std::decay_t<Ts>...> storage{std::forward<Ts>(components)...};
+
 				[&]<std::size_t... I>(std::index_sequence<I...>) {
 					(([&] {
-						 ComponentTypeID id = compIds[I];
-						 const auto &info = ComponentInfos[id];
+						 const ComponentTypeID componentTypeID{compIds[I]};
+
+						 assert(componentTypeID < ComponentInfos.size());
+
+						 // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+						 const ComponentInfo &info{ComponentInfos[componentTypeID]};
+
 						 if (info.isTag)
 						 {
-							 if (id < LOWER_HALF_BIT_MASK)
+							 if (componentTypeID < LOWER_HALF_BIT_MASK)
 							 {
-								 tagMask.mLow |= (1U << id);
+								 tagMask.mLow |= (1U << componentTypeID);
 							 }
 							 else
 							 {
-								 tagMask.mHigh |= (1U << (id - LOWER_HALF_BIT_MASK));
+								 tagMask.mHigh |= (1U << (componentTypeID - LOWER_HALF_BIT_MASK));
 							 }
 						 }
 						 else
 						 {
-							 if (id < LOWER_HALF_BIT_MASK)
+							 if (componentTypeID < LOWER_HALF_BIT_MASK)
 							 {
-								 regularMask.mLow |= (1U << id);
+								 regularMask.mLow |= (1U << componentTypeID);
 							 }
 							 else
 							 {
-								 regularMask.mHigh |= (1U << (id - LOWER_HALF_BIT_MASK));
+								 regularMask.mHigh |= (1U << (componentTypeID - LOWER_HALF_BIT_MASK));
 							 }
 							 if constexpr (std::is_const_v<std::remove_reference_t<decltype(components)>>)
 							 {
-								 copyData[id] = &components;
+								 assert(componentTypeID < copyData.size());
+
+								 // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+								 copyData[componentTypeID] = &std::get<I>(storage);
 							 }
 							 else
 							 {
-								 moveData[id] = &components;
+								 assert(componentTypeID < copyData.size());
+
+								 // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+								 moveData[componentTypeID] = &std::get<I>(storage);
 							 }
 						 }
 					 }()),
 					 ...);
 				}(std::index_sequence_for<Ts...>{});
 
-				Entity e = createEntity();
+				Entity entity{createEntity()};
+
 				if (regularMask || tagMask)
 				{
 					if (regularMask)
 					{
-						moveEntity(e, regularMask, copyData, moveData, tagMask);
+						moveEntity(entity, regularMask, copyData, moveData, tagMask);
 					}
 					else
 					{
-						moveEntity(e, ComponentMask(0), copyData, moveData, tagMask);
+						moveEntity(entity, ComponentMask(0), copyData, moveData, tagMask);
 					}
 				}
-				return e;
+
+				return entity;
 			}
 
 			// Component management
@@ -155,38 +182,69 @@ namespace Dimensia::ECS
 				{
 					return;
 				}
-				ComponentTypeID compId = componentId<T>();
-				const auto &info = ComponentInfos[compId];
+
+				ComponentTypeID compID{componentId<T>()};
+
+				assert(compID < ComponentInfos.size());
+
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				const ComponentInfo &info{ComponentInfos[compID]};
+
 				if (info.isTag)
 				{
-					auto &rec = mRecords[entity.index];
-					mArchetypePtrs[rec.archetypeID]->setTag(rec.chunkIndex, rec.slotIndex, compId);
+					assert(entity.index < mRecords.size());
+
+					// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+					const EntityRecord &rec{mRecords[entity.index]};
+
+					assert(rec.archetypeID < mArchetypePtrs.size());
+
+					mArchetypePtrs[rec.archetypeID]->setTag(rec.chunkIndex, rec.slotIndex, compID);
+					// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+
 					return;
 				}
 
-				Archetype *arch = mArchetypePtrs[mRecords[entity.index].archetypeID].get();
-				ComponentMask oldRegular = arch->getRegularMask();
-				ComponentMask newRegular = oldRegular;
-				if (compId < LOWER_HALF_BIT_MASK)
+				assert(entity.index < mRecords.size());
+				assert(mRecords[entity.index].archetypeID < mArchetypePtrs.size());
+
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				const Archetype *arch{mArchetypePtrs[mRecords[entity.index].archetypeID].get()};
+
+				const ComponentMask oldRegular{arch->getRegularMask()};
+				ComponentMask newRegular{oldRegular};
+
+				if (compID < LOWER_HALF_BIT_MASK)
 				{
-					newRegular.mLow |= (1U << compId);
+					newRegular.mLow |= (1U << compID);
 				}
 				else
 				{
-					newRegular.mHigh |= (1U << (compId - LOWER_HALF_BIT_MASK));
+					newRegular.mHigh |= (1U << (compID - LOWER_HALF_BIT_MASK));
 				}
 
 				if (oldRegular == newRegular)
 				{
-					T *ptr = static_cast<T *>(getComponentPtr(entity, compId));
+					T *ptr{static_cast<T *>(getComponentPtr(entity, compID))};
 					*ptr = std::move(value);
-					mArchetypePtrs[mRecords[entity.index].archetypeID]->bumpComponentVersion(mRecords[entity.index].chunkIndex, compId);
+
+					assert(entity.index < mRecords.size());
+					assert(mRecords[entity.index].archetypeID < mArchetypePtrs.size());
+
+					// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+					mArchetypePtrs[mRecords[entity.index].archetypeID]->bumpComponentVersion(mRecords[entity.index].chunkIndex, compID);
+
 					return;
 				}
 
-				std::array<const void *, MAX_COMPONENTS> copyData{};
+				const std::array<const void *, MAX_COMPONENTS> copyData{};
 				std::array<void *, MAX_COMPONENTS> moveData{};
-				moveData[compId] = &value;
+
+				assert(compID < moveData.size());
+
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				moveData[compID] = &value;
+
 				moveEntity(entity, newRegular, copyData, moveData);
 			}
 
@@ -197,15 +255,30 @@ namespace Dimensia::ECS
 				{
 					return;
 				}
-				ComponentTypeID compId = componentId<T>();
-				const auto &info = ComponentInfos[compId];
+
+				ComponentTypeID compID{componentId<T>()};
+
+				assert(compID < ComponentInfos.size());
+
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				const ComponentInfo &info{ComponentInfos[compID]};
+
 				if (info.isTag)
 				{
-					auto &rec = mRecords[entity.index];
-					mArchetypePtrs[rec.archetypeID]->clearTag(rec.chunkIndex, rec.slotIndex, compId);
+					assert(entity.index < mRecords.size());
+
+					// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+					const EntityRecord &rec = mRecords[entity.index];
+
+					assert(rec.archetypeID < mArchetypePtrs.size());
+
+					mArchetypePtrs[rec.archetypeID]->clearTag(rec.chunkIndex, rec.slotIndex, compID);
+					// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+
 					return;
 				}
-				removeComponent(entity, compId); // non‑template version already updated
+
+				removeComponent(entity, compID); // non‑template version already updated
 			}
 
 			template <typename T>
@@ -228,13 +301,26 @@ namespace Dimensia::ECS
 				{
 					return;
 				}
-				ComponentTypeID tagId = componentId<Tag>();
-				if (!ComponentInfos[tagId].isTag)
+
+				ComponentTypeID tagID{componentId<Tag>()};
+
+				assert(tagID < ComponentInfos.size());
+
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				if (!ComponentInfos[tagID].isTag)
 				{
 					return;
 				}
-				auto &rec = mRecords[entity.index];
-				mArchetypePtrs[rec.archetypeID]->setTag(rec.chunkIndex, rec.slotIndex, tagId);
+
+				assert(entity.index < mRecords.size());
+
+				// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				const EntityRecord &rec{mRecords[entity.index]};
+
+				assert(rec.archetypeID < mArchetypePtrs.size());
+
+				mArchetypePtrs[rec.archetypeID]->setTag(rec.chunkIndex, rec.slotIndex, tagID);
+				// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			}
 
 			template <typename Tag>
@@ -244,13 +330,26 @@ namespace Dimensia::ECS
 				{
 					return;
 				}
-				ComponentTypeID tagId = componentId<Tag>();
-				if (!ComponentInfos[tagId].isTag)
+
+				ComponentTypeID tagID{componentId<Tag>()};
+
+				assert(tagID < ComponentInfos.size());
+
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				if (!ComponentInfos[tagID].isTag)
 				{
 					return;
 				}
-				auto &rec = mRecords[entity.index];
-				mArchetypePtrs[rec.archetypeID]->clearTag(rec.chunkIndex, rec.slotIndex, tagId);
+
+				assert(entity.index < mRecords.size());
+
+				// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				const EntityRecord &rec = mRecords[entity.index];
+
+				assert(rec.archetypeID < mArchetypePtrs.size());
+
+				mArchetypePtrs[rec.archetypeID]->clearTag(rec.chunkIndex, rec.slotIndex, tagID);
+				// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			}
 
 			template <typename Tag>
@@ -260,13 +359,26 @@ namespace Dimensia::ECS
 				{
 					return false;
 				}
-				ComponentTypeID tagId = componentId<Tag>();
-				if (!ComponentInfos[tagId].isTag)
+
+				ComponentTypeID tagID{componentId<Tag>()};
+
+				assert(tagID < ComponentInfos.size());
+
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				if (!ComponentInfos[tagID].isTag)
 				{
 					return false;
 				}
-				const auto &rec = mRecords[entity.index];
-				return mArchetypePtrs[rec.archetypeID]->hasTag(rec.chunkIndex, rec.slotIndex, tagId);
+
+				assert(entity.index < mRecords.size());
+
+				// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				const EntityRecord &rec = mRecords[entity.index];
+
+				assert(rec.archetypeID < mArchetypePtrs.size());
+
+				return mArchetypePtrs[rec.archetypeID]->hasTag(rec.chunkIndex, rec.slotIndex, tagID);
+				// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			}
 
 			// Queries (forEach)
@@ -282,8 +394,156 @@ namespace Dimensia::ECS
 				forEach<Components...>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
 
+			template <class Self, typename... Components, typename Func>
+			static void forEachImpl(Self &self, const ExecutionPolicy &policy, Func &&func)
+			{
+				constexpr ComponentMask requiredRegular{build_required_mask<Components...>()};
+				const auto &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
+
+				auto processChunk = [&](Archetype *arch, const ui chunkIndex, const ui entityCount) {
+					if constexpr (std::is_const_v<Self>)
+					{
+						const Entity *entities{arch->getEntityArray(chunkIndex)};
+						self.template processChunkEntitiesConst<Components...>(entities, entityCount, chunkIndex, arch,
+																			   std::forward<Func>(func));
+					}
+					else
+					{
+						Entity *entities{arch->getEntityArray(chunkIndex)};
+						self.template processChunkEntities<Components...>(entities, entityCount, chunkIndex, arch,
+																		  std::forward<Func>(func));
+					}
+				};
+
+				if (policy == ExecutionPolicy::Seq)
+				{
+					for (Archetype *arch : matchingArchetypes)
+					{
+						const ui chunkCount{arch->getChunkCount()};
+
+						for (ui chunkIndex{0}; chunkIndex < chunkCount; ++chunkIndex)
+						{
+							const ui entityCount{arch->getEntityCount(chunkIndex)};
+
+							if (entityCount == 0)
+							{
+								continue;
+							}
+
+							processChunk(arch, chunkIndex, entityCount);
+						}
+					}
+				}
+				else if (policy == ExecutionPolicy::Par)
+				{
+					std::vector<std::future<void>> futures;
+					futures.reserve(matchingArchetypes.size() * 2);
+
+					for (Archetype *arch : matchingArchetypes)
+					{
+						ui chunkCount{arch->getChunkCount()};
+
+						for (ui chunkIndex{0}; chunkIndex < chunkCount; ++chunkIndex)
+						{
+							ui entityCount{arch->getEntityCount(chunkIndex)};
+
+							if (entityCount == 0)
+							{
+								continue;
+							}
+
+							futures.push_back(self.mThreadPool.submit(processChunk, arch, chunkIndex, entityCount));
+						}
+					}
+
+					for (auto &fut : futures)
+					{
+						fut.get();
+					}
+				}
+				else if (policy == ExecutionPolicy::ParBatched)
+				{
+					std::vector<std::pair<Archetype *, ui>> allChunks;
+					for (Archetype *arch : matchingArchetypes)
+					{
+						ui chunkCount = arch->getChunkCount();
+						for (ui c = 0; c < chunkCount; ++c)
+						{
+							if (arch->getEntityCount(c) > 0)
+							{
+								allChunks.emplace_back(arch, c);
+							}
+						}
+					}
+					if (allChunks.empty())
+					{
+						return;
+					}
+					// Adaptive batch size based on hardware concurrency
+					const std::size_t numThreads = std::thread::hardware_concurrency();
+					const std::size_t targetTasks = numThreads * 4;
+					std::size_t batchSize = (allChunks.size() + targetTasks - 1) / targetTasks;
+					if (batchSize < 1)
+					{
+						batchSize = 1;
+					}
+
+					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
+
+					for (std::size_t i = 0; i < allChunks.size(); i += batchSize)
+					{
+						std::size_t end = std::min(i + batchSize, allChunks.size());
+						std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
+																	  allChunks.begin() + static_cast<std::ptrdiff_t>(end));
+						mThreadPool.submit_with_latch(
+							[batch, func = std::forward<Func>(func)]() mutable {
+								for (const auto &[arch, c] : batch)
+								{
+									ui entityCount = arch->getEntityCount(c);
+									Entity *entityArr = arch->getEntityArray(c);
+									processChunkEntities<Components...>(entityArr, entityCount, c, arch, func);
+								}
+							},
+							latch);
+					}
+					latch.wait();
+				}
+				else if (policy == ExecutionPolicy::ParStealing)
+				{
+					std::vector<std::pair<Archetype *, ui>> allChunks;
+					for (Archetype *arch : matchingArchetypes)
+					{
+						ui chunkCount = arch->getChunkCount();
+						for (ui c = 0; c < chunkCount; ++c)
+						{
+							if (arch->getEntityCount(c) > 0)
+							{
+								allChunks.emplace_back(arch, c);
+							}
+						}
+					}
+					if (allChunks.empty())
+					{
+						return;
+					}
+					// Use the work stealing pool; batch size may be adaptive but we keep it simple
+					const std::size_t batchSize = 8; // could also compute adaptively
+					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
+					mWorkStealingPool.submit_chunks(
+						allChunks,
+						[func = std::forward<Func>(func)](Archetype *arch, ui c) {
+							ui entityCount = arch->getEntityCount(c);
+							Entity *entityArr = arch->getEntityArray(c);
+							processChunkEntities<Components...>(entityArr, entityCount, c, arch, func);
+						},
+						latch, batchSize);
+					latch.wait();
+				}
+			}
+
 			template <typename... Components, typename Func>
 			void forEach(ExecutionPolicy policy, Func &&func)
+
 			{
 				constexpr ComponentMask requiredRegular = build_required_mask<Components...>();
 				const auto &matchingArchetypes = mQueryCache.get(requiredRegular);

@@ -23,6 +23,7 @@
 #include "Components/Name/nameComponent.h"
 #include "Components/Position/positionComponent.h"
 #include "Components/Velocity/velocityComponent.h"
+#include "Core/attributeMacros.h"
 #include "ECS/entity.h"
 #include "Tags/Alive/aliveTag.h"
 #include "Tags/Buffed/buffedTag.h"
@@ -121,8 +122,7 @@ namespace Dimensia::Registry
 			static constexpr std::size_t alignment{std::max({alignof(Ts)...})};
 	};
 
-	constexpr std::size_t MAX_COMPONENT_SIZE{MaxSizeHelper<ComponentTypes>::size};
-	constexpr std::size_t MAX_COMPONENT_ALIGN{MaxSizeHelper<ComponentTypes>::alignment};
+	ATTR_MAYBE_UNUSED constexpr std::size_t MAX_COMPONENT_ALIGN{MaxSizeHelper<ComponentTypes>::alignment};
 } // namespace Dimensia::Registry
 
 #endif
