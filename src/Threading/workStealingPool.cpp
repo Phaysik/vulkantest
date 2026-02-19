@@ -40,12 +40,12 @@ namespace Dimensia::Threading
 
 	void WorkStealingPool::submit_task(std::function<void()> &&task)
 	{
-		const std::size_t idx{mTaskCount++ % mQueues.size()};
+		const std::size_t index{mTaskCount++ % mQueues.size()};
 
-		assert(idx < mQueues.size());
+		assert(index < mQueues.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-		mQueues[idx].push(std::move(task));
+		mQueues[index].push(std::move(task));
 	}
 
 	void WorkStealingPool::worker_loop(const std::size_t workerID)

@@ -455,7 +455,7 @@ namespace Dimensia::ECS
 						EntityRecord &rec{globalRecords[subscriptEntity.index]};
 
 						// Compare using archetypeId_ instead of pointer
-						if (rec.archetypeId == mArchetypeID && rec.chunkIndex == readIndex)
+						if (rec.archetypeID == mArchetypeID && rec.chunkIndex == readIndex)
 						{
 							rec.chunkIndex = writeIndex;
 						}

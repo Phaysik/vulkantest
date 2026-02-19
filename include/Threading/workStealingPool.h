@@ -53,9 +53,9 @@ namespace Dimensia::Threading
 					if (batch.size() >= batchSize)
 					{
 						auto task = [batch, func = std::forward<TaskFunc>(func), &latch]() {
-							for (const auto &[arch, idx] : batch)
+							for (const auto &[arch, index] : batch)
 							{
-								func(arch, idx);
+								func(arch, index);
 							}
 
 							latch.count_down();
@@ -69,9 +69,9 @@ namespace Dimensia::Threading
 				if (!batch.empty())
 				{
 					auto task = [batch, func = std::forward<TaskFunc>(func), &latch]() {
-						for (const auto &[arch, idx] : batch)
+						for (const auto &[arch, index] : batch)
 						{
-							func(arch, idx);
+							func(arch, index);
 						}
 
 						latch.count_down();

@@ -8,6 +8,10 @@
 
 #include "ECS/ecs.h"
 
+#include <algorithm>
+
+#include "ECS/constants.h"
+
 namespace Dimensia::ECS
 {
 	// MARK: Constructor
@@ -41,32 +45,38 @@ namespace Dimensia::ECS
 			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			return mParent[child.index];
 		}
-		
+
 		return NULL_ENTITY;
 	}
 
 	// MARK: Setter
 
-	void ECS::setParent(const Entity &child, Entity parent)
+	void ECS::setParent(const Entity &child, const Entity &parent)
 	{
 		if (!alive(child))
 		{
 			return;
 		}
+
 		if (parent != NULL_ENTITY && !alive(parent))
 		{
 			return;
 		}
 
 		const std::scoped_lock<std::mutex> lock(mHierarchyMutex);
-		uint32_t maxIdx = std::max(child.index, parent.index);
+		ui maxIdx{std::max(child.index, parent.index)};
+
 		if (mParent.size() <= maxIdx)
 		{
 			mParent.resize(maxIdx + 1, NULL_ENTITY);
 			mChildren.resize(maxIdx + 1);
 		}
 
-		Entity oldParent = (child.index < mParent.size()) ? mParent[child.index] : NULL_ENTITY;
+		assert(child.index < mParent.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		const Entity oldParent{(child.index < mParent.size()) ? mParent[child.index] : NULL_ENTITY};
+
 		if (oldParent == parent)
 		{
 			return;
@@ -74,16 +84,29 @@ namespace Dimensia::ECS
 
 		if (oldParent != NULL_ENTITY && oldParent.index < mChildren.size())
 		{
-			auto &siblings = mChildren[oldParent.index];
-			siblings.erase(std::remove(siblings.begin(), siblings.end(), child), siblings.end());
+			assert(oldParent.index < mChildren.size());
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			std::vector<Entity> &siblings{mChildren[oldParent.index]};
+
+			std::erase(siblings, child);
 		}
+
+		assert(child.index < mParent.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		mParent[child.index] = parent;
+
 		if (parent != NULL_ENTITY)
 		{
 			if (parent.index >= mChildren.size())
 			{
 				mChildren.resize(parent.index + 1);
 			}
+
+			assert(parent.index < mChildren.size());
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			mChildren[parent.index].push_back(child);
 		}
 	}
@@ -92,37 +115,56 @@ namespace Dimensia::ECS
 
 	Entity ECS::createEntity()
 	{
-		uint32_t idx, gen;
+		ui index{};
+		ui gen{};
+
 		if (!mFreeIndices.empty())
 		{
-			idx = mFreeIndices.back();
+			index = mFreeIndices.back();
 			mFreeIndices.pop_back();
-			gen = mRecords[idx].generation;
+
+			assert(index < mRecords.size());
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			gen = mRecords[index].generation;
 		}
 		else
 		{
-			idx = mNextEntityIndex++;
-			mRecords.resize(idx + 1);
+			index = mNextEntityIndex++;
+			mRecords.resize(index + 1);
 			gen = 1;
-			mRecords[idx].generation = gen;
-		}
-		Entity e{idx, gen};
 
-		Archetype *emptyArch = getOrCreateArchetype(ComponentMask(0));
+			assert(index < mRecords.size());
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			mRecords[index].generation = gen;
+		}
+
+		Entity entity{.index = index, .generation = gen};
+
+		Archetype *emptyArch{getOrCreateArchetype(ComponentMask(0))};
 		std::array<const void *, MAX_COMPONENTS> noCopy{};
 		std::array<void *, MAX_COMPONENTS> noMove{};
+
 		noCopy.fill(nullptr);
 		noMove.fill(nullptr);
-		auto [chunk, slot] = emptyArch->addEntity(e, noCopy, noMove, ComponentMask(0));
-		mRecords[idx] = {gen, emptyArch->getId(), chunk, slot};
+
+		auto [chunk, slot]{emptyArch->addEntity(entity, noCopy, noMove, ComponentMask(0))};
+
+		assert(index < mRecords.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		mRecords[index] = {.generation = gen, .archetypeID = emptyArch->getId(), .chunkIndex = chunk, .slotIndex = slot};
 
 		const std::scoped_lock<std::mutex> lock(mHierarchyMutex);
-		if (mParent.size() <= idx)
+
+		if (mParent.size() <= index)
 		{
-			mParent.resize(idx + 1, NULL_ENTITY);
-			mChildren.resize(idx + 1);
+			mParent.resize(index + 1, NULL_ENTITY);
+			mChildren.resize(index + 1);
 		}
-		return e;
+
+		return entity;
 	}
 
 	void ECS::destroyEntity(const Entity &entity, const bool destroyChildren)
@@ -131,6 +173,7 @@ namespace Dimensia::ECS
 		{
 			return;
 		}
+
 		if (destroyChildren)
 		{
 			destroyHierarchy(entity);
@@ -138,45 +181,72 @@ namespace Dimensia::ECS
 
 		{
 			const std::scoped_lock<std::mutex> lock(mHierarchyMutex);
+
+			assert(entity.index < mParent.size());
+
+			// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			if (entity.index < mParent.size() && mParent[entity.index] != NULL_ENTITY)
 			{
-				Entity parent = mParent[entity.index];
+				const Entity parent{mParent[entity.index]};
+
 				if (parent.index < mChildren.size())
 				{
-					auto &siblings = mChildren[parent.index];
-					siblings.erase(std::remove(siblings.begin(), siblings.end(), entity), siblings.end());
+					assert(parent.index < mChildren.size());
+
+					std::vector<Entity> &siblings{mChildren[parent.index]};
+					std::erase(siblings, entity);
 				}
+
 				mParent[entity.index] = NULL_ENTITY;
 			}
+
+			assert(entity.index < mChildren.size());
+
 			if (entity.index < mChildren.size())
 			{
 				mChildren[entity.index].clear();
 			}
+			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		}
 
-		auto &rec = mRecords[entity.index];
-		Archetype *arch = mArchetypePtrs[rec.archetypeId].get();
-		auto [movedEntity, newSlot] = arch->removeEntity(rec.chunkIndex, rec.slotIndex);
+		assert(entity.index < mRecords.size());
+
+		// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		EntityRecord &rec{mRecords[entity.index]};
+
+		assert(rec.archetypeID < mArchetypePtrs.size());
+
+		Archetype *arch{mArchetypePtrs[rec.archetypeID].get()};
+
+		auto [movedEntity, newSlot]{arch->removeEntity(rec.chunkIndex, rec.slotIndex)};
+
 		if (movedEntity.generation != 0)
 		{
-			auto &movedRec = mRecords[movedEntity.index];
-			movedRec.archetypeId = rec.archetypeId; // stays the same
+			assert(movedEntity.index < mRecords.size());
+
+			EntityRecord &movedRec = mRecords[movedEntity.index];
+			movedRec.archetypeID = rec.archetypeID; // stays the same
 			movedRec.chunkIndex = rec.chunkIndex;
 			movedRec.slotIndex = newSlot;
 		}
+		// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+
 		rec.generation++;
-		rec.archetypeId = INVALID_ARCHETYPE_ID;
+		rec.archetypeID = INVALID_ARCHETYPE_ID;
 		mFreeIndices.push_back(entity.index);
 	}
 
-	bool ECS::alive(const Entity &entity) const
+	bool ECS::alive(const Entity &entity) const noexcept
 	{
 		if (entity.index >= mRecords.size())
 		{
 			return false;
 		}
-		const auto &rec = mRecords[entity.index];
-		return rec.generation == entity.generation && rec.archetypeId != INVALID_ARCHETYPE_ID;
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		const EntityRecord &rec{mRecords[entity.index]};
+
+		return rec.generation == entity.generation && rec.archetypeID != INVALID_ARCHETYPE_ID;
 	}
 
 	void ECS::compact()
@@ -187,50 +257,73 @@ namespace Dimensia::ECS
 		}
 	}
 
-	void ECS::removeComponent(const Entity &entity, ComponentTypeID compId)
+	void ECS::removeComponent(const Entity &entity, const ComponentTypeID compID)
 	{
 		if (!alive(entity))
 		{
 			return;
 		}
-		const auto &info = ComponentInfos[compId];
+
+		assert(compID < ComponentInfos.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		const Dimensia::Registry::ComponentInfo &info{ComponentInfos[compID]};
+
 		if (info.isTag)
 		{
-			auto &rec = mRecords[entity.index];
-			mArchetypePtrs[rec.archetypeId]->clearTag(rec.chunkIndex, rec.slotIndex, compId);
+			assert(entity.index < mRecords.size());
+
+			// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			const EntityRecord &rec{mRecords[entity.index]};
+
+			assert(rec.archetypeID < mArchetypePtrs.size());
+
+			mArchetypePtrs[rec.archetypeID]->clearTag(rec.chunkIndex, rec.slotIndex, compID);
+			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+
 			return;
 		}
 
-		Archetype *srcArch = mArchetypePtrs[mRecords[entity.index].archetypeId].get();
-		ComponentMask oldRegular = srcArch->getRegularMask();
-		bool present;
-		if (compId < 64)
+		assert(entity.index < mRecords.size());
+		assert(mRecords[entity.index].archetypeID < mArchetypePtrs.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		const Archetype *srcArch{mArchetypePtrs[mRecords[entity.index].archetypeID].get()};
+		const ComponentMask oldRegular{srcArch->getRegularMask()};
+
+		bool present{};
+
+		if (compID < LOWER_HALF_BIT_MASK)
 		{
-			present = (oldRegular.mLow & (uint64_t(1) << compId)) != 0;
+			present = (oldRegular.mLow & (1U << compID)) != 0;
 		}
 		else
 		{
-			present = (oldRegular.mHigh & (uint64_t(1) << (compId - 64))) != 0;
+			present = (oldRegular.mHigh & (1U << (compID - LOWER_HALF_BIT_MASK))) != 0;
 		}
+
 		if (!present)
 		{
 			return;
 		}
 
-		ComponentMask newRegular = oldRegular;
-		if (compId < 64)
+		ComponentMask newRegular{oldRegular};
+
+		if (compID < LOWER_HALF_BIT_MASK)
 		{
-			newRegular.mLow &= ~(uint64_t(1) << compId);
+			newRegular.mLow &= ~(1U << compID);
 		}
 		else
 		{
-			newRegular.mHigh &= ~(uint64_t(1) << (compId - 64));
+			newRegular.mHigh &= ~(1U << (compID - LOWER_HALF_BIT_MASK));
 		}
 
 		std::array<const void *, MAX_COMPONENTS> copyData{};
 		std::array<void *, MAX_COMPONENTS> moveData{};
+
 		copyData.fill(nullptr);
 		moveData.fill(nullptr);
+
 		moveEntity(entity, newRegular, copyData, moveData);
 	}
 
@@ -238,82 +331,125 @@ namespace Dimensia::ECS
 
 	Archetype *ECS::getOrCreateArchetype(ComponentMask regularMask)
 	{
-		auto it = mArchetypeMaskToID.find(regularMask);
-		if (it != mArchetypeMaskToID.end())
+		auto iterator{mArchetypeMaskToID.find(regularMask)};
+
+		if (iterator != mArchetypeMaskToID.end())
 		{
-			return mArchetypePtrs[it->second].get();
+			assert(iterator->second < mArchetypePtrs.size());
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			return mArchetypePtrs[iterator->second].get();
 		}
 
-		uint32_t newId = static_cast<uint32_t>(mArchetypePtrs.size());
-		auto newArch = std::make_unique<Archetype>(regularMask, newId);
-		Archetype *ptr = newArch.get();
+		ui newID{static_cast<ui>(mArchetypePtrs.size())};
+		auto newArch{std::make_unique<Archetype>(regularMask, newID)};
+		Archetype *ptr{newArch.get()};
+
 		mArchetypePtrs.push_back(std::move(newArch));
-		mArchetypeMaskToID[regularMask] = newId;
+		mArchetypeMaskToID[regularMask] = newID;
 		mQueryCache.addArchetype(regularMask, ptr);
+
 		return ptr;
 	}
 
-	void *ECS::getComponentPtr(const Entity &entity, ComponentTypeID compId)
+	void *ECS::getComponentPtr(const Entity &entity, const ComponentTypeID compID)
 	{
 		if (!alive(entity))
 		{
 			return nullptr;
 		}
-		auto &rec = mRecords[entity.index];
-		Archetype *arch = mArchetypePtrs[rec.archetypeId].get();
-		ComponentMask mask = arch->getRegularMask();
-		bool hasComp;
-		if (compId < 64)
+
+		assert(entity.index < mRecords.size());
+
+		// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		const EntityRecord &rec{mRecords[entity.index]};
+
+		assert(rec.archetypeID < mArchetypePtrs.size());
+
+		const Archetype *arch{mArchetypePtrs[rec.archetypeID].get()};
+		// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+
+		const ComponentMask mask{arch->getRegularMask()};
+		bool hasComp{};
+
+		if (compID < LOWER_HALF_BIT_MASK)
 		{
-			hasComp = (mask.mLow & (uint64_t(1) << compId)) != 0;
+			hasComp = (mask.mLow & (1U << compID)) != 0;
 		}
 		else
 		{
-			hasComp = (mask.mHigh & (uint64_t(1) << (compId - 64))) != 0;
+			hasComp = (mask.mHigh & (1U << (compID - LOWER_HALF_BIT_MASK))) != 0;
 		}
+
 		if (!hasComp)
 		{
 			return nullptr;
 		}
-		void *arr = arch->getComponentArray(rec.chunkIndex, compId);
-		if (!arr)
+
+		void *arr{arch->getComponentArray(rec.chunkIndex, compID)};
+
+		if (arr == nullptr)
 		{
 			return nullptr;
 		}
-		std::size_t size = ComponentInfos[compId].size;
-		return static_cast<std::byte *>(arr) + rec.slotIndex * size;
+
+		assert(compID < ComponentInfos.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		const std::size_t size{ComponentInfos[compID].size};
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+		return static_cast<std::byte *>(arr) + (rec.slotIndex * size);
 	}
 
-	const void *ECS::getComponentPtr(const Entity &entity, ComponentTypeID compId) const
+	const void *ECS::getComponentPtr(const Entity &entity, const ComponentTypeID compID) const
 	{
 		if (!alive(entity))
 		{
 			return nullptr;
 		}
-		const auto &rec = mRecords[entity.index];
-		Archetype *arch = mArchetypePtrs[rec.archetypeId].get(); // const? Actually we need const access; but archetypePtrs_ is mutable?
-																 // We'll keep it as non-const because we're not modifying.
-		ComponentMask mask = arch->getRegularMask();
-		bool hasComp;
-		if (compId < 64)
+
+		assert(entity.index < mRecords.size());
+
+		// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		const EntityRecord &rec{mRecords[entity.index]};
+
+		assert(rec.archetypeID < mArchetypePtrs.size());
+
+		const Archetype *arch{mArchetypePtrs[rec.archetypeID].get()};
+		// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+
+		const ComponentMask mask{arch->getRegularMask()};
+		bool hasComp{};
+
+		if (compID < LOWER_HALF_BIT_MASK)
 		{
-			hasComp = (mask.mLow & (uint64_t(1) << compId)) != 0;
+			hasComp = (mask.mLow & (1U << compID)) != 0;
 		}
 		else
 		{
-			hasComp = (mask.mHigh & (uint64_t(1) << (compId - 64))) != 0;
+			hasComp = (mask.mHigh & (1U << (compID - LOWER_HALF_BIT_MASK))) != 0;
 		}
+
 		if (!hasComp)
 		{
 			return nullptr;
 		}
-		const void *arr = arch->getComponentArray(rec.chunkIndex, compId);
-		if (!arr)
+
+		const void *arr{arch->getComponentArray(rec.chunkIndex, compID)};
+
+		if (arr == nullptr)
 		{
 			return nullptr;
 		}
-		std::size_t size = ComponentInfos[compId].size;
-		return static_cast<const std::byte *>(arr) + rec.slotIndex * size;
+
+		assert(compID < ComponentInfos.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		const std::size_t size{ComponentInfos[compID].size};
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+		return static_cast<const std::byte *>(arr) + (rec.slotIndex * size);
 	}
 
 	// MARK: Private Member Functions
@@ -321,13 +457,21 @@ namespace Dimensia::ECS
 	void ECS::moveEntity(const Entity &entity, ComponentMask newRegularMask, const std::array<const void *, MAX_COMPONENTS> &copyData,
 						 const std::array<void *, MAX_COMPONENTS> &moveData, ComponentMask newTags)
 	{
-		auto &rec = mRecords[entity.index];
-		Archetype *srcArch = mArchetypePtrs[rec.archetypeId].get();
-		uint32_t srcChunk = rec.chunkIndex;
-		uint32_t srcSlot = rec.slotIndex;
+		assert(entity.index < mRecords.size());
 
-		ComponentMask oldRegular = srcArch->getRegularMask();
-		ComponentMask oldTags = srcArch->getTags(srcChunk, srcSlot);
+		// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		EntityRecord &rec{mRecords[entity.index]};
+
+		assert(rec.archetypeID < mArchetypePtrs.size());
+
+		Archetype *srcArch{mArchetypePtrs[rec.archetypeID].get()};
+		// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+
+		ui srcChunk{rec.chunkIndex};
+		ui srcSlot{rec.slotIndex};
+
+		const ComponentMask oldRegular{srcArch->getRegularMask()};
+		const ComponentMask oldTags{srcArch->getTags(srcChunk, srcSlot)};
 
 		if (oldRegular == newRegularMask && oldTags == newTags)
 		{
@@ -336,59 +480,88 @@ namespace Dimensia::ECS
 
 		std::array<const void *, MAX_COMPONENTS> finalCopy{};
 		std::array<void *, MAX_COMPONENTS> finalMove{};
+
 		finalCopy.fill(nullptr);
 		finalMove.fill(nullptr);
 
-		forEachSetBit(oldRegular, [&](ComponentTypeID id) { finalMove[id] = getComponentPtr(entity, id); });
+		forEachSetBit(oldRegular, [&](const ComponentTypeID componentTypeID) {
+			assert(componentTypeID < finalMove.size());
 
-		ComponentMask moveOverrideMask{0, 0}, copyOverrideMask{0, 0};
-		for (ComponentTypeID id = 0; id < MAX_COMPONENTS; ++id)
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			finalMove[componentTypeID] = getComponentPtr(entity, componentTypeID);
+		});
+
+		ComponentMask moveOverrideMask{0, 0};
+		ComponentMask copyOverrideMask{0, 0};
+
+		for (ComponentTypeID componentTypeID{0}; componentTypeID < MAX_COMPONENTS; ++componentTypeID)
 		{
-			if (moveData[id] != nullptr)
+			assert(componentTypeID < moveData.size());
+			assert(componentTypeID < copyData.size());
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			if (moveData[componentTypeID] != nullptr)
 			{
-				if (id < 64)
+				if (componentTypeID < LOWER_HALF_BIT_MASK)
 				{
-					moveOverrideMask.mLow |= (uint64_t(1) << id);
+					moveOverrideMask.mLow |= (1U << componentTypeID);
 				}
 				else
 				{
-					moveOverrideMask.mHigh |= (uint64_t(1) << (id - 64));
+					moveOverrideMask.mHigh |= (1U << (componentTypeID - LOWER_HALF_BIT_MASK));
 				}
 			}
-			else if (copyData[id] != nullptr)
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			else if (copyData[componentTypeID] != nullptr)
 			{
-				if (id < 64)
+				if (componentTypeID < LOWER_HALF_BIT_MASK)
 				{
-					copyOverrideMask.mLow |= (uint64_t(1) << id);
+					copyOverrideMask.mLow |= (1U << componentTypeID);
 				}
 				else
 				{
-					copyOverrideMask.mHigh |= (uint64_t(1) << (id - 64));
+					copyOverrideMask.mHigh |= (1U << (componentTypeID - LOWER_HALF_BIT_MASK));
 				}
 			}
 		}
 
-		forEachSetBit(moveOverrideMask, [&](ComponentTypeID id) {
-			finalMove[id] = moveData[id];
-			finalCopy[id] = nullptr;
-		});
-		forEachSetBit(copyOverrideMask, [&](ComponentTypeID id) {
-			finalCopy[id] = copyData[id];
-			finalMove[id] = nullptr;
+		forEachSetBit(moveOverrideMask, [&](ComponentTypeID componentTypeID) {
+			assert(componentTypeID < finalMove.size());
+			assert(componentTypeID < moveData.size());
+			assert(componentTypeID < finalCopy.size());
+
+			// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			finalMove[componentTypeID] = moveData[componentTypeID];
+			finalCopy[componentTypeID] = nullptr;
+			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		});
 
-		Archetype *dstArch = getOrCreateArchetype(newRegularMask);
-		auto [newChunk, newSlot] = dstArch->addEntity(entity, finalCopy, finalMove, newTags);
-		auto [movedEntity, vacatedSlot] = srcArch->removeEntity(srcChunk, srcSlot);
+		forEachSetBit(copyOverrideMask, [&](ComponentTypeID componentTypeID) {
+			assert(componentTypeID < finalCopy.size());
+			assert(componentTypeID < copyData.size());
+			assert(componentTypeID < finalMove.size());
 
-		rec.archetypeId = dstArch->getId();
+			// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			finalCopy[componentTypeID] = copyData[componentTypeID];
+			finalMove[componentTypeID] = nullptr;
+			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		});
+
+		Archetype *dstArch{getOrCreateArchetype(newRegularMask)};
+		auto [newChunk, newSlot]{dstArch->addEntity(entity, finalCopy, finalMove, newTags)};
+		auto [movedEntity, vacatedSlot]{srcArch->removeEntity(srcChunk, srcSlot)};
+
+		rec.archetypeID = dstArch->getId();
 		rec.chunkIndex = newChunk;
 		rec.slotIndex = newSlot;
 
 		if (movedEntity.generation != 0)
 		{
-			auto &movedRec = mRecords[movedEntity.index];
-			movedRec.archetypeId = srcArch->getId();
+			assert(movedEntity.index < mRecords.size());
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			EntityRecord &movedRec = mRecords[movedEntity.index];
+			movedRec.archetypeID = srcArch->getId();
 			movedRec.chunkIndex = srcChunk;
 			movedRec.slotIndex = vacatedSlot;
 		}
@@ -397,14 +570,18 @@ namespace Dimensia::ECS
 	void ECS::destroyHierarchy(const Entity &entity)
 	{
 		std::vector<Entity> childrenCopy;
+
 		{
 			const std::scoped_lock<std::mutex> lock(mHierarchyMutex);
+
 			if (entity.index < mChildren.size())
 			{
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 				childrenCopy = mChildren[entity.index];
 			}
 		}
-		for (Entity child : childrenCopy)
+
+		for (const Entity &child : childrenCopy)
 		{
 			destroyEntity(child);
 		}

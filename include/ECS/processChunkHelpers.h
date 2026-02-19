@@ -70,9 +70,9 @@ namespace Dimensia::ECS
 		while (bits)
 		{
 			const ul temp{bits & -bits};
-			const si idx{std::countr_zero(bits)};
+			const si index{std::countr_zero(bits)};
 
-			std::forward<F>(func)(static_cast<ComponentTypeID>(idx));
+			std::forward<F>(func)(static_cast<ComponentTypeID>(index));
 			bits ^= temp;
 		}
 
@@ -80,9 +80,9 @@ namespace Dimensia::ECS
 		while (bits)
 		{
 			const ul temp{bits & -bits};
-			const si idx{std::countr_zero(bits) + static_cast<si>(LOWER_HALF_BIT_MASK)};
+			const si index{std::countr_zero(bits) + static_cast<si>(LOWER_HALF_BIT_MASK)};
 
-			std::forward<F>(func)(static_cast<ComponentTypeID>(idx));
+			std::forward<F>(func)(static_cast<ComponentTypeID>(index));
 			bits ^= temp;
 		}
 	}

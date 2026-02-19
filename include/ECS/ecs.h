@@ -70,7 +70,7 @@ namespace Dimensia::ECS
 
 			// MARK: Setter
 
-			void setParent(const Entity &child, Entity parent);
+			void setParent(const Entity &child, const Entity &parent);
 
 			// MARK: Member Functions
 
@@ -78,11 +78,11 @@ namespace Dimensia::ECS
 
 			void destroyEntity(const Entity &entity, const bool destroyChildren = true);
 
-			bool alive(const Entity &entity) const;
+			bool alive(const Entity &entity) const noexcept;
 
 			void compact();
 
-			void removeComponent(const Entity &entity, ComponentTypeID compId);
+			void removeComponent(const Entity &entity, const ComponentTypeID compID);
 
 			template <typename... Ts>
 			Entity createEntityWith(Ts &&...components)
@@ -160,11 +160,11 @@ namespace Dimensia::ECS
 				if (info.isTag)
 				{
 					auto &rec = mRecords[entity.index];
-					mArchetypePtrs[rec.archetypeId]->setTag(rec.chunkIndex, rec.slotIndex, compId);
+					mArchetypePtrs[rec.archetypeID]->setTag(rec.chunkIndex, rec.slotIndex, compId);
 					return;
 				}
 
-				Archetype *arch = mArchetypePtrs[mRecords[entity.index].archetypeId].get();
+				Archetype *arch = mArchetypePtrs[mRecords[entity.index].archetypeID].get();
 				ComponentMask oldRegular = arch->getRegularMask();
 				ComponentMask newRegular = oldRegular;
 				if (compId < LOWER_HALF_BIT_MASK)
@@ -180,7 +180,7 @@ namespace Dimensia::ECS
 				{
 					T *ptr = static_cast<T *>(getComponentPtr(entity, compId));
 					*ptr = std::move(value);
-					mArchetypePtrs[mRecords[entity.index].archetypeId]->bumpComponentVersion(mRecords[entity.index].chunkIndex, compId);
+					mArchetypePtrs[mRecords[entity.index].archetypeID]->bumpComponentVersion(mRecords[entity.index].chunkIndex, compId);
 					return;
 				}
 
@@ -202,7 +202,7 @@ namespace Dimensia::ECS
 				if (info.isTag)
 				{
 					auto &rec = mRecords[entity.index];
-					mArchetypePtrs[rec.archetypeId]->clearTag(rec.chunkIndex, rec.slotIndex, compId);
+					mArchetypePtrs[rec.archetypeID]->clearTag(rec.chunkIndex, rec.slotIndex, compId);
 					return;
 				}
 				removeComponent(entity, compId); // non‑template version already updated
@@ -234,7 +234,7 @@ namespace Dimensia::ECS
 					return;
 				}
 				auto &rec = mRecords[entity.index];
-				mArchetypePtrs[rec.archetypeId]->setTag(rec.chunkIndex, rec.slotIndex, tagId);
+				mArchetypePtrs[rec.archetypeID]->setTag(rec.chunkIndex, rec.slotIndex, tagId);
 			}
 
 			template <typename Tag>
@@ -250,7 +250,7 @@ namespace Dimensia::ECS
 					return;
 				}
 				auto &rec = mRecords[entity.index];
-				mArchetypePtrs[rec.archetypeId]->clearTag(rec.chunkIndex, rec.slotIndex, tagId);
+				mArchetypePtrs[rec.archetypeID]->clearTag(rec.chunkIndex, rec.slotIndex, tagId);
 			}
 
 			template <typename Tag>
@@ -266,7 +266,7 @@ namespace Dimensia::ECS
 					return false;
 				}
 				const auto &rec = mRecords[entity.index];
-				return mArchetypePtrs[rec.archetypeId]->hasTag(rec.chunkIndex, rec.slotIndex, tagId);
+				return mArchetypePtrs[rec.archetypeID]->hasTag(rec.chunkIndex, rec.slotIndex, tagId);
 			}
 
 			// Queries (forEach)
@@ -858,8 +858,8 @@ namespace Dimensia::ECS
 
 		private:
 			// MARK: Private Getters
-			void *getComponentPtr(const Entity &entity, ComponentTypeID compId);
-			const void *getComponentPtr(const Entity &entity, ComponentTypeID compId) const;
+			void *getComponentPtr(const Entity &entity, const ComponentTypeID compID);
+			const void *getComponentPtr(const Entity &entity, const ComponentTypeID compID) const;
 			Archetype *getOrCreateArchetype(ComponentMask regularMask);
 
 			// MARK: Private Member Functions

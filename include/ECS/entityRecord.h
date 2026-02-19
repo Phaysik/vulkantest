@@ -21,7 +21,7 @@ namespace Dimensia::ECS
 	struct EntityRecord
 	{
 			ui generation{};
-			ui archetypeId{}; // ID of the archetype (index into ECS::archetypePtrs_)
+			ui archetypeID{}; // ID of the archetype (index into ECS::archetypePtrs_)
 			ui chunkIndex{};
 			ui slotIndex{};
 	};
