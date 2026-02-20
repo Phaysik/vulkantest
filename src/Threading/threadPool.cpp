@@ -20,6 +20,7 @@ namespace Dimensia::Threading
 				while (true)
 				{
 					std::function<void()> task;
+
 					{
 						std::unique_lock<std::mutex> lock(mQueueMutex);
 						mCondition.wait(lock, [this] { return mStop || !mTasks.empty(); });

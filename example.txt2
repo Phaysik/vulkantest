@@ -1,0 +1,59 @@
+animation_component.* → include/Dimensia/Components/Animation/animation_component.h
+namespace Dimensia::Components::Animation
+
+camera_component.* → include/Dimensia/Components/Camera/camera_component.h
+namespace Dimensia::Components::Camera
+
+transform_component.* → include/Dimensia/Components/Transform/transform_component.h
+namespace Dimensia::Components::Transform
+
+mesh_component.* → include/Dimensia/Components/Mesh/mesh_component.h
+namespace Dimensia::Components::Mesh
+
+animation_component, mesh_component, transform_component implementation .cpp stay in src (not installed includes).
+
+audio_system.* → include/Dimensia/Systems/Audio/audio_system.h
+namespace Dimensia::Systems::Audio
+
+physics_system.* → include/Dimensia/Systems/Physics/physics_system.h
+namespace Dimensia::Systems::Physics
+
+imgui_system.* → include/Dimensia/Systems/UI/imgui_system.h
+namespace Dimensia::Systems::UI
+
+debug_system.h, renderdoc_debug_system.h → include/Dimensia/Systems/Debug/* or include/Dimensia/Debug/* for global debug helpers
+namespace Dimensia::Systems::Debug or Dimensia::Debug
+
+renderer.h, renderer_*.cpp → include/Dimensia/Render/renderer.h and sub-headers:
+include/Dimensia/Render/Compute, .../Pipelines, .../RayQuery, .../Resources, .../Utils
+namespace Dimensia::Render and Dimensia::Render::{Compute,Pipelines,...}
+
+pipeline.* → include/Dimensia/Render/Pipeline/pipeline.h
+namespace Dimensia::Render::Pipeline
+
+swap_chain.h → include/Dimensia/Render/SwapChain/swap_chain.h
+namespace Dimensia::Render::SwapChain
+
+mikktspace.h → include/Dimensia/Render/Geometry/mikktspace.h (third‑party helper)
+namespace Dimensia::Render::Geometry or keep as top-level Dimensia::Render::MeshUtils
+
+resource_manager.*, descriptor_manager.*, model_loader.*, scene_loading.* → include/Dimensia/Resource/*
+namespace Dimensia::Resource (subnamespaces Model, Scene, Descriptor)
+
+memory_pool.*, memory_pool.h → include/Dimensia/Memory/memory_pool.h
+namespace Dimensia::Memory
+
+thread_pool.h → include/Dimensia/Threading/thread_pool.h
+namespace Dimensia::Threading
+
+engine.*, platform.*, vulkan_device.*, vulkan_dispach.cpp → include/Dimensia/Core/engine.h, include/Dimensia/Platform/*
+namespaces Dimensia::Core and Dimensia::Platform::Vulkan
+
+pipeline.*, renderer_* (already covered under Render)
+
+resource_manager.h, model_loader.h, scene_loading.h → Dimensia::Resource::*
+
+main.cpp stays application src (not in include)
+
+crash_reporter.h, renderdoc_debug_system.h → include/Dimensia/Debug/*
+namespace Dimensia::Debug

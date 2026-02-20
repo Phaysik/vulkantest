@@ -25,6 +25,7 @@
 #include "Components/Velocity/velocityComponent.h"
 #include "ECS/entity.h"
 #include "Tags/Alive/aliveTag.h"
+#include "Core/typedefs.h"
 #include "Tags/Buffed/buffedTag.h"
 #include "Tags/Debug/debugTag.h"
 
@@ -82,8 +83,8 @@ namespace Dimensia::Registry
 	//  Configuration constants
 	// -----------------------------------------------------------------------------
 	constexpr std::size_t MAX_COMPONENTS{128};
-	using ComponentTypeID = uint32_t;
-	using VersionType = uint64_t;
+	using ComponentTypeID = Dimensia::Core::ui;
+	using VersionType = Dimensia::Core::ul;
 
 	// -----------------------------------------------------------------------------
 	//  ComponentInfo – type‑erased operations

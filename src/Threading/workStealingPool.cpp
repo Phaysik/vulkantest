@@ -38,21 +38,12 @@ namespace Dimensia::Threading
 
 	// MARK: Private Member Functions
 
-	void WorkStealingPool::submit_task(std::function<void()> &&task)
-	{
-		const std::size_t index{mTaskCount++ % mQueues.size()};
-
-		assert(index < mQueues.size());
-
-		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-		mQueues[index].push(std::move(task));
-	}
-
 	void WorkStealingPool::worker_loop(const std::size_t workerID)
 	{
 		while (!mStop)
 		{
 			std::function<void()> task;
+
 			assert(workerID < mQueues.size());
 
 			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)

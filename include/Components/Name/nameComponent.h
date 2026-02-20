@@ -1,4 +1,4 @@
-/*! \file name.h
+/*! \file nameComponent.h
 	\brief Contains the function declarations for creating a Detailed file description
 	\date 02/14/2026
 	\version x.x.x

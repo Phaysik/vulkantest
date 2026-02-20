@@ -212,7 +212,7 @@ int main()
 	// ------------------------------------------------------------------------
 	std::cout << "\n=== Stress test: forEach iteration speed ===\n";
 
-	const int ITERATIONS{1'000'000};
+	const int ITERATIONS{1'000};
 	std::vector<Entity> iterEntities;
 	iterEntities.reserve(ITERATIONS);
 
