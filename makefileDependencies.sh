@@ -112,12 +112,31 @@ setUpTracy() {
 
     cd tracy-latest
 
-    sudo apt-get install g++-11 gcc-11 libfreetype6-dev libcapstone-dev libegl1-mesa-dev libxkbcommon-dev libwayland-dev libdbus-1-dev libglfw3 libglfw3-dev wayland-protocols -y
+    sudo apt-get install g++-11 gcc-11 libfreetype6-dev libcapstone-dev libegl1-mesa-dev libxkbcommon-dev libwayland-dev libdbus-1-dev libglfw3 libglfw3-dev wayland-protocols xsltproc xmlto -y
     sudo cp -r /usr/include/freetype2/* /usr/include/
     sudo cp -r /usr/include/capstone/* /usr/include/
     sudo cp -r /usr/include/dbus-1.0/* /usr/include/
     sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 11
     sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 11
+
+    sudo apt remove rustc cargo
+
+    sudo source $HOME/.cargo/env
+
+    sudo cargo install mdbook
+
+    sudo ln -s /usr/local/gcc-15/bin/g++ /usr/bin/g++-15
+
+    # Setup Wayland
+    git clone https://gitlab.freedesktop.org/wayland/wayland.git
+    cd wayland
+
+    sudo meson setup build -Ddocumentation=false
+    sudo meson compile -C build
+    sudo meson install -C build
+
+    cd ..
+    sudo rm -rf wayland
 
     # For installing the Client of Tracy
     mkdir build
@@ -132,16 +151,16 @@ setUpTracy() {
     mkdir build
     cd build
     cmake ..
-    make CXX=g++-11 LEGACY=1
-    mv Tracy-release Tracy-Server
-    sudo cp Tracy-Server /usr/bin/
+    make CXX=g++-15
+    mv Tracy-release tracy-server
+    sudo cp tracy-server /usr/bin/
 
     # Remove Tracy files from local
     cd ../../../../
     sudo rm -rf tracy-latest
 
-    sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-$2 $2
-    sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-$2 $2
+    sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-$1 $1
+    sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-$1 $1
 }
 
 setUpConfigCat() {
