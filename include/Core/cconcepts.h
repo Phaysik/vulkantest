@@ -67,6 +67,27 @@ namespace Dimensia::Core
 	*/
 	template <typename T>
 	concept String = std::is_same_v<std::string, std::remove_cvref_t<T>>;
+
+	/*! @concept InvocableNoArgs
+		@brief Tests whether a callable type is invocable with no arguments.
+		@tparam Func The callable type to test (function, functor, lambda, function pointer, etc.).
+		@details This concept is satisfied when `std::invocable<Func>` is true, i.e. the callable
+		can be invoked with an empty argument list. Use this to constrain templates that accept
+		parameterless callables submitted to thread pools or deferred tasks.
+	*/
+	template <class Func>
+	concept InvocableNoArgs = std::invocable<Func>;
+
+	/*! @concept InvocableWithArgs
+		@brief Tests whether a callable type is invocable with the specified argument types.
+		@tparam Func The callable type to test (function, functor, lambda, function pointer, etc.).
+		@tparam Args The argument types to test invocation with.
+		@details This concept is satisfied when `std::invocable<Func, Args...>` is true, i.e. the
+		callable can be invoked with the given `Args...`. Use this to constrain templates that accept
+		callables and their arguments for asynchronous invocation or task scheduling.
+	*/
+	template <class Func, class... Args>
+	concept InvocableWithArgs = std::invocable<Func, Args...>;
 } // namespace Dimensia::Core
 
 #endif

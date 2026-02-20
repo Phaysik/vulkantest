@@ -36,11 +36,13 @@ namespace Dimensia::Utility::OverflowProtection
 	*/
 	ATTR_NODISCARD constexpr bool WillMultiplyOverflow(const Number num1, const Number num2) noexcept
 	{
+		using Limits = std::numeric_limits<Number>;
+
 		if (num1 == 0 || num2 == 0)
 		{
 			return false;
 		}
-		using Limits = std::numeric_limits<Number>;
+
 		return num1 > static_cast<Number>(Limits::max() / num2);
 	}
 

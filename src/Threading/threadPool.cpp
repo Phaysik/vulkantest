@@ -8,8 +8,6 @@
 
 #include "Threading/threadPool.h"
 
-#include <latch>
-
 namespace Dimensia::Threading
 {
 	// MARK: Constructor and Destructor
@@ -25,13 +23,16 @@ namespace Dimensia::Threading
 					{
 						std::unique_lock<std::mutex> lock(mQueueMutex);
 						mCondition.wait(lock, [this] { return mStop || !mTasks.empty(); });
+
 						if (mStop && mTasks.empty())
 						{
 							return;
 						}
+
 						task = std::move(mTasks.front());
 						mTasks.pop();
 					}
+
 					task();
 				}
 			});
@@ -51,20 +52,5 @@ namespace Dimensia::Threading
 		{
 			worker.join();
 		}
-	}
-
-	// MARK: Member Function
-
-	void ThreadPool::submit_with_latch(std::function<void()> &&task, std::latch &latch) const
-	{
-		{
-			const std::unique_lock<std::mutex> lock(mQueueMutex);
-
-			mTasks.emplace([task = std::move(task), &latch]() {
-				task();
-				latch.count_down();
-			});
-		}
-		mCondition.notify_one();
 	}
 } // namespace Dimensia::Threading

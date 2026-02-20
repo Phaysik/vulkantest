@@ -9,16 +9,12 @@
 #ifndef INCLUDE_INPUT_H
 #define INCLUDE_INPUT_H
 
-#include <array>
-#include <concepts>
 #include <cstdlib> // for std::exit
-#include <functional>
 #include <iostream>
 #include <limits> // for std::numeric_limits
 #include <print>
+#include <span>
 #include <string>
-#include <type_traits>
-#include <vector>
 
 #include "Core/cconcepts.h" // for Integral, String
 
@@ -32,13 +28,6 @@ namespace Dimensia::Utility
 {
 	using Dimensia::Core::Integral;
 	using Dimensia::Core::String;
-	template <typename T>
-	concept IsArrayLike = requires {
-		typename T::value_type; // Requires the type to have a nested `value_type`
-		requires(!std::same_as<std::remove_cvref_t<T>, std::string>)
-					&& (std::same_as<std::remove_cvref_t<T>, std::vector<typename T::value_type>>
-						|| (std::same_as<std::remove_cvref_t<T>, std::array<typename T::value_type, std::tuple_size_v<T>>>) );
-	}; /*!< Type trait to check if T is an array-like type */
 
 	/*! @class Input input.h "include/input.h"
 		@brief Will try and extract valid user input and clean up the input buffer as needed
@@ -187,8 +176,7 @@ namespace Dimensia::Utility
 			}
 
 			/*! @brief A generic function for getting user input that is within some array-like object
-				@pre The template type @p T must be either a std::array or std::vector
-				@tparam T An array-like object
+				@tparam T The type of the array-like object.
 				@param[in] inputMessage The message to print to the user. The default value is #mInputMessage
 				@param[in] errorMessage If the input extraction fails, this message will be printed to the user. The default value is
 			   #mErrorMessage
@@ -196,16 +184,16 @@ namespace Dimensia::Utility
 				@param[in, out] input The input stream to use. The default value is std::cin
 				@param[in] afterFailureOnly If you need to re-print the input message after a condition has failed. The default value is
 			   false
-				@retval T::value_type The value type of the array-like object
+				@retval T The value that was extracted
 				@date 02/12/2026
 				@version 0.0.1
 				@since 0.0.1
 				@author Matthew Moore
 			*/
-			template <IsArrayLike T>
-			static T::value_type getInput(const T &array, std::string_view inputMessage = mInputMessage,
-										  std::string_view errorMessage = mErrorMessage, const bool ignoreExtraneous = true,
-										  std::istream &input = std::cin, const bool afterFailureOnly = false)
+			template <typename T>
+			static T getInput(const std::span<const T> &array, std::string_view inputMessage = mInputMessage,
+							  std::string_view errorMessage = mErrorMessage, const bool ignoreExtraneous = true,
+							  std::istream &input = std::cin, const bool afterFailureOnly = false)
 			{
 				using TValueType = T::value_type;
 				TValueType userInput{getInput<TValueType>(inputMessage, errorMessage, ignoreExtraneous, input, afterFailureOnly)};
@@ -241,16 +229,16 @@ namespace Dimensia::Utility
 				@since 0.0.1
 				@author Matthew Moore
 			*/
-			template <typename T>
-			static T getInput(const std::function<bool(T)> &func, std::string_view inputMessage = mInputMessage,
-							  std::string_view errorMessage = mErrorMessage, const bool ignoreExtraneous = true,
-							  std::istream &input = std::cin, const bool afterFailureOnly = false)
+			template <typename T, typename Func>
+				requires Dimensia::Core::InvocableWithArgs<Func, T>
+			static T getInput(Func &&func, std::string_view inputMessage = mInputMessage, std::string_view errorMessage = mErrorMessage,
+							  const bool ignoreExtraneous = true, std::istream &input = std::cin, const bool afterFailureOnly = false)
 			{
 				T userInput{getInput<T>(inputMessage, errorMessage, ignoreExtraneous, input, afterFailureOnly)};
 
 				while (true)
 				{
-					if (!func(userInput))
+					if (!std::forward<Func>(func)(userInput))
 					{
 						std::println("{} did not meet the conditions laid out by the provided function.", userInput);
 						userInput = getInput<T>(inputMessage, errorMessage, ignoreExtraneous, input, !afterFailureOnly);
