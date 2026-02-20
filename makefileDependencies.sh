@@ -110,22 +110,10 @@ setUpTracy() {
     tar -xvzf tracy-latest.tar.gz -C tracy-latest --strip-components=1
     sudo rm -rf tracy-latest.tar.gz
 
-    cd tracy-latest
-
     sudo apt-get install g++-11 gcc-11 libfreetype6-dev libcapstone-dev libegl1-mesa-dev libxkbcommon-dev libwayland-dev libdbus-1-dev libglfw3 libglfw3-dev wayland-protocols xsltproc xmlto -y
     sudo cp -r /usr/include/freetype2/* /usr/include/
     sudo cp -r /usr/include/capstone/* /usr/include/
     sudo cp -r /usr/include/dbus-1.0/* /usr/include/
-    sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 11
-    sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 11
-
-    sudo apt remove rustc cargo
-
-    sudo source $HOME/.cargo/env
-
-    sudo cargo install mdbook
-
-    sudo ln -s /usr/local/gcc-15/bin/g++ /usr/bin/g++-15
 
     # Setup Wayland
     git clone https://gitlab.freedesktop.org/wayland/wayland.git
@@ -137,6 +125,19 @@ setUpTracy() {
 
     cd ..
     sudo rm -rf wayland
+
+    cd tracy-latest
+
+    sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 11
+    sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 11
+
+    sudo apt remove rustc cargo
+
+    sudo source $HOME/.cargo/env
+
+    sudo cargo install mdbook
+
+    sudo ln -s /usr/local/gcc-15/bin/g++ /usr/bin/g++-15
 
     # For installing the Client of Tracy
     mkdir build
