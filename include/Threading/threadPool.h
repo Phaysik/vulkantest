@@ -57,6 +57,30 @@ namespace Dimensia::Threading
 				return result;
 			}
 
+			template <typename F, typename... Args>
+			std::future<std::invoke_result_t<F, Args...>> submit(F &&func, Args &&...args) const
+			{
+				using return_type = std::invoke_result_t<F, Args...>;
+
+				// Capture arguments in a tuple (decays to values for safety; use std::ref for references)
+				auto args_tuple = std::make_tuple(std::forward<Args>(args)...);
+
+				// Create a packaged_task that will invoke the function with the stored arguments
+				auto task = std::make_shared<std::packaged_task<return_type()>>(
+					[function = std::forward<F>(func), args = std::move(args_tuple)]() mutable noexcept -> return_type {
+						return std::apply(std::move(function), std::move(args));
+					});
+
+				std::future<return_type> result = task->get_future();
+				{
+					const std::unique_lock<std::mutex> lock(mQueueMutex);
+					mTasks.emplace([task]() { (*task)(); });
+				}
+
+				mCondition.notify_one();
+				return result;
+			}
+
 		private:
 			mutable std::queue<std::function<void()>> mTasks;
 			mutable std::mutex mQueueMutex;

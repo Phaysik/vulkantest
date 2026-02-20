@@ -120,21 +120,21 @@ namespace Dimensia::ECS
 	//  Process chunk with tag checks (used when has_tags_v is true)
 	// ------------------------------------------------------------------------
 	template <bool IsConst, typename... Components, typename Func, std::size_t... Is>
-	void processChunkEntitiesWithTags(EntityPtr<IsConst> entityArr, const ui entityCount, const ui chunkIdx, ArchPtr<IsConst> arch,
+	void processChunkEntitiesWithTags(EntityPtr<IsConst> entityArr, const ui entityCount, const ui chunkIndex, ArchPtr<IsConst> arch,
 									  Func &&func, const std::index_sequence<Is...> & /* indexSequence */)
 	{
 		using BytePtr = std::conditional_t<IsConst, const std::byte *, std::byte *>;
 
-		const ul *tagBits{arch->getTagBitset(chunkIdx)};
+		const ul *tagBits{arch->getTagBitset(chunkIndex)};
 		const ComponentMask requiredTags{build_tag_mask<Components...>()};
 
 		// Store pointers as std::byte* in a tuple with deduced type
-		auto byteArrays{std::tuple{static_cast<BytePtr>(arch->getComponentArray(chunkIdx, componentId<Components>()))...}};
+		auto byteArrays{std::tuple{static_cast<BytePtr>(arch->getComponentArray(chunkIndex, componentId<Components>()))...}};
 
 		for (ui slot{0}; slot < entityCount; ++slot)
 		{
 			assert(slot < entityCount);
-			assert(slot < arch->getEntityCount(chunkIdx));
+			assert(slot < arch->getEntityCount(chunkIndex));
 
 			// NOLINTBEGIN(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 
@@ -165,12 +165,12 @@ namespace Dimensia::ECS
 	//  Process chunk without tag checks (used when has_tags_v is false)
 	// ------------------------------------------------------------------------
 	template <bool IsConst, typename... Components, typename Func, std::size_t... Is>
-	void processChunkEntitiesNoTags(EntityPtr<IsConst> entityArr, ui entityCount, ui chunkIdx, ArchPtr<IsConst> arch, Func &&func,
+	void processChunkEntitiesNoTags(EntityPtr<IsConst> entityArr, ui entityCount, ui chunkIndex, ArchPtr<IsConst> arch, Func &&func,
 									std::index_sequence<Is...> /* indexSequence */)
 	{
 		using BytePtr = std::conditional_t<IsConst, const std::byte *, std::byte *>;
 
-		auto byteArrays{std::tuple{static_cast<BytePtr>(arch->getComponentArray(chunkIdx, componentId<Components>()))...}};
+		auto byteArrays{std::tuple{static_cast<BytePtr>(arch->getComponentArray(chunkIndex, componentId<Components>()))...}};
 
 		for (ui slot{0}; slot < entityCount; ++slot)
 		{
@@ -192,16 +192,16 @@ namespace Dimensia::ECS
 	//  Public dispatch for non‑const version
 	// ------------------------------------------------------------------------
 	template <typename... Components, typename Func>
-	void processChunkEntities(Entity *entityArr, ui entityCount, ui chunkIdx, Archetype *arch, Func &&func)
+	void processChunkEntities(Entity *entityArr, ui entityCount, ui chunkIndex, Archetype *arch, Func &&func)
 	{
 		if constexpr (has_tags_v<Components...>)
 		{
-			processChunkEntitiesWithTags<false, Components...>(entityArr, entityCount, chunkIdx, arch, std::forward<Func>(func),
+			processChunkEntitiesWithTags<false, Components...>(entityArr, entityCount, chunkIndex, arch, std::forward<Func>(func),
 															   std::index_sequence_for<Components...>{});
 		}
 		else
 		{
-			processChunkEntitiesNoTags<false, Components...>(entityArr, entityCount, chunkIdx, arch, std::forward<Func>(func),
+			processChunkEntitiesNoTags<false, Components...>(entityArr, entityCount, chunkIndex, arch, std::forward<Func>(func),
 															 std::index_sequence_for<Components...>{});
 		}
 	}
@@ -210,16 +210,16 @@ namespace Dimensia::ECS
 	//  Public dispatch for const version
 	// ------------------------------------------------------------------------
 	template <typename... Components, typename Func>
-	void processChunkEntitiesConst(const Entity *entityArr, ui entityCount, ui chunkIdx, const Archetype *arch, Func &&func)
+	void processChunkEntitiesConst(const Entity *entityArr, ui entityCount, ui chunkIndex, const Archetype *arch, Func &&func)
 	{
 		if constexpr (has_tags_v<Components...>)
 		{
-			processChunkEntitiesWithTags<true, Components...>(entityArr, entityCount, chunkIdx, arch, std::forward<Func>(func),
+			processChunkEntitiesWithTags<true, Components...>(entityArr, entityCount, chunkIndex, arch, std::forward<Func>(func),
 															  std::index_sequence_for<Components...>{});
 		}
 		else
 		{
-			processChunkEntitiesNoTags<true, Components...>(entityArr, entityCount, chunkIdx, arch, std::forward<Func>(func),
+			processChunkEntitiesNoTags<true, Components...>(entityArr, entityCount, chunkIndex, arch, std::forward<Func>(func),
 															std::index_sequence_for<Components...>{});
 		}
 	}

@@ -77,7 +77,7 @@ namespace Dimensia::ECS
 
 			ThreadBuffer *getThreadBuffer();
 
-			static void processAdd(ECS &ecs, const Entity &entity, const ComponentTypeID componentTypeID, std::byte *buffer);
+			static void processAdd(ECS &ecs, const Entity &entity, const AddData &addData);
 			static void dispatchRemove(ECS &ecs, const Entity &entity, const ComponentTypeID componentTypeID);
 
 		private:

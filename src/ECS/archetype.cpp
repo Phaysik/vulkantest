@@ -12,6 +12,7 @@
 #include <cassert>
 
 #include "Core/attributeMacros.h"
+#include "ECS/constants.h"
 #include "ECS/entityRecord.h"
 #include "ECS/processChunkHelpers.h"
 

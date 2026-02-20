@@ -26,7 +26,7 @@ namespace Dimensia::Threading
 	class WorkStealingPool
 	{
 		public:
-			// MARK: Constructor, Destructor, and Assignment Operators
+			// MARK: Constructor, Assignment Operators, and Destructor
 
 			explicit WorkStealingPool(const std::size_t numThreads = std::thread::hardware_concurrency());
 

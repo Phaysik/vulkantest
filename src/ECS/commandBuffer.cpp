@@ -62,7 +62,7 @@ namespace Dimensia::ECS
 				auto &cmd{*it};
 				auto &addData{std::get<AddData>(cmd.getData())};
 
-				processAdd(ecs, cmd.getEntity(), addData.compId, addData.buffer.data());
+				processAdd(ecs, cmd.getEntity(), addData);
 			}
 
 			// ---- 2️⃣ Partition Removes in remaining range ----
@@ -125,9 +125,10 @@ namespace Dimensia::ECS
 		return tls;
 	}
 
-	void CommandBuffer::processAdd(ECS &ecs, const Entity &entity, const ComponentTypeID componentTypeID, std::byte *buffer)
+	void CommandBuffer::processAdd(ECS &ecs, const Entity &entity, const AddData &addData)
 	{
 		const auto &infos{Dimensia::Registry::ComponentInfos};
+		const ComponentTypeID componentTypeID{addData.storage.getTypeID()};
 
 		assert(componentTypeID < infos.size());
 
@@ -136,8 +137,8 @@ namespace Dimensia::ECS
 
 		assert(info.addFunc != nullptr && "No addFunc registered for this component type");
 
-		info.addFunc(&ecs, entity, buffer);
-		info.destructor(buffer);
+		info.addFunc(&ecs, entity, static_cast<std::byte *>(addData.storage.getPtr()));
+		// info.destructor(buffer);
 	}
 
 	void CommandBuffer::dispatchRemove(ECS &ecs, const Entity &entity, const ComponentTypeID componentTypeID)

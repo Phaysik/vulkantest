@@ -9,7 +9,6 @@
 #ifndef INCLUDE_ECS_ENTITYRECORD_H
 #define INCLUDE_ECS_ENTITYRECORD_H
 
-#include "Core/attributeMacros.h"
 #include "Core/typedefs.h"
 
 namespace Dimensia::ECS
@@ -17,7 +16,7 @@ namespace Dimensia::ECS
 	using Dimensia::Core::ui;
 
 	// No forward declaration needed – we store an ID instead of a pointer.
-	ATTR_MAYBE_UNUSED static constexpr ui INVALID_ARCHETYPE_ID{UINT32_MAX};
+	static constexpr ui INVALID_ARCHETYPE_ID{UINT32_MAX};
 
 	struct EntityRecord
 	{

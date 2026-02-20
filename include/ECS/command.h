@@ -9,19 +9,17 @@
 #ifndef INCLUDE_ECS_COMMAND_H
 #define INCLUDE_ECS_COMMAND_H
 
-#include <array>
 #include <variant>
 
 #include "Core/attributeMacros.h"
 #include "Core/typedefs.h"
+#include "ECS/componentStorage.h"
 
 #include "componentRegistry.h"
 #include "entity.h"
 
 namespace Dimensia::ECS
 {
-	using Dimensia::Registry::componentId;
-
 	using Dimensia::Registry::ComponentTypeID;
 
 	enum class CmdType : Dimensia::Core::ub
@@ -33,10 +31,10 @@ namespace Dimensia::ECS
 	};
 
 	struct AddData
+
 	{
 		public:
-			ComponentTypeID compId;
-			alignas(Dimensia::Registry::MAX_COMPONENT_ALIGN) std::array<std::byte, Dimensia::Registry::MAX_COMPONENT_ALIGN> buffer;
+			ComponentStorage storage;
 	};
 
 	struct RemoveData
@@ -84,11 +82,7 @@ namespace Dimensia::ECS
 				Command cmd;
 				cmd.mType = CmdType::AddComponent;
 				cmd.mEntity = entity;
-
-				AddData addData{};
-				addData.compId = componentId<T>();
-				new (addData.buffer.data()) T(std::forward<T>(value));
-				cmd.mData = addData;
+				cmd.mData = AddData{ComponentStorage::create<T>(std::forward<T>(value))};
 				return cmd;
 			}
 

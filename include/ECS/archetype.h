@@ -16,6 +16,7 @@
 
 #include "Core/attributeMacros.h"
 #include "Core/typedefs.h"
+#include "ECS/constants.h"
 
 #include "chunkVersion.h"
 #include "componentMask.h"
@@ -36,7 +37,7 @@ namespace Dimensia::ECS
 	{
 
 		public:
-			// MARK: Constructor, Destructor, and Assignment Operators
+			// MARK: Constructor, Assignment Operators, and Destructor
 
 			explicit Archetype(const ComponentMask &regularMask, const ui archetypeID);
 

@@ -558,7 +558,7 @@ void VulkanApplication::createUniformBuffers()
 	mUniformBuffersMemory.clear();
 	mUniformBuffersMapped.clear();
 
-	for (std::size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+	for (std::size_t i{0}; i < MAX_FRAMES_IN_FLIGHT; i++)
 	{
 		const vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
 		vk::raii::Buffer buffer({});
@@ -596,7 +596,7 @@ void VulkanApplication::createDescriptorSets()
 	mDescriptorSets.clear();
 	mDescriptorSets = mDevice.allocateDescriptorSets(allocInfo);
 
-	for (std::size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+	for (std::size_t i{0}; i < MAX_FRAMES_IN_FLIGHT; i++)
 	{
 		const vk::DescriptorBufferInfo bufferInfo{.buffer = mUniformBuffers.at(i), .offset = 0, .range = sizeof(UniformBufferObject)};
 		const vk::DescriptorImageInfo imageInfo{
@@ -633,12 +633,12 @@ void VulkanApplication::createSyncObjects()
 {
 	assert(mPresentCompleteSemaphores.empty() && mRenderCompleteSemaphores.empty() && mInFlightFences.empty());
 
-	for (std::size_t i = 0; i < mSwapChainImages.size(); i++)
+	for (std::size_t i{0}; i < mSwapChainImages.size(); i++)
 	{
 		mRenderCompleteSemaphores.emplace_back(mDevice, vk::SemaphoreCreateInfo());
 	}
 
-	for (std::size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+	for (std::size_t i{0}; i < MAX_FRAMES_IN_FLIGHT; i++)
 	{
 		mPresentCompleteSemaphores.emplace_back(mDevice, vk::SemaphoreCreateInfo());
 		mInFlightFences.emplace_back(mDevice, vk::FenceCreateInfo{.flags = vk::FenceCreateFlagBits::eSignaled});

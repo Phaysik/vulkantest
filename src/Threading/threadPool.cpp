@@ -16,7 +16,7 @@ namespace Dimensia::Threading
 
 	ThreadPool::ThreadPool(const std::size_t numThreads) : mStop(false)
 	{
-		for (std::size_t i = 0; i < numThreads; ++i)
+		for (std::size_t i{0}; i < numThreads; ++i)
 		{
 			mWorkers.emplace_back([this] {
 				while (true)

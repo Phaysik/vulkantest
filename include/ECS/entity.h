@@ -11,7 +11,6 @@
 
 #include <compare>
 
-#include "Core/attributeMacros.h"
 #include "Core/typedefs.h"
 
 namespace Dimensia::ECS
@@ -34,7 +33,7 @@ namespace Dimensia::ECS
 			// NOLINTEND(misc-non-private-member-variables-in-classes)
 	};
 
-	ATTR_MAYBE_UNUSED constexpr Entity NULL_ENTITY{.index = 0, .generation = 0};
+	constexpr Entity NULL_ENTITY{.index = 0, .generation = 0};
 } // namespace Dimensia::ECS
 
 #endif

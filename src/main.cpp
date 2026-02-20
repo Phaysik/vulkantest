@@ -25,18 +25,9 @@ int main()
 	using Dimensia::ECS::ExecutionPolicy;
 	using Dimensia::ECS::SystemVersion;
 
-	std::cout << alignof(Dimensia::ECS::QueryCache) << '\n';
-	std::cout << alignof(Dimensia::ECS::ThreadPool) << '\n';
-	std::cout << alignof(Dimensia::ECS::WorkStealingPool) << '\n';
-	std::cout << alignof(std::mutex) << '\n';
-	std::cout << alignof(std::unordered_map<Dimensia::ECS::ComponentMask, Dimensia::Core::ui>) << '\n';
-	std::cout << alignof(std::vector<Dimensia::ECS::EntityRecord>) << '\n';
-	std::cout << alignof(std::vector<Dimensia::Core::ui>) << '\n';
-	std::cout << alignof(std::vector<std::unique_ptr<Dimensia::ECS::Archetype>>) << '\n';
-	std::cout << alignof(std::vector<Dimensia::ECS::Entity>) << '\n';
-	std::cout << alignof(std::vector<std::vector<Dimensia::ECS::Entity>>) << '\n';
-	std::cout << alignof(Dimensia::Core::ui) << '\n';
-	// std::cout << alignof(AddFunc) << '\n';
+	std::cout << alignof(void *) << '\n';
+	std::cout << alignof(void (*)(void *)) << '\n';
+	std::cout << alignof(Dimensia::ECS::ComponentTypeID) << '\n';
 	// std::cout << alignof(bool) << '\n';
 	// std::cout << alignof(std::atomic<bool>) << '\n';
 
@@ -151,11 +142,77 @@ int main()
 	ecs.compact();
 
 	// ------------------------------------------------------------------------
+	//  Combined SystemVersion + CommandBuffer example
+	// ------------------------------------------------------------------------
+	std::cout << "\n=== Combined SystemVersion + CommandBuffer ===\n";
+
+	// Create a SystemVersion to track changes for the <Health> query.
+	SystemVersion healthVersion;
+
+	// First run: all chunks are dirty because the version is new.
+	{
+		CommandBuffer commands;
+		ecs.forEach<Health>(ExecutionPolicy::ParBatched, healthVersion, commands,
+							[](Entity entity, Health &health, CommandBuffer &commandBuffer) {
+								// Simulate work: increment health
+								health.hp += 1.0F;
+								// Record a command to add a Name component to this entity
+								commandBuffer.addComponent(entity, Name{"AutoNamed"});
+							});
+
+		// Apply the recorded commands (adds Name components)
+		commands.apply(ecs);
+
+		std::cout << "First run processed all Health components.\n";
+	}
+
+	// After the first run, the SystemVersion has been updated to reflect
+	// the latest chunk versions.
+
+	// Second run: no components have been modified, so needsUpdate() returns
+	// false for all chunks → nothing is processed.
+	{
+		CommandBuffer commands;
+		bool processedAny{false};
+
+		ecs.forEach<Health>(ExecutionPolicy::ParBatched, healthVersion, commands, [&](Entity, Health &, CommandBuffer &) {
+			processedAny = true; // This should NOT be called
+		});
+
+		if (!processedAny)
+		{
+			std::cout << "Second run correctly skipped all chunks (no changes).\n";
+		}
+		else
+		{
+			std::cout << "Warning: Second run processed chunks unexpectedly.\n";
+		}
+	}
+
+	if (ecs.alive(goblin))
+	{
+		Health health{*ecs.getComponent<Health>(goblin)}; // copy current value
+		health.hp += 1.0F;								  // modify
+		ecs.addComponent(goblin, health);				  // reassign (bumps version)
+	}
+
+	// Third run: the chunk containing that entity is now dirty, so it will be processed.
+	{
+		CommandBuffer commands;
+		size_t processedCount{0};
+
+		ecs.forEach<Health>(ExecutionPolicy::ParBatched, healthVersion, commands,
+							[&](Entity, Health &, CommandBuffer &) { ++processedCount; });
+
+		std::cout << "Third run processed " << processedCount << " chunk(s) (the one that was modified).\n";
+	}
+
+	// ------------------------------------------------------------------------
 	//  Stress test: forEach iteration speed (raw overhead)
 	// ------------------------------------------------------------------------
 	std::cout << "\n=== Stress test: forEach iteration speed ===\n";
 
-	const int ITERATIONS{1'000};
+	const int ITERATIONS{1'000'000};
 	std::vector<Entity> iterEntities;
 	iterEntities.reserve(ITERATIONS);
 

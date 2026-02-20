@@ -9,6 +9,7 @@
 #ifndef INCLUDE_ECS_ECS_H
 #define INCLUDE_ECS_ECS_H
 
+#include <algorithm>
 #include <latch>
 #include <memory>
 #include <mutex>
@@ -54,7 +55,7 @@ namespace Dimensia::ECS
 	class ECS
 	{
 		public:
-			// MARK: Constructor, Destructor, and Assignment Operators
+			// MARK: Constructor, Assignment Operators, and Destructor
 
 			explicit ECS();
 
@@ -395,7 +396,7 @@ namespace Dimensia::ECS
 			}
 
 			template <class Self, typename... Components, typename Func>
-			static void forEachImpl(Self &self, const ExecutionPolicy &policy, Func &&func)
+			static void forEachPolicyImpl(Self &self, const ExecutionPolicy &policy, Func &&func)
 			{
 				constexpr ComponentMask requiredRegular{build_required_mask<Components...>()};
 				const auto &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
@@ -404,14 +405,12 @@ namespace Dimensia::ECS
 					if constexpr (std::is_const_v<Self>)
 					{
 						const Entity *entities{arch->getEntityArray(chunkIndex)};
-						self.template processChunkEntitiesConst<Components...>(entities, entityCount, chunkIndex, arch,
-																			   std::forward<Func>(func));
+						processChunkEntitiesConst<Components...>(entities, entityCount, chunkIndex, arch, std::forward<Func>(func));
 					}
 					else
 					{
 						Entity *entities{arch->getEntityArray(chunkIndex)};
-						self.template processChunkEntities<Components...>(entities, entityCount, chunkIndex, arch,
-																		  std::forward<Func>(func));
+						processChunkEntities<Components...>(entities, entityCount, chunkIndex, arch, std::forward<Func>(func));
 					}
 				};
 
@@ -466,42 +465,44 @@ namespace Dimensia::ECS
 					std::vector<std::pair<Archetype *, ui>> allChunks;
 					for (Archetype *arch : matchingArchetypes)
 					{
-						ui chunkCount = arch->getChunkCount();
-						for (ui c = 0; c < chunkCount; ++c)
+						const ui chunkCount{arch->getChunkCount()};
+						for (ui chunkIndex{0}; chunkIndex < chunkCount; ++chunkIndex)
 						{
-							if (arch->getEntityCount(c) > 0)
+							if (arch->getEntityCount(chunkIndex) > 0)
 							{
-								allChunks.emplace_back(arch, c);
+								allChunks.emplace_back(arch, chunkIndex);
 							}
 						}
 					}
+
 					if (allChunks.empty())
 					{
 						return;
 					}
+
 					// Adaptive batch size based on hardware concurrency
-					const std::size_t numThreads = std::thread::hardware_concurrency();
-					const std::size_t targetTasks = numThreads * 4;
-					std::size_t batchSize = (allChunks.size() + targetTasks - 1) / targetTasks;
-					if (batchSize < 1)
-					{
-						batchSize = 1;
-					}
+					const std::size_t numThreads{std::thread::hardware_concurrency()};
+					const std::size_t targetTasks{numThreads * 4};
+
+					std::size_t batchSize{(allChunks.size() + targetTasks - 1) / targetTasks};
+
+					batchSize = std::max<std::size_t>(batchSize, 1);
 
 					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
 
-					for (std::size_t i = 0; i < allChunks.size(); i += batchSize)
+					for (std::size_t i{0}; i < allChunks.size(); i += batchSize)
 					{
-						std::size_t end = std::min(i + batchSize, allChunks.size());
-						std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
-																	  allChunks.begin() + static_cast<std::ptrdiff_t>(end));
-						mThreadPool.submit_with_latch(
+						const std::size_t end{std::min(i + batchSize, allChunks.size())};
+						const std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
+																			allChunks.begin() + static_cast<std::ptrdiff_t>(end));
+
+						self.mThreadPool.submit_with_latch(
 							[batch, func = std::forward<Func>(func)]() mutable {
-								for (const auto &[arch, c] : batch)
+								for (const auto &[arch, chunkIndex] : batch)
 								{
-									ui entityCount = arch->getEntityCount(c);
-									Entity *entityArr = arch->getEntityArray(c);
-									processChunkEntities<Components...>(entityArr, entityCount, c, arch, func);
+									ui entityCount{arch->getEntityCount(chunkIndex)};
+									Entity *entityArr = arch->getEntityArray(chunkIndex);
+									processChunkEntities<Components...>(entityArr, entityCount, chunkIndex, arch, func);
 								}
 							},
 							latch);
@@ -513,28 +514,31 @@ namespace Dimensia::ECS
 					std::vector<std::pair<Archetype *, ui>> allChunks;
 					for (Archetype *arch : matchingArchetypes)
 					{
-						ui chunkCount = arch->getChunkCount();
-						for (ui c = 0; c < chunkCount; ++c)
+						ui chunkCount{arch->getChunkCount()};
+						for (ui chunkIndex{0}; chunkIndex < chunkCount; ++chunkIndex)
 						{
-							if (arch->getEntityCount(c) > 0)
+							if (arch->getEntityCount(chunkIndex) > 0)
 							{
-								allChunks.emplace_back(arch, c);
+								allChunks.emplace_back(arch, chunkIndex);
 							}
 						}
 					}
+
 					if (allChunks.empty())
 					{
 						return;
 					}
+
 					// Use the work stealing pool; batch size may be adaptive but we keep it simple
-					const std::size_t batchSize = 8; // could also compute adaptively
+					const std::size_t batchSize{8}; // could also compute adaptively
 					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
-					mWorkStealingPool.submit_chunks(
+
+					self.mWorkStealingPool.submit_chunks(
 						allChunks,
-						[func = std::forward<Func>(func)](Archetype *arch, ui c) {
-							ui entityCount = arch->getEntityCount(c);
-							Entity *entityArr = arch->getEntityArray(c);
-							processChunkEntities<Components...>(entityArr, entityCount, c, arch, func);
+						[func = std::forward<Func>(func)](Archetype *arch, ui chunkIndex) {
+							ui entityCount{arch->getEntityCount(chunkIndex)};
+							Entity *entityArr = arch->getEntityArray(chunkIndex);
+							processChunkEntities<Components...>(entityArr, entityCount, chunkIndex, arch, func);
 						},
 						latch, batchSize);
 					latch.wait();
@@ -542,587 +546,549 @@ namespace Dimensia::ECS
 			}
 
 			template <typename... Components, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func)
+			void forEach(const ExecutionPolicy &policy, Func &&func)
 
 			{
-				constexpr ComponentMask requiredRegular = build_required_mask<Components...>();
-				const auto &matchingArchetypes = mQueryCache.get(requiredRegular);
-
-				if (policy == ExecutionPolicy::Seq)
-				{
-					for (Archetype *arch : matchingArchetypes)
-					{
-						ui chunkCount = arch->getChunkCount();
-						for (ui c = 0; c < chunkCount; ++c)
-						{
-							ui entityCount = arch->getEntityCount(c);
-							if (entityCount == 0)
-							{
-								continue;
-							}
-							Entity *entityArr = arch->getEntityArray(c);
-							processChunkEntities<Components...>(entityArr, entityCount, c, arch, func);
-						}
-					}
-				}
-				else if (policy == ExecutionPolicy::Par)
-				{
-					std::vector<std::future<void>> futures;
-					futures.reserve(matchingArchetypes.size() * 2);
-					for (Archetype *arch : matchingArchetypes)
-					{
-						ui chunkCount = arch->getChunkCount();
-						for (ui c = 0; c < chunkCount; ++c)
-						{
-							ui entityCount = arch->getEntityCount(c);
-							if (entityCount == 0)
-							{
-								continue;
-							}
-							futures.push_back(mThreadPool.submit([arch, c, entityCount, func]() {
-								Entity *entityArr = arch->getEntityArray(c);
-								processChunkEntities<Components...>(entityArr, entityCount, c, arch, func);
-							}));
-						}
-					}
-					for (auto &fut : futures)
-					{
-						fut.get();
-					}
-				}
-				else if (policy == ExecutionPolicy::ParBatched)
-				{
-					std::vector<std::pair<Archetype *, ui>> allChunks;
-					for (Archetype *arch : matchingArchetypes)
-					{
-						ui chunkCount = arch->getChunkCount();
-						for (ui c = 0; c < chunkCount; ++c)
-						{
-							if (arch->getEntityCount(c) > 0)
-							{
-								allChunks.emplace_back(arch, c);
-							}
-						}
-					}
-					if (allChunks.empty())
-					{
-						return;
-					}
-					// Adaptive batch size based on hardware concurrency
-					const std::size_t numThreads = std::thread::hardware_concurrency();
-					const std::size_t targetTasks = numThreads * 4;
-					std::size_t batchSize = (allChunks.size() + targetTasks - 1) / targetTasks;
-					if (batchSize < 1)
-					{
-						batchSize = 1;
-					}
-
-					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
-
-					for (std::size_t i = 0; i < allChunks.size(); i += batchSize)
-					{
-						std::size_t end = std::min(i + batchSize, allChunks.size());
-						std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
-																	  allChunks.begin() + static_cast<std::ptrdiff_t>(end));
-						mThreadPool.submit_with_latch(
-							[batch, func = std::forward<Func>(func)]() mutable {
-								for (const auto &[arch, c] : batch)
-								{
-									ui entityCount = arch->getEntityCount(c);
-									Entity *entityArr = arch->getEntityArray(c);
-									processChunkEntities<Components...>(entityArr, entityCount, c, arch, func);
-								}
-							},
-							latch);
-					}
-					latch.wait();
-				}
-				else if (policy == ExecutionPolicy::ParStealing)
-				{
-					std::vector<std::pair<Archetype *, ui>> allChunks;
-					for (Archetype *arch : matchingArchetypes)
-					{
-						ui chunkCount = arch->getChunkCount();
-						for (ui c = 0; c < chunkCount; ++c)
-						{
-							if (arch->getEntityCount(c) > 0)
-							{
-								allChunks.emplace_back(arch, c);
-							}
-						}
-					}
-					if (allChunks.empty())
-					{
-						return;
-					}
-					// Use the work stealing pool; batch size may be adaptive but we keep it simple
-					const std::size_t batchSize = 8; // could also compute adaptively
-					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
-					mWorkStealingPool.submit_chunks(
-						allChunks,
-						[func = std::forward<Func>(func)](Archetype *arch, ui c) {
-							ui entityCount = arch->getEntityCount(c);
-							Entity *entityArr = arch->getEntityArray(c);
-							processChunkEntities<Components...>(entityArr, entityCount, c, arch, func);
-						},
-						latch, batchSize);
-					latch.wait();
-				}
+				forEachPolicyImpl<decltype(*this), Components...>(*this, policy, std::forward<Func>(func));
 			}
 
 			template <typename... Components, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func) const
+			void forEach(const ExecutionPolicy &policy, Func &&func) const
 			{
-				constexpr ComponentMask requiredRegular = build_required_mask<Components...>();
-				const auto &matchingArchetypes = mQueryCache.get(requiredRegular);
-
-				if (policy == ExecutionPolicy::Seq)
-				{
-					for (Archetype *arch : matchingArchetypes)
-					{
-						ui chunkCount = arch->getChunkCount();
-						for (ui c = 0; c < chunkCount; ++c)
-						{
-							ui entityCount = arch->getEntityCount(c);
-							if (entityCount == 0)
-							{
-								continue;
-							}
-							const Entity *entityArr = arch->getEntityArray(c);
-							processChunkEntitiesConst<Components...>(entityArr, entityCount, c, arch, func);
-						}
-					}
-				}
-				else if (policy == ExecutionPolicy::Par)
-				{
-					std::vector<std::future<void>> futures;
-					futures.reserve(matchingArchetypes.size() * 2);
-					for (Archetype *arch : matchingArchetypes)
-					{
-						ui chunkCount = arch->getChunkCount();
-						for (ui c = 0; c < chunkCount; ++c)
-						{
-							ui entityCount = arch->getEntityCount(c);
-							if (entityCount == 0)
-							{
-								continue;
-							}
-							futures.push_back(mThreadPool.submit([arch, c, entityCount, func]() {
-								const Entity *entityArr = arch->getEntityArray(c);
-								processChunkEntitiesConst<Components...>(entityArr, entityCount, c, arch, func);
-							}));
-						}
-					}
-					for (auto &fut : futures)
-					{
-						fut.get();
-					}
-				}
-				else if (policy == ExecutionPolicy::ParBatched)
-				{
-					std::vector<std::pair<Archetype *, ui>> allChunks;
-					for (Archetype *arch : matchingArchetypes)
-					{
-						ui chunkCount = arch->getChunkCount();
-						for (ui c = 0; c < chunkCount; ++c)
-						{
-							if (arch->getEntityCount(c) > 0)
-							{
-								allChunks.emplace_back(arch, c);
-							}
-						}
-					}
-					if (allChunks.empty())
-					{
-						return;
-					}
-					const std::size_t numThreads = std::thread::hardware_concurrency();
-					const std::size_t targetTasks = numThreads * 4;
-					std::size_t batchSize = (allChunks.size() + targetTasks - 1) / targetTasks;
-					if (batchSize < 1)
-					{
-						batchSize = 1;
-					}
-
-					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
-
-					for (std::size_t i = 0; i < allChunks.size(); i += batchSize)
-					{
-						std::size_t end = std::min(i + batchSize, allChunks.size());
-						std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
-																	  allChunks.begin() + static_cast<std::ptrdiff_t>(end));
-						mThreadPool.submit_with_latch(
-							[batch, func = std::forward<Func>(func)]() mutable {
-								for (const auto &[arch, c] : batch)
-								{
-									ui entityCount = arch->getEntityCount(c);
-									const Entity *entityArr = arch->getEntityArray(c);
-									processChunkEntitiesConst<Components...>(entityArr, entityCount, c, arch, func);
-								}
-							},
-							latch);
-					}
-					latch.wait();
-				}
-				else if (policy == ExecutionPolicy::ParStealing)
-				{
-					std::vector<std::pair<Archetype *, ui>> allChunks;
-					for (Archetype *arch : matchingArchetypes)
-					{
-						ui chunkCount = arch->getChunkCount();
-						for (ui c = 0; c < chunkCount; ++c)
-						{
-							if (arch->getEntityCount(c) > 0)
-							{
-								allChunks.emplace_back(arch, c);
-							}
-						}
-					}
-					if (allChunks.empty())
-					{
-						return;
-					}
-					const std::size_t batchSize = 8;
-					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
-					mWorkStealingPool.submit_chunks(
-						allChunks,
-						[func = std::forward<Func>(func)](Archetype *arch, ui c) {
-							ui entityCount = arch->getEntityCount(c);
-							const Entity *entityArr = arch->getEntityArray(c);
-							processChunkEntitiesConst<Components...>(entityArr, entityCount, c, arch, func);
-						},
-						latch, batchSize);
-					latch.wait();
-				}
+				forEachPolicyImpl<decltype(*this), Components...>(*this, policy, std::forward<Func>(func));
 			}
 
-			template <typename... Components, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
+			template <class Self, typename... Components, typename Func>
+			static void forEachPolicyVersionImpl(Self &self, const ExecutionPolicy &policy, SystemVersion &version, Func &&func)
 			{
-				constexpr ComponentMask requiredRegular = build_required_mask<Components...>();
-				const auto &matchingArchetypes = mQueryCache.get(requiredRegular);
+				constexpr ComponentMask requiredRegular{build_required_mask<Components...>()};
+				const auto &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
 
+				// Collect chunks that need processing (dirty)
 				std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> dirtyChunks;
+
 				for (Archetype *arch : matchingArchetypes)
 				{
-					ui chunkCount = arch->getChunkCount();
-					for (ui c = 0; c < chunkCount; ++c)
+					ui chunkCount{arch->getChunkCount()};
+
+					for (ui chunkIndex{0}; chunkIndex < chunkCount; ++chunkIndex)
 					{
-						ui entityCount = arch->getEntityCount(c);
-						if (entityCount == 0)
+						if (arch->getEntityCount(chunkIndex) == 0)
 						{
 							continue;
 						}
-						const auto &chunkVersion = arch->getChunkVersion(c);
+
+						const ChunkVersion &chunkVersion{arch->getChunkVersion(chunkIndex)};
+
 						if (version.needsUpdate(chunkVersion, requiredRegular))
 						{
-							dirtyChunks.emplace_back(arch, c, &chunkVersion);
+							dirtyChunks.emplace_back(arch, chunkIndex, &chunkVersion);
 						}
 					}
 				}
+
 				if (dirtyChunks.empty())
 				{
 					return;
 				}
 
-				auto processFunc = [&](Archetype *arch, ui c) {
-					ui entityCount = arch->getEntityCount(c);
-					Entity *entityArr = arch->getEntityArray(c);
-					processChunkEntities<Components...>(entityArr, entityCount, c, arch, func);
+				// Processing lambda – calls the appropriate chunk processing function
+				auto processFunc = [&func](Archetype *arch, ui chunkIndex) {
+					ui entityCount{arch->getEntityCount(chunkIndex)};
+
+					if constexpr (std::is_const_v<Self>)
+					{
+						const Entity *entityArr{arch->getEntityArray(chunkIndex)};
+						processChunkEntitiesConst<Components...>(entityArr, entityCount, chunkIndex, arch, std::forward<Func>(func));
+					}
+					else
+					{
+						Entity *entityArr{arch->getEntityArray(chunkIndex)};
+						processChunkEntities<Components...>(entityArr, entityCount, chunkIndex, arch, std::forward<Func>(func));
+					}
+				};
+
+				// Helper to update the SystemVersion after processing
+				auto updateVersion = [&](const std::tuple<Archetype *, ui, const ChunkVersion *> &chunk) {
+					const Archetype *arch{std::get<0>(chunk)};
+					const ui chunkIndex{std::get<1>(chunk)};
+
+					const ChunkVersion *chunkVer{std::get<2>(chunk)};
+
+					forEachSetBit(requiredRegular, [&](ComponentTypeID compID) {
+						version.setComponentVersion(compID,
+													std::max(version.getComponentVersion(compID), chunkVer->getComponentVersion(compID)));
+					});
+
+					version.setVersion(std::max(version.getVersion(), arch->getChunkVersion(chunkIndex).getVersion()));
 				};
 
 				if (policy == ExecutionPolicy::Seq)
 				{
 					for (const auto &chunk : dirtyChunks)
 					{
-						Archetype *arch = std::get<0>(chunk);
-						ui c = std::get<1>(chunk);
-						const ChunkVersion *chunkVer = std::get<2>(chunk);
-						processFunc(arch, c);
-						forEachSetBit(requiredRegular, [&](const ComponentTypeID componentTypeID) {
-							version.setComponentVersion(componentTypeID, chunkVer->getComponentVersion(componentTypeID));
-						});
+						processFunc(std::get<0>(chunk), std::get<1>(chunk));
+						updateVersion(chunk);
 					}
-					const auto &lastChunk = dirtyChunks.back();
-					version.setVersion(
-						std::max(version.getVersion(), std::get<0>(lastChunk)->getChunkVersion(std::get<1>(lastChunk)).getVersion()));
 				}
 				else if (policy == ExecutionPolicy::Par)
 				{
 					std::vector<std::future<void>> futures;
 					futures.reserve(dirtyChunks.size());
+
 					for (const auto &chunk : dirtyChunks)
 					{
-						Archetype *arch = std::get<0>(chunk);
-						ui c = std::get<1>(chunk);
-						futures.push_back(mThreadPool.submit([arch, c, processFunc]() { processFunc(arch, c); }));
+						Archetype *arch{std::get<0>(chunk)};
+						ui chunkIndex{std::get<1>(chunk)};
+
+						futures.push_back(self.mThreadPool.submit([arch, chunkIndex, &processFunc]() { processFunc(arch, chunkIndex); }));
 					}
+
 					for (auto &fut : futures)
 					{
 						fut.get();
 					}
+
 					for (const auto &chunk : dirtyChunks)
 					{
-						const Archetype *arch = std::get<0>(chunk);
-						const ui c = std::get<1>(chunk);
-						const ChunkVersion *chunkVer = std::get<2>(chunk);
-						forEachSetBit(requiredRegular, [&](const ComponentTypeID componentTypeID) {
-							version.setComponentVersion(componentTypeID, std::max(version.getComponentVersion(componentTypeID),
-																				  chunkVer->getComponentVersion(componentTypeID)));
-						});
-						version.setVersion(std::max(version.getVersion(), arch->getChunkVersion(c).getVersion()));
+						updateVersion(chunk);
 					}
 				}
-				else if (policy == ExecutionPolicy::ParBatched || policy == ExecutionPolicy::ParStealing)
+				else if (policy == ExecutionPolicy::ParBatched)
 				{
+					// Convert to simple pairs for batching
 					std::vector<std::pair<Archetype *, ui>> chunks;
+					chunks.reserve(dirtyChunks.size());
+
 					for (const auto &chunk : dirtyChunks)
 					{
 						chunks.emplace_back(std::get<0>(chunk), std::get<1>(chunk));
 					}
-					// Use adaptive batching for ParBatched, but here we keep it simple
-					const std::size_t batchSize = 4;
+
+					// Adaptive batch size (similar to forEachPolicyImpl)
+					const std::size_t numThreads{std::thread::hardware_concurrency()};
+					const std::size_t targetTasks{numThreads * 4};
+
+					std::size_t batchSize{(chunks.size() + targetTasks - 1) / targetTasks};
+					batchSize = std::max<std::size_t>(batchSize, 1);
+
 					std::latch latch(static_cast<std::ptrdiff_t>((chunks.size() + batchSize - 1) / batchSize));
-					for (std::size_t i = 0; i < chunks.size(); i += batchSize)
+
+					for (std::size_t i{0}; i < chunks.size(); i += batchSize)
 					{
-						std::size_t end = std::min(i + batchSize, chunks.size());
-						std::vector<std::pair<Archetype *, ui>> batch(chunks.begin() + static_cast<std::ptrdiff_t>(i),
-																	  chunks.begin() + static_cast<std::ptrdiff_t>(end));
-						mThreadPool.submit_with_latch(
-							[batch, processFunc]() {
-								for (const auto &[arch, c] : batch)
+						const std::size_t end{std::min(i + batchSize, chunks.size())};
+						const std::vector<std::pair<Archetype *, ui>> batch(chunks.begin() + static_cast<std::ptrdiff_t>(i),
+																			chunks.begin() + static_cast<std::ptrdiff_t>(end));
+
+						self.mThreadPool.submit_with_latch(
+							[batch, &processFunc]() {
+								for (const auto &[arch, chunkIndex] : batch)
 								{
-									processFunc(arch, c);
+									processFunc(arch, chunkIndex);
 								}
 							},
 							latch);
 					}
+
 					latch.wait();
+
 					for (const auto &chunk : dirtyChunks)
 					{
-						Archetype *arch = std::get<0>(chunk);
-						ui c = std::get<1>(chunk);
-						const ChunkVersion *chunkVer = std::get<2>(chunk);
-						forEachSetBit(requiredRegular, [&](const ComponentTypeID componentTypeID) {
-							version.setComponentVersion(componentTypeID, std::max(version.getComponentVersion(componentTypeID),
-																				  chunkVer->getComponentVersion(componentTypeID)));
-						});
-						version.setVersion(std::max(version.getVersion(), arch->getChunkVersion(c).getVersion()));
+						updateVersion(chunk);
+					}
+				}
+				else if (policy == ExecutionPolicy::ParStealing)
+				{
+					std::vector<std::pair<Archetype *, ui>> chunks;
+					chunks.reserve(dirtyChunks.size());
+
+					for (const auto &chunk : dirtyChunks)
+					{
+						chunks.emplace_back(std::get<0>(chunk), std::get<1>(chunk));
+					}
+
+					const std::size_t batchSize{8}; // same as in forEachPolicyImpl
+					std::latch latch(static_cast<std::ptrdiff_t>((chunks.size() + batchSize - 1) / batchSize));
+
+					self.mWorkStealingPool.submit_chunks(
+						chunks, [&processFunc](Archetype *arch, ui chunkIndex) { processFunc(arch, chunkIndex); }, latch, batchSize);
+
+					latch.wait();
+
+					for (const auto &chunk : dirtyChunks)
+					{
+						updateVersion(chunk);
 					}
 				}
 			}
 
 			template <typename... Components, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			void forEach(const ExecutionPolicy &policy, SystemVersion &version, Func &&func)
 			{
-				constexpr ComponentMask requiredRegular = build_required_mask<Components...>();
-				const auto &matchingArchetypes = mQueryCache.get(requiredRegular);
+				forEachPolicyVersionImpl<decltype(*this), Components...>(*this, policy, version, std::forward<Func>(func));
+			}
 
-				std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> dirtyChunks;
-				for (Archetype *arch : matchingArchetypes)
-				{
-					ui chunkCount = arch->getChunkCount();
-					for (ui c = 0; c < chunkCount; ++c)
+			template <typename... Components, typename Func>
+			void forEach(const ExecutionPolicy &policy, SystemVersion &version, Func &&func) const
+			{
+				forEachPolicyVersionImpl<decltype(*this), Components...>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			template <class Self, typename... Components, typename Func>
+			static void forEachPolicyCommandImpl(Self &self, const ExecutionPolicy &policy, CommandBuffer & /*cmds*/, Func &&func)
+			{
+				constexpr ComponentMask requiredRegular{build_required_mask<Components...>()};
+				const auto &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
+
+				// Processing lambda – uses the appropriate chunk function based on constness
+				auto processChunk = [&, function = std::forward<Func>(func)](Archetype *arch, ui chunkIndex) {
+					const ui entityCount{arch->getEntityCount(chunkIndex)};
+
+					if constexpr (std::is_const_v<Self>)
 					{
-						ui entityCount = arch->getEntityCount(c);
-						if (entityCount == 0)
+						const Entity *entityArr = arch->getEntityArray(chunkIndex);
+						processChunkEntitiesConst<Components...>(entityArr, entityCount, chunkIndex, arch,
+																 [&](Entity entity, const auto &...comps) { function(entity, comps...); });
+					}
+					else
+					{
+						Entity *entityArr = arch->getEntityArray(chunkIndex);
+						processChunkEntities<Components...>(entityArr, entityCount, chunkIndex, arch,
+															[&](Entity entity, auto &...comps) { function(entity, comps...); });
+					}
+				};
+
+				// --- Sequential execution ---
+				if (policy == ExecutionPolicy::Seq)
+				{
+					for (Archetype *arch : matchingArchetypes)
+					{
+						const ui chunkCount{arch->getChunkCount()};
+
+						for (ui chunkIndex{0}; chunkIndex < chunkCount; ++chunkIndex)
 						{
-							continue;
-						}
-						const auto &chunkVersion = arch->getChunkVersion(c);
-						if (version.needsUpdate(chunkVersion, requiredRegular))
-						{
-							dirtyChunks.emplace_back(arch, c, &chunkVersion);
+							if (arch->getEntityCount(chunkIndex) == 0)
+							{
+								continue;
+							}
+
+							processChunk(arch, chunkIndex);
 						}
 					}
 				}
+				// --- Parallel (one task per chunk) ---
+				else if (policy == ExecutionPolicy::Par)
+				{
+					std::vector<std::future<void>> futures;
+					futures.reserve(matchingArchetypes.size() * 2);
+
+					for (Archetype *arch : matchingArchetypes)
+					{
+						const ui chunkCount{arch->getChunkCount()};
+
+						for (ui chunkIndex{0}; chunkIndex < chunkCount; ++chunkIndex)
+						{
+							if (arch->getEntityCount(chunkIndex) == 0)
+							{
+								continue;
+							}
+
+							futures.push_back(
+								self.mThreadPool.submit([arch, chunkIndex, &processChunk]() { processChunk(arch, chunkIndex); }));
+						}
+					}
+
+					for (auto &fut : futures)
+					{
+						fut.get();
+					}
+				}
+				// --- Parallel batched (adaptive batch size) ---
+				else if (policy == ExecutionPolicy::ParBatched)
+				{
+					std::vector<std::pair<Archetype *, ui>> allChunks;
+
+					for (Archetype *arch : matchingArchetypes)
+					{
+						const ui chunkCount{arch->getChunkCount()};
+
+						for (ui chunkIndex{0}; chunkIndex < chunkCount; ++chunkIndex)
+						{
+							if (arch->getEntityCount(chunkIndex) > 0)
+							{
+								allChunks.emplace_back(arch, chunkIndex);
+							}
+						}
+					}
+
+					if (allChunks.empty())
+					{
+						return;
+					}
+
+					const std::size_t numThreads{std::thread::hardware_concurrency()};
+					const std::size_t targetTasks{numThreads * 4};
+
+					std::size_t batchSize{(allChunks.size() + targetTasks - 1) / targetTasks};
+					batchSize = std::max<std::size_t>(batchSize, 1);
+
+					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
+
+					for (std::size_t i{0}; i < allChunks.size(); i += batchSize)
+					{
+						const std::size_t end{std::min(i + batchSize, allChunks.size())};
+						const std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
+																			allChunks.begin() + static_cast<std::ptrdiff_t>(end));
+
+						self.mThreadPool.submit_with_latch(
+							[batch, &processChunk]() {
+								for (const auto &[arch, chunkIndex] : batch)
+								{
+									processChunk(arch, chunkIndex);
+								}
+							},
+							latch);
+					}
+					latch.wait();
+				}
+				// --- Work‑stealing (fixed batch size 8) ---
+				else if (policy == ExecutionPolicy::ParStealing)
+				{
+					std::vector<std::pair<Archetype *, ui>> allChunks;
+
+					for (Archetype *arch : matchingArchetypes)
+					{
+						const ui chunkCount{arch->getChunkCount()};
+
+						for (ui chunkIndex{0}; chunkIndex < chunkCount; ++chunkIndex)
+						{
+							if (arch->getEntityCount(chunkIndex) > 0)
+							{
+								allChunks.emplace_back(arch, chunkIndex);
+							}
+						}
+					}
+
+					if (allChunks.empty())
+					{
+						return;
+					}
+
+					const std::size_t batchSize{8}; // same as in forEachPolicyImpl
+					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
+
+					self.mWorkStealingPool.submit_chunks(
+						allChunks, [&processChunk](Archetype *arch, ui chunkIndex) { processChunk(arch, chunkIndex); }, latch, batchSize);
+
+					latch.wait();
+				}
+			}
+
+			template <typename... Components, typename Func>
+			void forEach(const ExecutionPolicy &policy, CommandBuffer &cmds, Func &&func)
+			{
+				forEachPolicyCommandImpl<decltype(*this), Components...>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <typename... Components, typename Func>
+			void forEach(const ExecutionPolicy &policy, CommandBuffer &cmds, Func &&func) const
+			{
+				forEachPolicyCommandImpl<decltype(*this), Components...>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <class Self, typename... Components, typename Func>
+			static void forEachPolicyVersionCommandImpl(Self &self, const ExecutionPolicy &policy, SystemVersion &version,
+														CommandBuffer &cmds, Func &&func)
+			{
+				constexpr ComponentMask requiredRegular{build_required_mask<Components...>()};
+				const auto &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
+
+				// Collect chunks that are dirty according to the version
+				std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> dirtyChunks;
+
+				for (Archetype *arch : matchingArchetypes)
+				{
+					ui chunkCount{arch->getChunkCount()};
+
+					for (ui chunkIndex{0}; chunkIndex < chunkCount; ++chunkIndex)
+					{
+						if (arch->getEntityCount(chunkIndex) == 0)
+						{
+							continue;
+						}
+
+						const auto &chunkVersion{arch->getChunkVersion(chunkIndex)};
+
+						if (version.needsUpdate(chunkVersion, requiredRegular))
+						{
+							dirtyChunks.emplace_back(arch, chunkIndex, &chunkVersion);
+						}
+					}
+				}
+
 				if (dirtyChunks.empty())
 				{
 					return;
 				}
 
-				auto processFunc = [&](Archetype *arch, ui c) {
-					ui entityCount = arch->getEntityCount(c);
-					const Entity *entityArr = arch->getEntityArray(c);
-					processChunkEntitiesConst<Components...>(entityArr, entityCount, c, arch, func);
+				// Processing lambda – dispatches to the correct chunk processing function
+				auto processChunk = [&, function = std::forward<Func>(func)](Archetype *arch, ui chunkIndex) {
+					ui entityCount{arch->getEntityCount(chunkIndex)};
+
+					if constexpr (std::is_const_v<Self>)
+					{
+						const Entity *entityArr = arch->getEntityArray(chunkIndex);
+						processChunkEntitiesConst<Components...>(
+							entityArr, entityCount, chunkIndex, arch,
+							[&](const Entity &entity, const auto &...comps) { function(entity, comps..., cmds); });
+					}
+					else
+					{
+						Entity *entityArr = arch->getEntityArray(chunkIndex);
+						processChunkEntities<Components...>(
+							entityArr, entityCount, chunkIndex, arch,
+							[&](const Entity &entity, auto &...comps) { function(entity, comps..., cmds); });
+					}
 				};
 
-				// For simplicity, const version only implements sequential.
+				// Helper to update the SystemVersion after processing a chunk
+				auto updateVersion = [&](const std::tuple<Archetype *, ui, const ChunkVersion *> &chunk) {
+					const Archetype *arch{std::get<0>(chunk)};
+					const ui chunkIndex{std::get<1>(chunk)};
+
+					const ChunkVersion *chunkVer{std::get<2>(chunk)};
+
+					forEachSetBit(requiredRegular, [&](const ComponentTypeID &componentTypeID) {
+						version.setComponentVersion(componentTypeID, std::max(version.getComponentVersion(componentTypeID),
+																			  chunkVer->getComponentVersion(componentTypeID)));
+					});
+
+					version.setVersion(std::max(version.getVersion(), arch->getChunkVersion(chunkIndex).getVersion()));
+				};
+
+				// --- Sequential ---
 				if (policy == ExecutionPolicy::Seq)
 				{
 					for (const auto &chunk : dirtyChunks)
 					{
-						Archetype *arch = std::get<0>(chunk);
-						ui c = std::get<1>(chunk);
-						const ChunkVersion *chunkVer = std::get<2>(chunk);
-						processFunc(arch, c);
-						forEachSetBit(requiredRegular, [&](const ComponentTypeID componentTypeID) {
-							version.setComponentVersion(componentTypeID, chunkVer->getComponentVersion(componentTypeID));
-						});
+						processChunk(std::get<0>(chunk), std::get<1>(chunk));
+						updateVersion(chunk);
 					}
-					const auto &lastChunk = dirtyChunks.back();
-					version.setVersion(
-						std::max(version.getVersion(), std::get<0>(lastChunk)->getChunkVersion(std::get<1>(lastChunk)).getVersion()));
 				}
-				else
+				// --- Parallel (one task per chunk) ---
+				else if (policy == ExecutionPolicy::Par)
 				{
-					// fallback to sequential for other policies
+					std::vector<std::future<void>> futures;
+					futures.reserve(dirtyChunks.size());
+
 					for (const auto &chunk : dirtyChunks)
 					{
-						Archetype *arch = std::get<0>(chunk);
-						ui c = std::get<1>(chunk);
-						processFunc(arch, c);
+						Archetype *arch{std::get<0>(chunk)};
+						ui chunkIndex{std::get<1>(chunk)};
+
+						futures.push_back(self.mThreadPool.submit([arch, chunkIndex, &processChunk]() { processChunk(arch, chunkIndex); }));
 					}
+
+					for (auto &fut : futures)
+					{
+						fut.get();
+					}
+
 					for (const auto &chunk : dirtyChunks)
 					{
-						Archetype *arch = std::get<0>(chunk);
-						ui c = std::get<1>(chunk);
-						const ChunkVersion *chunkVer = std::get<2>(chunk);
-						forEachSetBit(requiredRegular, [&](const ComponentTypeID componentTypeID) {
-							version.setComponentVersion(componentTypeID, std::max(version.getComponentVersion(componentTypeID),
-																				  chunkVer->getComponentVersion(componentTypeID)));
-						});
-						version.setVersion(std::max(version.getVersion(), arch->getChunkVersion(c).getVersion()));
+						updateVersion(chunk);
+					}
+				}
+				// --- Parallel batched ---
+				else if (policy == ExecutionPolicy::ParBatched)
+				{
+					// Convert to simple pairs for batching
+					std::vector<std::pair<Archetype *, ui>> chunks;
+					chunks.reserve(dirtyChunks.size());
+
+					for (const auto &chunk : dirtyChunks)
+					{
+						chunks.emplace_back(std::get<0>(chunk), std::get<1>(chunk));
+					}
+
+					const std::size_t numThreads{std::thread::hardware_concurrency()};
+					const std::size_t targetTasks{numThreads * 4};
+					std::size_t batchSize{(chunks.size() + targetTasks - 1) / targetTasks};
+					batchSize = std::max<std::size_t>(batchSize, 1);
+
+					std::latch latch(static_cast<std::ptrdiff_t>((chunks.size() + batchSize - 1) / batchSize));
+
+					for (std::size_t i{0}; i < chunks.size(); i += batchSize)
+					{
+						const std::size_t end{std::min(i + batchSize, chunks.size())};
+						const std::vector<std::pair<Archetype *, ui>> batch(chunks.begin() + static_cast<std::ptrdiff_t>(i),
+																			chunks.begin() + static_cast<std::ptrdiff_t>(end));
+
+						self.mThreadPool.submit_with_latch(
+							[batch, &processChunk]() {
+								for (const auto &[arch, chunkIndex] : batch)
+								{
+									processChunk(arch, chunkIndex);
+								}
+							},
+							latch);
+					}
+
+					latch.wait();
+
+					for (const auto &chunk : dirtyChunks)
+					{
+						updateVersion(chunk);
+					}
+				}
+				// --- Work‑stealing ---
+				else if (policy == ExecutionPolicy::ParStealing)
+				{
+					std::vector<std::pair<Archetype *, ui>> chunks;
+					chunks.reserve(dirtyChunks.size());
+
+					for (const auto &chunk : dirtyChunks)
+					{
+						chunks.emplace_back(std::get<0>(chunk), std::get<1>(chunk));
+					}
+
+					const std::size_t batchSize{8}; // same as in forEachPolicyImpl
+					std::latch latch(static_cast<std::ptrdiff_t>((chunks.size() + batchSize - 1) / batchSize));
+
+					self.mWorkStealingPool.submit_chunks(
+						chunks, [&processChunk](Archetype *arch, const ui chunkIndex) { processChunk(arch, chunkIndex); }, latch,
+						batchSize);
+
+					latch.wait();
+
+					for (const auto &chunk : dirtyChunks)
+					{
+						updateVersion(chunk);
 					}
 				}
 			}
 
 			template <typename... Components, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
+			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
 			{
-				constexpr ComponentMask requiredRegular = build_required_mask<Components...>();
-				const auto &matchingArchetypes = mQueryCache.get(requiredRegular);
+				forEachPolicyVersionCommandImpl<decltype(*this), Components...>(*this, policy, version, cmds, std::forward<Func>(func));
+			}
 
-				if (policy == ExecutionPolicy::Seq)
-				{
-					for (Archetype *arch : matchingArchetypes)
-					{
-						ui chunkCount = arch->getChunkCount();
-						for (ui c = 0; c < chunkCount; ++c)
-						{
-							ui entityCount = arch->getEntityCount(c);
-							if (entityCount == 0)
-							{
-								continue;
-							}
-							Entity *entityArr = arch->getEntityArray(c);
-							processChunkEntities<Components...>(entityArr, entityCount, c, arch,
-																[&](Entity e, auto &...comps) { func(e, comps...); });
-						}
-					}
-				}
-				else if (policy == ExecutionPolicy::Par)
-				{
-					std::vector<std::future<void>> futures;
-					futures.reserve(matchingArchetypes.size() * 2);
-					for (Archetype *arch : matchingArchetypes)
-					{
-						ui chunkCount = arch->getChunkCount();
-						for (ui c = 0; c < chunkCount; ++c)
-						{
-							ui entityCount = arch->getEntityCount(c);
-							if (entityCount == 0)
-							{
-								continue;
-							}
-							futures.push_back(mThreadPool.submit([arch, c, entityCount, &cmds, func]() {
-								Entity *entityArr = arch->getEntityArray(c);
-								processChunkEntities<Components...>(entityArr, entityCount, c, arch,
-																	[&](Entity e, auto &...comps) { func(e, comps...); });
-							}));
-						}
-					}
-					for (auto &fut : futures)
-					{
-						fut.get();
-					}
-				}
-				else if (policy == ExecutionPolicy::ParBatched)
-				{
-					std::vector<std::pair<Archetype *, ui>> allChunks;
-					for (Archetype *arch : matchingArchetypes)
-					{
-						ui chunkCount = arch->getChunkCount();
-						for (ui c = 0; c < chunkCount; ++c)
-						{
-							if (arch->getEntityCount(c) > 0)
-							{
-								allChunks.emplace_back(arch, c);
-							}
-						}
-					}
-					if (allChunks.empty())
-					{
-						return;
-					}
-					const std::size_t numThreads = std::thread::hardware_concurrency();
-					const std::size_t targetTasks = numThreads * 4;
-					std::size_t batchSize = (allChunks.size() + targetTasks - 1) / targetTasks;
-					if (batchSize < 1)
-					{
-						batchSize = 1;
-					}
-
-					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
-					for (std::size_t i = 0; i < allChunks.size(); i += batchSize)
-					{
-						std::size_t end = std::min(i + batchSize, allChunks.size());
-						std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
-																	  allChunks.begin() + static_cast<std::ptrdiff_t>(end));
-						mThreadPool.submit_with_latch(
-							[batch, &cmds, func = std::forward<Func>(func)]() mutable {
-								for (const auto &[arch, c] : batch)
-								{
-									ui entityCount = arch->getEntityCount(c);
-									Entity *entityArr = arch->getEntityArray(c);
-									processChunkEntities<Components...>(entityArr, entityCount, c, arch,
-																		[&](Entity e, auto &...comps) { func(e, comps...); });
-								}
-							},
-							latch);
-					}
-					latch.wait();
-				}
-				else if (policy == ExecutionPolicy::ParStealing)
-				{
-					std::vector<std::pair<Archetype *, ui>> allChunks;
-					for (Archetype *arch : matchingArchetypes)
-					{
-						ui chunkCount = arch->getChunkCount();
-						for (ui c = 0; c < chunkCount; ++c)
-						{
-							if (arch->getEntityCount(c) > 0)
-							{
-								allChunks.emplace_back(arch, c);
-							}
-						}
-					}
-					if (allChunks.empty())
-					{
-						return;
-					}
-					const std::size_t batchSize = 8;
-					std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
-					mWorkStealingPool.submit_chunks(
-						allChunks,
-						[&cmds, func = std::forward<Func>(func)](Archetype *arch, ui c) {
-							ui entityCount = arch->getEntityCount(c);
-							Entity *entityArr = arch->getEntityArray(c);
-							processChunkEntities<Components...>(entityArr, entityCount, c, arch,
-																[&](Entity e, auto &...comps) { func(e, comps...); });
-						},
-						latch, batchSize);
-					latch.wait();
-				}
+			template <typename... Components, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
+			{
+				forEachPolicyVersionCommandImpl<decltype(*this), Components...>(*this, policy, version, cmds, std::forward<Func>(func));
 			}
 
 		private:
 			// MARK: Private Getters
+
 			void *getComponentPtr(const Entity &entity, const ComponentTypeID compID);
 			const void *getComponentPtr(const Entity &entity, const ComponentTypeID compID) const;
 			Archetype *getOrCreateArchetype(ComponentMask regularMask);
 
 			// MARK: Private Member Functions
+			
 			void moveEntity(const Entity &entity, ComponentMask newRegularMask, const std::array<const void *, MAX_COMPONENTS> &copyData,
 							const std::array<void *, MAX_COMPONENTS> &moveData, ComponentMask newTags = ComponentMask(0));
 			void destroyHierarchy(const Entity &entity);
