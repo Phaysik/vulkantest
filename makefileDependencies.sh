@@ -103,23 +103,23 @@ checkSphinx() {
 setUpTracy() {
     echo "Setting up Tracy Profiler"
 
-    # Download the latest version of Tracy
-    url=$(curl -s https://api.github.com/repos/wolfpld/tracy/releases/latest | grep -o '"tarball_url": *"[^"]*"' | cut -d '"' -f 4)
-    curl -L -o tracy-latest.tar.gz $url
-    mkdir -p tracy-latest
-    tar -xvzf tracy-latest.tar.gz -C tracy-latest --strip-components=1
-    sudo rm -rf tracy-latest.tar.gz
-
-    sudo apt-get install g++-11 gcc-11 libfreetype6-dev libcapstone-dev libegl1-mesa-dev libxkbcommon-dev libwayland-dev libdbus-1-dev libglfw3 libglfw3-dev wayland-protocols xsltproc xmlto -y
+    sudo apt-get install g++-11 gcc-11 meson libfreetype6-dev libcapstone-dev libegl1-mesa-dev libxkbcommon-dev libwayland-dev libdbus-1-dev libglfw3 libglfw3-dev wayland-protocols xsltproc xmlto -y
     sudo cp -r /usr/include/freetype2/* /usr/include/
     sudo cp -r /usr/include/capstone/* /usr/include/
     sudo cp -r /usr/include/dbus-1.0/* /usr/include/
+
+    sudo apt remove rustc cargo
+    sudo curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    sudo source $HOME/.cargo/env
+
+    cargo install mdbook
+    sudo cp ~/.cargo/bin/mdbook /usr/local/bin/
 
     # Setup Wayland
     git clone https://gitlab.freedesktop.org/wayland/wayland.git
     cd wayland
 
-    sudo meson setup build -Ddocumentation=false
+    sudo meson setup build
     sudo meson compile -C build
     sudo meson install -C build
 
@@ -131,13 +131,10 @@ setUpTracy() {
     sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 11
     sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 11
 
-    sudo apt remove rustc cargo
-
-    sudo source $HOME/.cargo/env
-
-    sudo cargo install mdbook
-
     sudo ln -s /usr/local/gcc-15/bin/g++ /usr/bin/g++-15
+
+    # Set up Tracy
+    git clone https://github.com/wolfpld/tracy.git
 
     # For installing the Client of Tracy
     mkdir build
@@ -151,14 +148,23 @@ setUpTracy() {
     cd profiler
     mkdir build
     cd build
+
+    export PKG_CONFIG_PATH=/usr/local/lib/x86_64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH
+    export LD_LIBRARY_PATH=/usr/local/gcc-15/lib64:$LD_LIBRARY_PATH
+    export LDFLAGS="-L/usr/local/lib/x86_64-linux-gnu -Wl,-rpath,/usr/local/lib/x86_64-linux-gnu"
+
     cmake ..
-    make CXX=g++-15
-    mv Tracy-release tracy-server
-    sudo cp tracy-server /usr/bin/
+    make -j$(nproc)
+    sudo cp tracy-profiler /usr/bin/
 
     # Remove Tracy files from local
-    cd ../../../../
+    cd ..
+    cd ..
+    cd ..
     sudo rm -rf tracy-latest
+
+    sudo cp -r /usr/local/include/tracy /usr/include/
+    sudo cp /usr/local/lib/libTracy* /usr/lib/
 
     sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-$1 $1
     sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-$1 $1
@@ -295,13 +301,13 @@ main() {
         setUpConfigCat
 
         desired_version="15.2.0"
-        gpp_priortiy="15"
+        gpp_priority="15"
         echo "Setting up g++"
 
         if [ "$(command g++ --version | grep -oP '\d+\.\d+\.\d+')" = "$desired_version" ]; then
             echo "g++-${desired_version} exists"
         elif [ "${1,,}" != "a" ] || ([ "${response,,}" != "a" ] && [ "${response,,}" != "n" ]); then
-            setUpGCC $desired_version $gpp_priortiy
+            setUpGCC $desired_version $gpp_priority
         else
             sudo apt-get install -y g++-13 # For automated running
             sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 13
@@ -384,7 +390,7 @@ main() {
             if [ -x "$(command -v Tracy-Server)" ]; then
                 echo "Tracy-Server already exists"
             else
-                setUpTracy $gpp_priortiy
+                setUpTracy $gpp_priority
             fi
 
             vulkan_desired_version="1.4.341.1"
