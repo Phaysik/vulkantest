@@ -8,7 +8,11 @@
 
 #include "Threading/workStealingPool.h"
 
-#include "Threading/workStealingQueue.h"
+#include <cassert>
+#include <cstddef>
+#include <functional>
+#include <thread>
+#include <vector>
 
 namespace Dimensia::Threading
 {
@@ -18,7 +22,7 @@ namespace Dimensia::Threading
 	{
 		for (std::size_t i{0}; i < numThreads; ++i)
 		{
-			mWorkers.emplace_back([this, i] { worker_loop(i); });
+			mWorkers.emplace_back([this, i] { workerLoop(i); });
 		}
 	}
 
@@ -26,10 +30,6 @@ namespace Dimensia::Threading
 	{
 		mStop = true;
 
-		for (WorkStealingQueue &queue : mQueues)
-		{
-			queue.push(nullptr); // Sentinel
-		}
 		for (std::thread &worker : mWorkers)
 		{
 			worker.join();
@@ -38,7 +38,7 @@ namespace Dimensia::Threading
 
 	// MARK: Private Member Functions
 
-	void WorkStealingPool::worker_loop(const std::size_t workerID)
+	void WorkStealingPool::workerLoop(const std::size_t workerID)
 	{
 		while (!mStop)
 		{
@@ -47,7 +47,7 @@ namespace Dimensia::Threading
 			assert(workerID < mQueues.size());
 
 			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			if (mQueues[workerID].try_pop(task))
+			if (mQueues[workerID].tryPop(task))
 			{
 				if (!task)
 				{
@@ -65,7 +65,7 @@ namespace Dimensia::Threading
 				assert(victimId < mQueues.size());
 
 				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-				if (mQueues[victimId].try_steal(task))
+				if (mQueues[victimId].trySteal(task))
 				{
 					if (!task)
 					{

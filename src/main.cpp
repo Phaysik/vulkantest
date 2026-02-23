@@ -1,7 +1,25 @@
+#include <algorithm>
+#include <atomic>
+#include <cstddef>
+#include <iostream>
 #include <ratio>
+#include <vector>
 
+#include "Components/Buff/buffComponent.h"
+#include "Components/Buffs/buffsComponent.h"
+#include "Components/Health/healthComponent.h"
+#include "Components/Mana/manaComponent.h"
+#include "Components/Name/nameComponent.h"
+#include "Components/Position/positionComponent.h"
+#include "Components/Velocity/velocityComponent.h"
 #include "Core/attributeMacros.h"
+#include "ECS/commandBuffer.h"
 #include "ECS/ecs.h"
+#include "ECS/entity.h"
+#include "ECS/systemVersion.h"
+#include "Tags/Alive/aliveTag.h"
+#include "Tags/Buffed/buffedTag.h"
+#include "Tags/Debug/debugTag.h"
 #include "Utility/Clock/timer.h"
 
 int main()
@@ -199,7 +217,7 @@ int main()
 	// Third run: the chunk containing that entity is now dirty, so it will be processed.
 	{
 		CommandBuffer commands;
-		size_t processedCount{0};
+		std::size_t processedCount{0};
 
 		ecs.forEach<Health>(ExecutionPolicy::ParBatched, healthVersion, commands,
 							[&](Entity, Health &, CommandBuffer &) { ++processedCount; });
@@ -224,7 +242,7 @@ int main()
 
 	// Sequential iteration with trivial work
 	{
-		size_t counter = 0;
+		std::size_t counter = 0;
 		Dimensia::Utility::Clock::Timer::start();
 		ecs.forEach<Name>([&](Entity, Name &) {
 			++counter; // extremely cheap operation
@@ -235,7 +253,7 @@ int main()
 
 	// Parallel (Par) iteration with trivial work
 	{
-		std::atomic<size_t> counter = 0;
+		std::atomic<std::size_t> counter = 0;
 		Dimensia::Utility::Clock::Timer::start();
 		ecs.forEach<Name>(ExecutionPolicy::Par, [&](Entity, Name &) { ++counter; });
 		auto time = Dimensia::Utility::Clock::Timer::stop<std::milli>();
@@ -244,7 +262,7 @@ int main()
 
 	// Parallel batched (ParBatched) iteration
 	{
-		std::atomic<size_t> counter = 0;
+		std::atomic<std::size_t> counter = 0;
 		Dimensia::Utility::Clock::Timer::start();
 		ecs.forEach<Name>(ExecutionPolicy::ParBatched, [&](Entity, Name &) { ++counter; });
 		auto time = Dimensia::Utility::Clock::Timer::stop<std::milli>();
@@ -253,7 +271,7 @@ int main()
 
 	// Work‑stealing (ParStealing) iteration
 	{
-		std::atomic<size_t> counter = 0;
+		std::atomic<std::size_t> counter = 0;
 		Dimensia::Utility::Clock::Timer::start();
 		ecs.forEach<Name>(ExecutionPolicy::ParStealing, [&](Entity, Name &) { ++counter; });
 		auto time = Dimensia::Utility::Clock::Timer::stop<std::milli>();

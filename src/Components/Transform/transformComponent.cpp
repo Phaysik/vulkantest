@@ -8,6 +8,13 @@
 
 #include "Components/Transform/transformComponent.h"
 
+#include "Core/attributeMacros.h"
+
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/ext/quaternion_trigonometric.hpp>
+#include <glm/fwd.hpp>
+#include <glm/gtc/quaternion.hpp>
+
 namespace Dimensia::Components
 {
 	void TransformComponent::setPosition(const glm::vec3 &position)

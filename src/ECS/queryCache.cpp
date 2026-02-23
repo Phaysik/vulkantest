@@ -8,6 +8,11 @@
 
 #include "ECS/queryCache.h"
 
+#include <cstddef>
+#include <utility>
+#include <vector>
+
+#include "ECS/archetype.h"
 #include "ECS/componentMask.h"
 
 namespace Dimensia::ECS

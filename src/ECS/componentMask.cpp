@@ -8,6 +8,9 @@
 
 #include "ECS/componentMask.h"
 
+#include <cstddef>
+#include <functional>
+
 #include "Core/typedefs.h"
 
 namespace std

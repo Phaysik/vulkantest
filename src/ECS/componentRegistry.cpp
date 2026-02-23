@@ -8,7 +8,12 @@
 
 #include "ECS/componentRegistry.h"
 
+#include <array>
+#include <cstddef>
+#include <tuple>
+
 #include "ECS/ecs.h"
+#include "ECS/entity.h"
 
 namespace Dimensia::Registry
 {

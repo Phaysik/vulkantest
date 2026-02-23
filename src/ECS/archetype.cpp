@@ -9,10 +9,19 @@
 #include "ECS/archetype.h"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <utility>
+#include <vector>
 
 #include "Core/attributeMacros.h"
+#include "ECS/chunkVersion.h"
+#include "ECS/componentMask.h"
 #include "ECS/constants.h"
+#include "ECS/entity.h"
 #include "ECS/entityRecord.h"
 #include "ECS/processChunkHelpers.h"
 
@@ -20,8 +29,7 @@ namespace Dimensia::ECS
 {
 	// MARK: Constructor and Destructor
 
-	Archetype::Archetype(const ComponentMask &regularMask, const ui archetypeID)
-		: mRegularMask(regularMask), mArchetypeID(archetypeID), mChunkCapacity(0)
+	Archetype::Archetype(const ComponentMask &regularMask, const ui archetypeID) : mRegularMask(regularMask), mArchetypeID(archetypeID)
 	{
 		mComponentOffsets.fill(SIZE_MAX);
 		mComponentSizes.fill(0);
@@ -110,6 +118,8 @@ namespace Dimensia::ECS
 	ATTR_NODISCARD Entity *Archetype::getEntityArray(const ui chunkIndex) const
 	{
 		assert(chunkIndex < mChunks.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		assert(mEntityArrayOffset < mChunks[chunkIndex]->buffer.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,cppcoreguidelines-pro-type-reinterpret-cast)
@@ -130,6 +140,8 @@ namespace Dimensia::ECS
 	ATTR_NODISCARD const ul *Archetype::getTagBitset(const ui chunkIndex) const
 	{
 		assert(chunkIndex < mChunks.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		assert(mTagBitsetOffset < mChunks[chunkIndex]->buffer.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,cppcoreguidelines-pro-type-reinterpret-cast)
@@ -435,6 +447,8 @@ namespace Dimensia::ECS
 					assert(readIndex < mChunks.size());
 					assert(writeIndex < mChunkVersions.size());
 					assert(readIndex < mChunkVersions.size());
+
+					// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 					assert(mEntityArrayOffset < mChunks[writeIndex]->buffer.size());
 
 					// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)

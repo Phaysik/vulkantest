@@ -8,6 +8,12 @@
 
 #include "Threading/threadPool.h"
 
+#include <cstddef>
+#include <functional>
+#include <mutex>
+#include <thread>
+#include <utility>
+
 namespace Dimensia::Threading
 {
 	// MARK: Constructor and Destructor
@@ -43,7 +49,7 @@ namespace Dimensia::Threading
 	ThreadPool::~ThreadPool()
 	{
 		{
-			const std::unique_lock<std::mutex> lock(mQueueMutex);
+			const std::scoped_lock<std::mutex> lock(mQueueMutex);
 			mStop = true;
 		}
 

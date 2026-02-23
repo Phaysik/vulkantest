@@ -98,10 +98,10 @@ namespace Dimensia::Threading
 			*/
 			template <typename Func>
 				requires InvocableNoArgs<Func>
-			void submit_with_latch(Func &&task, std::latch &latch) const
+			void submitWithLatch(Func &&task, std::latch &latch) const
 			{
 				{
-					const std::unique_lock<std::mutex> lock(mQueueMutex);
+					const std::scoped_lock<std::mutex> lock(mQueueMutex);
 
 					mTasks.emplace([task = std::forward<Func>(task), &latch]() mutable {
 						task();
@@ -131,7 +131,7 @@ namespace Dimensia::Threading
 
 				std::future<return_type> result = task->get_future();
 				{
-					const std::unique_lock<std::mutex> lock(mQueueMutex);
+					const std::scoped_lock<std::mutex> lock(mQueueMutex);
 					mTasks.emplace([task]() mutable { (*task)(); });
 				}
 
@@ -174,7 +174,7 @@ namespace Dimensia::Threading
 
 				std::future<return_type> result = task->get_future();
 				{
-					const std::unique_lock<std::mutex> lock(mQueueMutex);
+					const std::scoped_lock<std::mutex> lock(mQueueMutex);
 					mTasks.emplace([task]() mutable { (*task)(); });
 				}
 

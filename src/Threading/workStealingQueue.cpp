@@ -8,51 +8,48 @@
 
 #include "Threading/workStealingQueue.h"
 
+#include <cstddef>
+#include <mutex>
+#include <utility>
+
 namespace Dimensia::Threading
 {
 	// MARK: Member Functions
 
-	void WorkStealingQueue::push(Task &&task)
+	bool WorkStealingQueue::tryPop(Task &task)
 	{
-		const std::unique_lock<std::mutex> lock(mutex);
+		const std::scoped_lock<std::mutex> lock(mMutex);
 
-		queue.push_back(std::move(task));
-	}
-
-	bool WorkStealingQueue::try_pop(Task &task)
-	{
-		const std::unique_lock<std::mutex> lock(mutex);
-
-		if (queue.empty())
+		if (mQueue.empty())
 		{
 			return false;
 		}
 
-		task = std::move(queue.front());
-		queue.pop_front();
+		task = std::move(mQueue.front());
+		mQueue.pop_front();
 
 		return true;
 	}
 
-	bool WorkStealingQueue::try_steal(Task &task)
+	bool WorkStealingQueue::trySteal(Task &task)
 	{
-		const std::unique_lock<std::mutex> lock(mutex);
+		const std::scoped_lock<std::mutex> lock(mMutex);
 
-		if (queue.empty())
+		if (mQueue.empty())
 		{
 			return false;
 		}
 
-		task = std::move(queue.back());
-		queue.pop_back();
+		task = std::move(mQueue.back());
+		mQueue.pop_back();
 
 		return true;
 	}
 
 	std::size_t WorkStealingQueue::size() const
 	{
-		const std::unique_lock<std::mutex> lock(mutex);
+		const std::scoped_lock<std::mutex> lock(mMutex);
 
-		return queue.size();
+		return mQueue.size();
 	}
 } // namespace Dimensia::Threading

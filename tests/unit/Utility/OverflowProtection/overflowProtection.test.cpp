@@ -8,7 +8,6 @@
 
 #include "Utility/OverflowProtection/overflowProtection.h"
 
-#include <cstdint>
 #include <limits>
 
 #include "Core/typedefs.h"

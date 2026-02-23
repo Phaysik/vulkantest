@@ -8,6 +8,8 @@
 
 #include "ECS/componentStorage.h"
 
+#include "Core/attributeMacros.h"
+
 namespace Dimensia::ECS
 {
 	// MARK: Constructor, Assignment Operators, and Destructor

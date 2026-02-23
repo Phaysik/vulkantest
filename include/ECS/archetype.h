@@ -137,7 +137,7 @@ namespace Dimensia::ECS
 			std::size_t mTagBitsetOffset{0};
 
 			ui mArchetypeID; // stable ID assigned by ECS
-			ui mChunkCapacity;
+			ui mChunkCapacity{0};
 	};
 } // namespace Dimensia::ECS
 

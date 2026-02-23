@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "Core/cconcepts.h"
 #include "Core/typedefs.h"
 #include "ECS/constants.h"
 #include "Threading/threadPool.h"
@@ -41,6 +42,8 @@ namespace Dimensia::ECS
 
 	using Dimensia::Threading::ThreadPool;
 	using Dimensia::Threading::WorkStealingPool;
+
+	using Dimensia::Core::InvocableWithArgs;
 
 	using Dimensia::Core::ui;
 
@@ -122,6 +125,9 @@ namespace Dimensia::ECS
 
 				[&]<std::size_t... I>(std::index_sequence<I...>) {
 					(([&] {
+						 assert(I < compIds.size());
+
+						 // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 						 const ComponentTypeID componentTypeID{compIds[I]};
 
 						 assert(componentTypeID < ComponentInfos.size());
@@ -218,6 +224,8 @@ namespace Dimensia::ECS
 				}
 
 				assert(entity.index < mRecords.size());
+
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 				assert(mRecords[entity.index].archetypeID < mArchetypePtrs.size());
 
 				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
@@ -241,6 +249,8 @@ namespace Dimensia::ECS
 					*ptr = std::move(value);
 
 					assert(entity.index < mRecords.size());
+
+					// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 					assert(mRecords[entity.index].archetypeID < mArchetypePtrs.size());
 
 					// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
@@ -410,9 +420,12 @@ namespace Dimensia::ECS
 
 			// MARK: forEachPolicyImpl
 
-			template <typename Proc>
-			static void forEachPolicySeqImpl(const std::vector<Archetype *> &matchingArchetypes, Proc &&processChunk)
+			template <typename Func>
+				requires InvocableWithArgs<Func, Archetype *, ui, ui>
+			static void forEachPolicySeqImpl(const std::vector<Archetype *> &matchingArchetypes, Func &&processChunk)
 			{
+				Func processChunkFunction{std::forward<Func>(processChunk)};
+
 				for (Archetype *arch : matchingArchetypes)
 				{
 					const ui chunkCount{arch->getChunkCount()};
@@ -426,17 +439,20 @@ namespace Dimensia::ECS
 							continue;
 						}
 
-						std::forward<Proc>(processChunk)(arch, chunkIndex, entityCount);
+						processChunkFunction(arch, chunkIndex, entityCount);
 					}
 				}
 			}
 
-			template <typename Proc>
+			template <typename Func>
+				requires InvocableWithArgs<Func, Archetype *, ui, ui>
 			static void forEachPolicyParImpl(const std::vector<Archetype *> &matchingArchetypes, ThreadPool &threadPool,
-											 Proc &&processChunk)
+											 Func &&processChunk)
 			{
 				std::vector<std::future<void>> futures;
 				futures.reserve(matchingArchetypes.size() * 2);
+
+				Func processChunkFunction{std::forward<Func>(processChunk)};
 
 				for (Archetype *arch : matchingArchetypes)
 				{
@@ -451,7 +467,7 @@ namespace Dimensia::ECS
 							continue;
 						}
 
-						futures.push_back(threadPool.submit(std::forward<Proc>(processChunk), arch, chunkIndex, entityCount));
+						futures.push_back(threadPool.submit(processChunkFunction, arch, chunkIndex, entityCount));
 					}
 				}
 
@@ -487,23 +503,29 @@ namespace Dimensia::ECS
 
 				std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
 
+				// Move the user-provided callable into a shared pointer once so it can be safely
+				// captured by each batch task without forwarding/moving `func` multiple times.
+				using FuncT = std::decay_t<Func>;
+				FuncT sharedFunc = std::forward<Func>(func);
+
 				for (std::size_t i{0}; i < allChunks.size(); i += batchSize)
 				{
 					const std::size_t end{std::min(i + batchSize, allChunks.size())};
 					const std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
 																		allChunks.begin() + static_cast<std::ptrdiff_t>(end));
 
-					threadPool.submit_with_latch(
-						[batch, func = std::forward<Func>(func)]() mutable {
+					threadPool.submitWithLatch(
+						[batch, sharedFunc]() mutable {
 							for (const auto &[arch, chunkIndex] : batch)
 							{
 								ui entityCount{arch->getEntityCount(chunkIndex)};
 								Entity *entityArr = arch->getEntityArray(chunkIndex);
-								processChunkEntities<Components...>(entityArr, entityCount, chunkIndex, arch, func);
+								processChunkEntities<Components...>(entityArr, entityCount, chunkIndex, arch, sharedFunc);
 							}
 						},
 						latch);
 				}
+
 				latch.wait();
 			}
 
@@ -534,12 +556,15 @@ namespace Dimensia::ECS
 
 				std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
 
-				workStealingPool.submit_chunks(
+				using FuncT = std::decay_t<Func>;
+				FuncT processChunkFunction{std::forward<Func>(func)};
+
+				workStealingPool.submitChunks(
 					allChunks,
-					[func = std::forward<Func>(func)](Archetype *arch, ui chunkIndex) {
+					[processChunkFunction](Archetype *arch, ui chunkIndex) {
 						ui entityCount{arch->getEntityCount(chunkIndex)};
 						Entity *entityArr = arch->getEntityArray(chunkIndex);
-						processChunkEntities<Components...>(entityArr, entityCount, chunkIndex, arch, func);
+						processChunkEntities<Components...>(entityArr, entityCount, chunkIndex, arch, processChunkFunction);
 					},
 					latch, batchSize);
 
@@ -681,7 +706,7 @@ namespace Dimensia::ECS
 					const std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
 																		allChunks.begin() + static_cast<std::ptrdiff_t>(end));
 
-					threadPool.submit_with_latch(
+					threadPool.submitWithLatch(
 						[batch, &function = std::forward<Proc>(processChunk)]() {
 							for (const auto &[arch, chunkIndex] : batch)
 							{
@@ -721,7 +746,7 @@ namespace Dimensia::ECS
 				const std::size_t batchSize{getBatchSize(allChunks.size())};
 				std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
 
-				workStealingPool.submit_chunks(
+				workStealingPool.submitChunks(
 					allChunks,
 					[&function = std::forward<Proc>(processChunk)](Archetype *arch, ui chunkIndex) { function(arch, chunkIndex); }, latch,
 					batchSize);
@@ -850,7 +875,7 @@ namespace Dimensia::ECS
 					const std::vector<std::pair<Archetype *, ui>> batch(chunks.begin() + static_cast<std::ptrdiff_t>(i),
 																		chunks.begin() + static_cast<std::ptrdiff_t>(end));
 
-					threadPool.submit_with_latch(
+					threadPool.submitWithLatch(
 						[batch, &function = std::forward<Proc>(processFunc)]() {
 							for (const auto &[arch, chunkIndex] : batch)
 							{
@@ -884,7 +909,7 @@ namespace Dimensia::ECS
 				const std::size_t batchSize{getBatchSize(chunks.size())}; // same as in forEachPolicyImpl
 				std::latch latch(static_cast<std::ptrdiff_t>((chunks.size() + batchSize - 1) / batchSize));
 
-				workStealingPool.submit_chunks(
+				workStealingPool.submitChunks(
 					chunks, [&function = std::forward<Proc>(processFunc)](Archetype *arch, ui chunkIndex) { function(arch, chunkIndex); },
 					latch, batchSize);
 

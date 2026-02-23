@@ -11,13 +11,15 @@
 
 #include <string>
 
+#include "Core/typedefs.h"
+
 namespace Dimensia::Components
 {
 	struct Buff
 	{
 		public:
 			std::string name;
-			int duration;
+			Dimensia::Core::si duration{};
 	};
 } // namespace Dimensia::Components
 

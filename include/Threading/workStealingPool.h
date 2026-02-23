@@ -35,7 +35,7 @@ namespace Dimensia::Threading
 	/*! @class WorkStealingPool include/Threading/workStealingPool.h
 		@brief A fixed-size thread pool with per-worker work-stealing queues.
 		@details The pool creates `numThreads` workers on construction. Tasks submitted
-				 via `submit_task` are pushed onto a per-worker `WorkStealingQueue` using
+				 via `submitTask` are pushed onto a per-worker `WorkStealingQueue` using
 				 a simple round-robin index. Workers pop local tasks and will attempt to
 				 steal from other workers when idle. The destructor signals workers to
 				 stop and joins them; it pushes a `nullptr` sentinel task to each queue
@@ -92,13 +92,13 @@ namespace Dimensia::Threading
 						 `latch.count_down()` to signal completion.
 				@pre `batchSize > 0`. The caller is responsible for initializing `latch`
 					 to the number of tasks that will be submitted.
-				@note Work is distributed using `submit_task` which pushes tasks to per-worker
+				@note Work is distributed using `submitTask` which pushes tasks to per-worker
 					  queues in a round-robin fashion. Complexity is O(N) in the number
 					  of input `chunks`.
 			*/
 			template <typename Func>
 				requires Dimensia::Core::InvocableWithArgs<Func, Archetype *, ui>
-			void submit_chunks(const ChunkVector &chunks, Func &&func, std::latch &latch, const std::size_t batchSize)
+			void submitChunks(const ChunkVector &chunks, Func &&func, std::latch &latch, const std::size_t batchSize)
 			{
 				ChunkVector batch;
 				batch.reserve(batchSize);
@@ -118,7 +118,7 @@ namespace Dimensia::Threading
 							latch.count_down();
 						};
 
-						submit_task(std::move(task));
+						submitTask(std::move(task));
 						batch.clear();
 					}
 				}
@@ -134,7 +134,7 @@ namespace Dimensia::Threading
 						latch.count_down();
 					};
 
-					submit_task(std::move(task));
+					submitTask(std::move(task));
 				}
 			}
 
@@ -153,7 +153,7 @@ namespace Dimensia::Threading
 			*/
 			template <typename Func>
 				requires Dimensia::Core::InvocableNoArgs<Func>
-			void submit_task(Func &&task)
+			void submitTask(Func &&task)
 			{
 				const std::size_t index{mTaskCount++ % mQueues.size()};
 
@@ -171,12 +171,12 @@ namespace Dimensia::Threading
 						 will attempt to steal from other workers. A `nullptr` task
 						 serves as a sentinel indicating the worker should exit.
 			*/
-			void worker_loop(const std::size_t workerID);
+			void workerLoop(const std::size_t workerID);
 
 		private:
 			/*! @var mWorkers
 				@brief Worker threads owned by the pool.
-				@details Each element runs `worker_loop` and is joined in the destructor.
+				@details Each element runs `workerLoop` and is joined in the destructor.
 			*/
 			std::vector<std::thread> mWorkers;
 

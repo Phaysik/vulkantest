@@ -9,8 +9,21 @@
 #include "ECS/ecs.h"
 
 #include <algorithm>
+#include <array>
+#include <cassert>
+#include <cstddef>
+#include <memory>
+#include <mutex>
+#include <utility>
+#include <vector>
 
+#include "ECS/archetype.h"
+#include "ECS/componentMask.h"
+#include "ECS/componentRegistry.h"
 #include "ECS/constants.h"
+#include "ECS/entity.h"
+#include "ECS/entityRecord.h"
+#include "ECS/processChunkHelpers.h"
 
 namespace Dimensia::ECS
 {
@@ -285,6 +298,8 @@ namespace Dimensia::ECS
 		}
 
 		assert(entity.index < mRecords.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		assert(mRecords[entity.index].archetypeID < mArchetypePtrs.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)

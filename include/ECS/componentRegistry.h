@@ -12,7 +12,6 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
-#include <cstdint>
 #include <tuple>
 #include <type_traits>
 
@@ -23,9 +22,9 @@
 #include "Components/Name/nameComponent.h"
 #include "Components/Position/positionComponent.h"
 #include "Components/Velocity/velocityComponent.h"
+#include "Core/typedefs.h"
 #include "ECS/entity.h"
 #include "Tags/Alive/aliveTag.h"
-#include "Core/typedefs.h"
 #include "Tags/Buffed/buffedTag.h"
 #include "Tags/Debug/debugTag.h"
 

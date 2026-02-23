@@ -8,10 +8,19 @@
 
 #include "ECS/commandBuffer.h"
 
+#include <algorithm>
 #include <cassert>
+#include <cstddef>
+#include <memory>
+#include <mutex>
+#include <thread>
+#include <utility>
+#include <vector>
 
+#include "ECS/command.h"
 #include "ECS/componentRegistry.h"
 #include "ECS/ecs.h"
+#include "ECS/entity.h"
 
 namespace Dimensia::ECS
 {
