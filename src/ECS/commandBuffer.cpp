@@ -142,7 +142,7 @@ namespace Dimensia::ECS
 		assert(componentTypeID < infos.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-		const auto &info{infos[componentTypeID]};
+		const Dimensia::Registry::ComponentInfo &info{infos[componentTypeID]};
 
 		assert(info.addFunc != nullptr && "No addFunc registered for this component type");
 

@@ -63,16 +63,18 @@ namespace Dimensia::ECS
 	}
 
 	// Helper to iterate over set bits in a ComponentMask
-	template <typename F>
-	constexpr void forEachSetBit(const ComponentMask &mask, F &&func) noexcept
+	template <typename Func>
+	constexpr void forEachSetBit(const ComponentMask &mask, Func &&func) noexcept
 	{
 		ul bits{mask.mLow};
+		const Func forwardedFunction{std::forward<Func>(func)};
+
 		while (bits)
 		{
 			const ul temp{bits & -bits};
 			const si index{std::countr_zero(bits)};
 
-			std::forward<F>(func)(static_cast<ComponentTypeID>(index));
+			forwardedFunction(static_cast<ComponentTypeID>(index));
 			bits ^= temp;
 		}
 
@@ -82,7 +84,7 @@ namespace Dimensia::ECS
 			const ul temp{bits & -bits};
 			const si index{std::countr_zero(bits) + static_cast<si>(LOWER_HALF_BIT_MASK)};
 
-			std::forward<F>(func)(static_cast<ComponentTypeID>(index));
+			forwardedFunction(static_cast<ComponentTypeID>(index));
 			bits ^= temp;
 		}
 	}
@@ -131,6 +133,8 @@ namespace Dimensia::ECS
 		// Store pointers as std::byte* in a tuple with deduced type
 		auto byteArrays{std::tuple{static_cast<BytePtr>(arch->getComponentArray(chunkIndex, componentId<Components>()))...}};
 
+		const Func forwardedFunction{std::forward<Func>(func)};
+
 		for (ui slot{0}; slot < entityCount; ++slot)
 		{
 			assert(slot < entityCount);
@@ -151,12 +155,13 @@ namespace Dimensia::ECS
 			// Call user function with correctly typed pointers
 			std::apply(
 				[&](auto *...bytePtrs) noexcept {
-					std::forward<Func>(func)(
+					forwardedFunction(
 						// NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
 						entity, (*reinterpret_cast<std::conditional_t<IsConst, const Components *, Components *>>(bytePtrs))...);
 				},
 				byteArrays);
 
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic,cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			((std::get<Is>(byteArrays) += ComponentInfos[componentId<Components>()].size), ...);
 		}
 	}
@@ -172,18 +177,22 @@ namespace Dimensia::ECS
 
 		auto byteArrays{std::tuple{static_cast<BytePtr>(arch->getComponentArray(chunkIndex, componentId<Components>()))...}};
 
+		const Func forwardedFunction{std::forward<Func>(func)};
+
 		for (ui slot{0}; slot < entityCount; ++slot)
 		{
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 			Entity entity{entityArr[slot]};
 
 			std::apply(
 				[&](auto *...bytePtrs) noexcept {
-					std::forward<Func>(func)(
+					forwardedFunction(
 						// NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
 						entity, (*reinterpret_cast<std::conditional_t<IsConst, const Components *, Components *>>(bytePtrs))...);
 				},
 				byteArrays);
 
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic,cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			((std::get<Is>(byteArrays) += ComponentInfos[componentId<Components>()].size), ...);
 		}
 	}

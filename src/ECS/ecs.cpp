@@ -509,36 +509,7 @@ namespace Dimensia::ECS
 		ComponentMask moveOverrideMask{0, 0};
 		ComponentMask copyOverrideMask{0, 0};
 
-		for (ComponentTypeID componentTypeID{0}; componentTypeID < MAX_COMPONENTS; ++componentTypeID)
-		{
-			assert(componentTypeID < moveData.size());
-			assert(componentTypeID < copyData.size());
-
-			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			if (moveData[componentTypeID] != nullptr)
-			{
-				if (componentTypeID < LOWER_HALF_BIT_MASK)
-				{
-					moveOverrideMask.mLow |= (1U << componentTypeID);
-				}
-				else
-				{
-					moveOverrideMask.mHigh |= (1U << (componentTypeID - LOWER_HALF_BIT_MASK));
-				}
-			}
-			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			else if (copyData[componentTypeID] != nullptr)
-			{
-				if (componentTypeID < LOWER_HALF_BIT_MASK)
-				{
-					copyOverrideMask.mLow |= (1U << componentTypeID);
-				}
-				else
-				{
-					copyOverrideMask.mHigh |= (1U << (componentTypeID - LOWER_HALF_BIT_MASK));
-				}
-			}
-		}
+		acquireOverrideMasks(copyData, moveData, moveOverrideMask, copyOverrideMask);
 
 		forEachSetBit(moveOverrideMask, [&](ComponentTypeID componentTypeID) {
 			assert(componentTypeID < finalMove.size());

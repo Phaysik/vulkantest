@@ -151,8 +151,10 @@ int main()
 	// --- Command buffer example ---
 	std::cout << "\n--- Command buffer example ---\n";
 	CommandBuffer cmds;
+	constexpr float startingHealth{200.F};
+
 	ecs.forEach<Name>(ExecutionPolicy::Seq, cmds, [&](Entity entity, Name &) {
-		cmds.addComponent(entity, Health{200.0F}); // defer adding Health
+		cmds.addComponent(entity, Health{startingHealth}); // defer adding Health
 	});
 	cmds.apply(ecs);
 	std::cout << "Goblin HP after command buffer: " << ecs.getComponent<Health>(goblin)->hp << "\n";
@@ -230,7 +232,8 @@ int main()
 	// ------------------------------------------------------------------------
 	std::cout << "\n=== Stress test: forEach iteration speed ===\n";
 
-	const int ITERATIONS{1'000};
+	constexpr int ITERATIONS{1'000};
+	constexpr int WORKLOAD{5'000};
 	std::vector<Entity> iterEntities;
 	iterEntities.reserve(ITERATIONS);
 
@@ -292,8 +295,6 @@ int main()
 	// ------------------------------------------------------------------------
 	std::cout << "\n=== Stress test: forEach with moderate workload ===\n";
 
-	const int WORKLOAD_MODERATE = 10'000; // iterations per entity
-
 	std::vector<Entity> modEntities;
 	modEntities.reserve(ITERATIONS);
 
@@ -311,7 +312,7 @@ int main()
 		Dimensia::Utility::Clock::Timer::start();
 		ecs.forEach<Health>([&](Entity, Health &health) {
 			volatile float dummy = health.hp;
-			for (int iter = 0; iter < WORKLOAD_MODERATE; ++iter)
+			for (int iter = 0; iter < WORKLOAD; ++iter)
 			{
 				dummy = (dummy * mult) + adder; // cheap but non‑trivial math
 			}
@@ -326,7 +327,7 @@ int main()
 		Dimensia::Utility::Clock::Timer::start();
 		ecs.forEach<Health>(ExecutionPolicy::Par, [&](Entity, Health &health) {
 			volatile float dummy = health.hp;
-			for (int iter = 0; iter < WORKLOAD_MODERATE; ++iter)
+			for (int iter = 0; iter < WORKLOAD; ++iter)
 			{
 				dummy = (dummy * mult) + adder;
 			}
@@ -341,7 +342,7 @@ int main()
 		Dimensia::Utility::Clock::Timer::start();
 		ecs.forEach<Health>(ExecutionPolicy::ParBatched, [&](Entity, Health &health) {
 			volatile float dummy = health.hp;
-			for (int iter = 0; iter < WORKLOAD_MODERATE; ++iter)
+			for (int iter = 0; iter < WORKLOAD; ++iter)
 			{
 				dummy = (dummy * mult) + adder;
 			}
@@ -356,7 +357,7 @@ int main()
 		Dimensia::Utility::Clock::Timer::start();
 		ecs.forEach<Health>(ExecutionPolicy::ParStealing, [&](Entity, Health &health) {
 			volatile float dummy = health.hp;
-			for (int iter = 0; iter < WORKLOAD_MODERATE; ++iter)
+			for (int iter = 0; iter < WORKLOAD; ++iter)
 			{
 				dummy = (dummy * mult) + adder;
 			}
@@ -392,7 +393,6 @@ int main()
 	CommandBuffer stressCmds;
 
 	Dimensia::Utility::Clock::Timer::start();
-	constexpr int WORKLOAD{5'000};
 
 	ecs.forEach<Name>(ExecutionPolicy::ParStealing, stressCmds, [&](Entity entity, Name &) {
 		volatile float dummy = 1.0;

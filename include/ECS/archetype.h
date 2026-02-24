@@ -122,6 +122,16 @@ namespace Dimensia::ECS
 
 			void computeLayout(ui capacity);
 
+			void acquireFreeChunk(Chunk *&chunk, std::size_t &chunkIndex);
+
+			void releaseChunk(Chunk *&chunk, Entity &movedEntity, const ui slotIndex, const ui lastSlot);
+
+			void moveConstructChunk(Chunk *&chunk, const ui slotIndex, const ui lastSlot);
+
+			void destructChunk(Chunk *&chunk, const ui lastSlot);
+
+			void compactStorage(std::vector<EntityRecord> &globalRecords, const ui writeIndex, const ui readIndex);
+
 		private:
 			ComponentMask mRegularMask;
 

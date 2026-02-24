@@ -103,16 +103,18 @@ namespace Dimensia::Threading
 				ChunkVector batch;
 				batch.reserve(batchSize);
 
+				const Func forwardedFunc{std::forward<Func>(func)};
+
 				for (const auto &chunk : chunks)
 				{
 					batch.push_back(chunk);
 
 					if (batch.size() >= batchSize)
 					{
-						auto task = [batch, func = std::forward<Func>(func), &latch]() {
+						auto task = [batch, forwardedFunc, &latch]() {
 							for (const auto &[arch, index] : batch)
 							{
-								func(arch, index);
+								forwardedFunc(arch, index);
 							}
 
 							latch.count_down();
@@ -125,10 +127,10 @@ namespace Dimensia::Threading
 
 				if (!batch.empty())
 				{
-					auto task = [batch, func = std::forward<Func>(func), &latch]() {
+					auto task = [batch, forwardedFunc, &latch]() {
 						for (const auto &[arch, index] : batch)
 						{
-							func(arch, index);
+							forwardedFunc(arch, index);
 						}
 
 						latch.count_down();

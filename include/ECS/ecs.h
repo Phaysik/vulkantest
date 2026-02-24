@@ -14,6 +14,7 @@
 #include <memory>
 #include <mutex>
 #include <tuple>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -132,45 +133,8 @@ namespace Dimensia::ECS
 
 						 assert(componentTypeID < ComponentInfos.size());
 
-						 // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-						 const ComponentInfo &info{ComponentInfos[componentTypeID]};
-
-						 if (info.isTag)
-						 {
-							 if (componentTypeID < LOWER_HALF_BIT_MASK)
-							 {
-								 tagMask.mLow |= (1U << componentTypeID);
-							 }
-							 else
-							 {
-								 tagMask.mHigh |= (1U << (componentTypeID - LOWER_HALF_BIT_MASK));
-							 }
-						 }
-						 else
-						 {
-							 if (componentTypeID < LOWER_HALF_BIT_MASK)
-							 {
-								 regularMask.mLow |= (1U << componentTypeID);
-							 }
-							 else
-							 {
-								 regularMask.mHigh |= (1U << (componentTypeID - LOWER_HALF_BIT_MASK));
-							 }
-							 if constexpr (std::is_const_v<std::remove_reference_t<decltype(components)>>)
-							 {
-								 assert(componentTypeID < copyData.size());
-
-								 // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-								 copyData[componentTypeID] = &std::get<I>(storage);
-							 }
-							 else
-							 {
-								 assert(componentTypeID < copyData.size());
-
-								 // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-								 moveData[componentTypeID] = &std::get<I>(storage);
-							 }
-						 }
+						 processCreateComponent<decltype(components)>(componentTypeID, copyData, moveData, regularMask, tagMask,
+																	  std::get<I>(storage));
 					 }()),
 					 ...);
 				}(std::index_sequence_for<Ts...>{});
@@ -557,7 +521,7 @@ namespace Dimensia::ECS
 				std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
 
 				using FuncT = std::decay_t<Func>;
-				FuncT processChunkFunction{std::forward<Func>(func)};
+				const FuncT processChunkFunction{std::forward<Func>(func)};
 
 				workStealingPool.submitChunks(
 					allChunks,
@@ -624,9 +588,11 @@ namespace Dimensia::ECS
 
 			// MARK: forEachPolicyCommandImpl
 
-			template <typename Proc>
-			static void forEachPolicyCommandSeqImpl(const std::vector<Archetype *> &matchingArchetypes, Proc &&processChunk)
+			template <typename Func>
+			static void forEachPolicyCommandSeqImpl(const std::vector<Archetype *> &matchingArchetypes, Func &&processChunk)
 			{
+				const Func processChunkFunction{std::forward<Func>(processChunk)};
+
 				for (Archetype *arch : matchingArchetypes)
 				{
 					const ui chunkCount{arch->getChunkCount()};
@@ -638,14 +604,14 @@ namespace Dimensia::ECS
 							continue;
 						}
 
-						std::forward<Proc>(processChunk)(arch, chunkIndex);
+						processChunkFunction(arch, chunkIndex);
 					}
 				}
 			}
 
-			template <typename Proc>
+			template <typename Func>
 			static void forEachPolicyCommandParImpl(const std::vector<Archetype *> &matchingArchetypes, ThreadPool &threadPool,
-													Proc &&processChunk)
+													Func &&processChunk)
 			{
 				std::vector<std::future<void>> futures;
 				futures.reserve(matchingArchetypes.size() * 2);
@@ -662,7 +628,7 @@ namespace Dimensia::ECS
 						}
 
 						futures.push_back(threadPool.submit(
-							[arch, chunkIndex, &function = std::forward<Proc>(processChunk)]() { function(arch, chunkIndex); }));
+							[arch, chunkIndex, &function = std::forward<Func>(processChunk)]() { function(arch, chunkIndex); }));
 					}
 				}
 
@@ -672,9 +638,9 @@ namespace Dimensia::ECS
 				}
 			}
 
-			template <typename Proc>
+			template <typename Func>
 			static void forEachPolicyCommandParBatchedImpl(const std::vector<Archetype *> &matchingArchetypes, ThreadPool &threadPool,
-														   Proc &&processChunk)
+														   Func &&processChunk)
 			{
 				std::vector<std::pair<Archetype *, ui>> allChunks;
 
@@ -707,7 +673,7 @@ namespace Dimensia::ECS
 																		allChunks.begin() + static_cast<std::ptrdiff_t>(end));
 
 					threadPool.submitWithLatch(
-						[batch, &function = std::forward<Proc>(processChunk)]() {
+						[batch, &function = std::forward<Func>(processChunk)]() {
 							for (const auto &[arch, chunkIndex] : batch)
 							{
 								function(arch, chunkIndex);
@@ -719,9 +685,9 @@ namespace Dimensia::ECS
 				latch.wait();
 			}
 
-			template <typename Proc>
+			template <typename Func>
 			static void forEachPolicyCommandParStealingImpl(const std::vector<Archetype *> &matchingArchetypes,
-															WorkStealingPool &workStealingPool, Proc &&processChunk)
+															WorkStealingPool &workStealingPool, Func &&processChunk)
 			{
 				std::vector<std::pair<Archetype *, ui>> allChunks;
 
@@ -748,7 +714,7 @@ namespace Dimensia::ECS
 
 				workStealingPool.submitChunks(
 					allChunks,
-					[&function = std::forward<Proc>(processChunk)](Archetype *arch, ui chunkIndex) { function(arch, chunkIndex); }, latch,
+					[&function = std::forward<Func>(processChunk)](Archetype *arch, ui chunkIndex) { function(arch, chunkIndex); }, latch,
 					batchSize);
 
 				latch.wait();
@@ -812,32 +778,38 @@ namespace Dimensia::ECS
 
 			// MARK: forEachPolicyVersionImpl
 
-			template <typename Proc, typename Ver>
+			template <typename Func, typename Ver>
 			static void forEachPolicyVersionAndVersionCommandSeqImpl(
-				const std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks, Proc &&processFunc, Ver &&updateVersion)
+				const std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks, Func &&processFunc, Ver &&updateVersion)
 			{
+				const Func processChunkFunction{std::forward<Func>(processFunc)};
+				const Ver updateVersionFunction{std::forward<Ver>(updateVersion)};
+
 				for (const auto &chunk : dirtyChunks)
 				{
-					std::forward<Proc>(processFunc)(std::get<0>(chunk), std::get<1>(chunk));
-					std::forward<Ver>(updateVersion)(chunk);
+					processChunkFunction(std::get<0>(chunk), std::get<1>(chunk));
+					updateVersionFunction(chunk);
 				}
 			}
 
-			template <typename Proc, typename Ver>
+			template <typename Func, typename Ver>
 			static void forEachPolicyVersionandVersionCommandParImpl(
 				const std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks, ThreadPool &threadPool,
-				Proc &&processFunc, Ver &&updateVersion)
+				Func &&processFunc, Ver &&updateVersion)
 			{
 				std::vector<std::future<void>> futures;
 				futures.reserve(dirtyChunks.size());
+
+				const Func processChunkFunction{std::forward<Func>(processFunc)};
+				const Ver updateVersionFunction{std::forward<Ver>(updateVersion)};
 
 				for (const auto &chunk : dirtyChunks)
 				{
 					Archetype *arch{std::get<0>(chunk)};
 					ui chunkIndex{std::get<1>(chunk)};
 
-					futures.push_back(threadPool.submit(
-						[arch, chunkIndex, &function = std::forward<Proc>(processFunc)]() { function(arch, chunkIndex); }));
+					futures.push_back(
+						threadPool.submit([arch, chunkIndex, processChunkFunction]() { processChunkFunction(arch, chunkIndex); }));
 				}
 
 				for (std::future<void> &fut : futures)
@@ -847,18 +819,21 @@ namespace Dimensia::ECS
 
 				for (const auto &chunk : dirtyChunks)
 				{
-					std::forward<Ver>(updateVersion)(chunk);
+					updateVersionFunction(chunk);
 				}
 			}
 
-			template <typename Proc, typename Ver>
+			template <typename Func, typename Ver>
 			static void forEachPolicyVersionandVersionCommandParBatchedImpl(
 				const std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks, ThreadPool &threadPool,
-				Proc &&processFunc, Ver &&updateVersion)
+				Func &&processFunc, Ver &&updateVersion)
 			{
 				// Convert to simple pairs for batching
 				std::vector<std::pair<Archetype *, ui>> chunks;
 				chunks.reserve(dirtyChunks.size());
+
+				const Func processChunkFunction{std::forward<Func>(processFunc)};
+				const Ver updateVersionFunction{std::forward<Ver>(updateVersion)};
 
 				for (const auto &chunk : dirtyChunks)
 				{
@@ -876,10 +851,10 @@ namespace Dimensia::ECS
 																		chunks.begin() + static_cast<std::ptrdiff_t>(end));
 
 					threadPool.submitWithLatch(
-						[batch, &function = std::forward<Proc>(processFunc)]() {
+						[batch, processChunkFunction]() {
 							for (const auto &[arch, chunkIndex] : batch)
 							{
-								function(arch, chunkIndex);
+								processChunkFunction(arch, chunkIndex);
 							}
 						},
 						latch);
@@ -889,17 +864,20 @@ namespace Dimensia::ECS
 
 				for (const auto &chunk : dirtyChunks)
 				{
-					std::forward<Ver>(updateVersion)(chunk);
+					updateVersionFunction(chunk);
 				}
 			}
 
-			template <typename Proc, typename Ver>
+			template <typename Func, typename Ver>
 			static void forEachPolicyVersionandVersionCommandParStealingImpl(
 				const std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks, WorkStealingPool &workStealingPool,
-				Proc &&processFunc, Ver &&updateVersion)
+				Func &&processFunc, Ver &&updateVersion)
 			{
 				std::vector<std::pair<Archetype *, ui>> chunks;
 				chunks.reserve(dirtyChunks.size());
+
+				const Func processChunkFunction{std::forward<Func>(processFunc)};
+				const Ver updateVersionFunction{std::forward<Ver>(updateVersion)};
 
 				for (const auto &chunk : dirtyChunks)
 				{
@@ -910,14 +888,14 @@ namespace Dimensia::ECS
 				std::latch latch(static_cast<std::ptrdiff_t>((chunks.size() + batchSize - 1) / batchSize));
 
 				workStealingPool.submitChunks(
-					chunks, [&function = std::forward<Proc>(processFunc)](Archetype *arch, ui chunkIndex) { function(arch, chunkIndex); },
+					chunks, [processChunkFunction](Archetype *arch, ui chunkIndex) { processChunkFunction(arch, chunkIndex); },
 					latch, batchSize);
 
 				latch.wait();
 
 				for (const auto &chunk : dirtyChunks)
 				{
-					std::forward<Ver>(updateVersion)(chunk);
+					updateVersionFunction(chunk);
 				}
 			}
 
@@ -1134,7 +1112,89 @@ namespace Dimensia::ECS
 
 			void moveEntity(const Entity &entity, ComponentMask newRegularMask, const std::array<const void *, MAX_COMPONENTS> &copyData,
 							const std::array<void *, MAX_COMPONENTS> &moveData, ComponentMask newTags = ComponentMask(0));
+
 			void destroyHierarchy(const Entity &entity);
+
+			static void acquireOverrideMasks(const std::array<const void *, MAX_COMPONENTS> &copyData,
+											 const std::array<void *, MAX_COMPONENTS> &moveData, ComponentMask &moveOverrideMask,
+											 ComponentMask &copyOverrideMask)
+			{
+				for (ComponentTypeID componentTypeID{0}; componentTypeID < MAX_COMPONENTS; ++componentTypeID)
+				{
+					assert(componentTypeID < moveData.size());
+					assert(componentTypeID < copyData.size());
+
+					// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+					if (moveData[componentTypeID] != nullptr)
+					{
+						if (componentTypeID < LOWER_HALF_BIT_MASK)
+						{
+							moveOverrideMask.mLow |= (1U << componentTypeID);
+						}
+						else
+						{
+							moveOverrideMask.mHigh |= (1U << (componentTypeID - LOWER_HALF_BIT_MASK));
+						}
+					}
+					// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+					else if (copyData[componentTypeID] != nullptr)
+					{
+						if (componentTypeID < LOWER_HALF_BIT_MASK)
+						{
+							copyOverrideMask.mLow |= (1U << componentTypeID);
+						}
+						else
+						{
+							copyOverrideMask.mHigh |= (1U << (componentTypeID - LOWER_HALF_BIT_MASK));
+						}
+					}
+				}
+			}
+
+			static void updateTagMask(const ComponentTypeID componentTypeID, ComponentMask &mask)
+			{
+				if (componentTypeID < LOWER_HALF_BIT_MASK)
+				{
+					mask.mLow |= (1U << componentTypeID);
+				}
+				else
+				{
+					mask.mHigh |= (1U << (componentTypeID - LOWER_HALF_BIT_MASK));
+				}
+			}
+
+			template <typename Param, typename Stored>
+			static void processCreateComponent(const ComponentTypeID componentTypeID, std::array<const void *, MAX_COMPONENTS> &copyData,
+											   std::array<void *, MAX_COMPONENTS> &moveData, ComponentMask &regularMask,
+											   ComponentMask &tagMask, Stored &stored)
+			{
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				const ComponentInfo &info{ComponentInfos[componentTypeID]};
+
+				if (info.isTag)
+				{
+					updateTagMask(componentTypeID, tagMask);
+				}
+				else
+				{
+					updateTagMask(componentTypeID, regularMask);
+
+					if constexpr (std::is_const_v<std::remove_reference_t<Param>>)
+					{
+						assert(componentTypeID < copyData.size());
+
+						// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+						copyData[componentTypeID] = &stored;
+					}
+					else
+					{
+						assert(componentTypeID < copyData.size());
+
+						// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+						moveData[componentTypeID] = &stored;
+					}
+				}
+			}
 
 			friend class CommandBuffer;
 
