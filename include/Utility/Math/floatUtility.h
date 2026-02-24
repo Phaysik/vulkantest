@@ -24,7 +24,7 @@
 	is inappropriate due to rounding error.
 	@note Constants represent conservative defaults; callers may override them by passing
 	explicit epsilon values to the functions.
- */
+*/
 namespace Dimensia::Utility::Math
 {
 	/*! @brief Small absolute tolerance used when comparing values near zero.
@@ -33,7 +33,7 @@ namespace Dimensia::Utility::Math
 		tiny to avoid masking meaningful differences for typical double-precision calculations.
 		@note This is a reasonable default but may be tightened or relaxed depending on the
 		numerical domain. Callers may provide an explicit `absEpsilon` to `approximatelyEqualAbsRel`.
-	 */
+	*/
 	constexpr double ABS_EPSILON{1e-12};
 
 	/*! @brief Relative tolerance used for scale-aware comparisons of non-zero values.
@@ -41,7 +41,7 @@ namespace Dimensia::Utility::Math
 		multiplied by the larger magnitude to produce a scale-appropriate tolerance. This
 		prevents false negatives when comparing large-magnitude values where absolute
 		tolerances would be ineffective.
-	 */
+	*/
 	constexpr double REL_EPSILON{1e-8};
 
 	/*! @brief Compare two double-precision values using combined absolute and relative tolerances.

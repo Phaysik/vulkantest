@@ -56,7 +56,7 @@ Place at the top of source/header files:
     @version The current version of the file.
     @since The version or date since this file has been present.
     @author The author of the file.
- */
+*/
 ```
 
 #### Other considerations for Files / Modules:
@@ -87,7 +87,7 @@ Place at the top of source/header files:
     @version The current version of the file.
     @since The version or date since this file has been present.
     @author The author of the file.
- */
+*/
 ```
 
 #### Other considerations for Functions / Methods:
@@ -134,7 +134,7 @@ Place at the top of source/header files:
     @version The current version of the file.
     @since The version or date since this file has been present.
     @author The author of the file.
- */
+*/
 ```
 
 #### For Structs
@@ -151,7 +151,7 @@ Place at the top of source/header files:
     @version The current version of the file.
     @since The version or date since this file has been present.
     @author The author of the file.
- */
+*/
 ```
 
 #### For Enums
@@ -169,7 +169,7 @@ Place at the top of source/header files:
     @version The current version of the file.
     @since The version or date since this file has been present.
     @author The author of the file.
- */
+*/
 ```
 
 #### Other considerations for Classes / Structs / Enums:
@@ -190,7 +190,7 @@ Place at the top of source/header files:
     @version The current version of the file.
     @since The version or date since this file has been present.
     @author The author of the file.
- */
+*/
  namespace NamespaceName {
      // namespace contents
  }
@@ -205,7 +205,7 @@ Place at the top of source/header files:
     and important usage notes.
     @showinitializer
     @note Additional notes or remarks.
- */
+*/
 ```
 
 #### Other considerations for Member Variables:
@@ -235,7 +235,7 @@ Example:
     @version 0.0.3
     @since 0.0.3
     @author Matthew Moore
- */
+*/
 template <Concepts::UnsignedIntegral Number, const std::size_t PrimeSize>
 [[nodiscard]] constexpr std::array<Number, PrimeSize> GeneratePrimeBitset(const std::size_t maxNumber) noexcept
 ```
@@ -345,13 +345,13 @@ Example
 /*! @brief Processes a list of integers.
     @param[in] data The data to process.
     @param[in] startIndex The starting index within the list.
- */
+*/
 void processData(const std::list<int>& data, const int startIndex);
 
 /*! @overload void processData(const std::vector<int>& data)
     @brief Processes a vector of integers.
     @param[in] data The data to process.
- */
+*/
 void processData(const std::vector<int>& data);
 ```
 

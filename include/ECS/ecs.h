@@ -538,7 +538,7 @@ namespace Dimensia::ECS
 			template <class Self, typename... Components, typename Func>
 			static void forEachPolicyImpl(Self &self, const ExecutionPolicy &policy, Func &&func)
 			{
-				constexpr ComponentMask requiredRegular{build_required_mask<Components...>()};
+				constexpr ComponentMask requiredRegular{buildRequiredMask<Components...>()};
 				const std::vector<Archetype *> &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
 
 				auto processChunk = [&](Archetype *arch, const ui chunkIndex, const ui entityCount) {
@@ -723,7 +723,7 @@ namespace Dimensia::ECS
 			template <class Self, typename... Components, typename Func>
 			static void forEachPolicyCommandImpl(Self &self, const ExecutionPolicy &policy, CommandBuffer & /*cmds*/, Func &&func)
 			{
-				constexpr ComponentMask requiredRegular{build_required_mask<Components...>()};
+				constexpr ComponentMask requiredRegular{buildRequiredMask<Components...>()};
 				const std::vector<Archetype *> &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
 
 				// Processing lambda – uses the appropriate chunk function based on constness
@@ -888,8 +888,8 @@ namespace Dimensia::ECS
 				std::latch latch(static_cast<std::ptrdiff_t>((chunks.size() + batchSize - 1) / batchSize));
 
 				workStealingPool.submitChunks(
-					chunks, [processChunkFunction](Archetype *arch, ui chunkIndex) { processChunkFunction(arch, chunkIndex); },
-					latch, batchSize);
+					chunks, [processChunkFunction](Archetype *arch, ui chunkIndex) { processChunkFunction(arch, chunkIndex); }, latch,
+					batchSize);
 
 				latch.wait();
 
@@ -902,7 +902,7 @@ namespace Dimensia::ECS
 			template <class Self, typename... Components, typename Func>
 			static void forEachPolicyVersionImpl(Self &self, const ExecutionPolicy &policy, SystemVersion &version, Func &&func)
 			{
-				constexpr ComponentMask requiredRegular{build_required_mask<Components...>()};
+				constexpr ComponentMask requiredRegular{buildRequiredMask<Components...>()};
 				const std::vector<Archetype *> &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
 
 				// Collect chunks that need processing (dirty)
@@ -1002,7 +1002,7 @@ namespace Dimensia::ECS
 			static void forEachPolicyVersionCommandImpl(Self &self, const ExecutionPolicy &policy, SystemVersion &version,
 														CommandBuffer &cmds, Func &&func)
 			{
-				constexpr ComponentMask requiredRegular{build_required_mask<Components...>()};
+				constexpr ComponentMask requiredRegular{buildRequiredMask<Components...>()};
 				const auto &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
 
 				// Collect chunks that are dirty according to the version

@@ -20,7 +20,7 @@
 	saturating multiplication when overflow would occur. These helpers are intended for use with
 	unsigned integral types and are constexpr so they can be evaluated at compile time when possible.
 	@note All functions are `noexcept` and return conservative values on overflow (e.g., `std::numeric_limits<Number>::max()`).
- */
+*/
 namespace Dimensia::Utility::OverflowProtection
 {
 	using Dimensia::Core::UnsignedIntegral;

@@ -15,7 +15,7 @@
 		@details This macro is set to `1` when the compiler predefined macro `__clang__` is present.
 		Use it to conditionally enable Clang-specific features or attributes.
 		@note This macro is internal to the attribute macros helper and is not intended as a stable public API.
-	 */
+	*/
 	#define ATTR_CLANG
 #elifdef __GNUC__
 	/*! @def ATTR_GCC
@@ -23,21 +23,21 @@
 		@details This macro is set to `1` when the compiler predefined macro `__GNUC__` is present.
 		Use it to enable GCC-specific attributes or workarounds.
 		@note Do not assume exact GCC version from this macro; check `__GNUC__`/`__GNUC_MINOR__` when needed.
-	 */
+	*/
 	#define ATTR_GCC
 #elifdef _MSC_VER
 	/*! @def ATTR_MSVC
 		@brief Defined when compiling with Microsoft Visual C++.
 		@details This macro is set to `1` when `_MSC_VER` is defined by the compiler.
 		Use it to guard MSVC-specific pragmas or attribute equivalents.
-	 */
+	*/
 	#define ATTR_MSVC
 #else
 	/*! @def ATTR_UNKNOWN_COMPILER
 		@brief Defined when the compiler could not be identified by known macros.
 		@details Acts as a fallback indicator for unknown or unsupported compilers. When this macro
 		is set, attribute macros should resolve to safe defaults (typically empty macros).
-	 */
+	*/
 	#define ATTR_UNKNOWN_COMPILER
 #endif
 

@@ -7,7 +7,7 @@
 	@version x.x.x
 	@since x.x.x
 	@author Matthew Moore
- */
+*/
 
 #ifndef INCLUDE_ECS_THREADPOOL_H
 #define INCLUDE_ECS_THREADPOOL_H

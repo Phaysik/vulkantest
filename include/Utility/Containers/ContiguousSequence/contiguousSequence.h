@@ -29,7 +29,7 @@
 	@version 0.0.1
 	@since 0.0.1
 	@author Matthew Moore
- */
+*/
 namespace Dimensia::Utility::Containers::ContiguousSequence
 {
 	using Dimensia::Core::Integral;

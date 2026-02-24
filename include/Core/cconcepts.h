@@ -18,7 +18,7 @@
 	type-traits library. Use these concepts to constrain template parameters for integral,
 	unsigned, signed, floating-point, rational (integral or floating), and std::string-like types.
 	@note All concepts are compile-time predicates with no runtime cost.
- */
+*/
 namespace Dimensia::Core
 {
 	/*! @concept Integral
