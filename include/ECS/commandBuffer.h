@@ -29,7 +29,7 @@ namespace Dimensia::ECS
 	// Forward declaration
 	class ECS;
 
-	using Dimensia::Registry::componentId;
+	using Dimensia::Registry::componentID;
 	using Dimensia::Registry::ComponentTypeID;
 
 	/*! @struct ThreadBuffer include/ECS/commandBuffer.h
@@ -117,7 +117,7 @@ namespace Dimensia::ECS
 			{
 				ThreadBuffer *buf{getThreadBuffer()};
 
-				buf->commands.push_back(Command::makeRemove(entity, componentId<T>()));
+				buf->commands.push_back(Command::makeRemove(entity, componentID<T>()));
 			}
 
 		private:

@@ -27,7 +27,7 @@
 
 namespace Dimensia::ECS
 {
-	using Dimensia::Registry::componentId;
+	using Dimensia::Registry::componentID;
 	using Dimensia::Registry::ComponentInfos;
 	using Dimensia::Registry::ComponentTypeID;
 	using Dimensia::Registry::is_tag_component;
@@ -60,7 +60,7 @@ namespace Dimensia::ECS
 		(([&] {
 			 if constexpr (!isTagV<Components>)
 			 {
-				 ComponentTypeID componentTypeID{componentId<Components>()};
+				 ComponentTypeID componentTypeID{componentID<Components>()};
 				 if (componentTypeID < LOWER_HALF_BIT_MASK)
 				 {
 					 mask.mLow |= (1U << componentTypeID);
@@ -87,7 +87,7 @@ namespace Dimensia::ECS
 		(([&] {
 			 if constexpr (isTagV<Components>)
 			 {
-				 ComponentTypeID componentTypeID{componentId<Components>()};
+				 ComponentTypeID componentTypeID{componentID<Components>()};
 				 if (componentTypeID < LOWER_HALF_BIT_MASK)
 				 {
 					 mask.mLow |= (1U << componentTypeID);
@@ -171,7 +171,7 @@ namespace Dimensia::ECS
 		const ComponentMask requiredTags{buildTagMask<Components...>()};
 
 		// Store pointers as std::byte* in a tuple with deduced type
-		auto byteArrays{std::tuple{static_cast<BytePtr>(arch->getComponentArray(chunkIndex, componentId<Components>()))...}};
+		auto byteArrays{std::tuple{static_cast<BytePtr>(arch->getComponentArray(chunkIndex, componentID<Components>()))...}};
 
 		const Func forwardedFunction{std::forward<Func>(func)};
 
@@ -202,7 +202,7 @@ namespace Dimensia::ECS
 				byteArrays);
 
 			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic,cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			((std::get<Is>(byteArrays) += ComponentInfos[componentId<Components>()].size), ...);
+			((std::get<Is>(byteArrays) += ComponentInfos[componentID<Components>()].size), ...);
 		}
 	}
 
@@ -224,7 +224,7 @@ namespace Dimensia::ECS
 	{
 		using BytePtr = std::conditional_t<IsConst, const std::byte *, std::byte *>;
 
-		auto byteArrays{std::tuple{static_cast<BytePtr>(arch->getComponentArray(chunkIndex, componentId<Components>()))...}};
+		auto byteArrays{std::tuple{static_cast<BytePtr>(arch->getComponentArray(chunkIndex, componentID<Components>()))...}};
 
 		const Func forwardedFunction{std::forward<Func>(func)};
 
@@ -242,7 +242,7 @@ namespace Dimensia::ECS
 				byteArrays);
 
 			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic,cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			((std::get<Is>(byteArrays) += ComponentInfos[componentId<Components>()].size), ...);
+			((std::get<Is>(byteArrays) += ComponentInfos[componentID<Components>()].size), ...);
 		}
 	}
 

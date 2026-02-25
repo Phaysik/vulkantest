@@ -59,7 +59,7 @@ namespace Dimensia::Registry
 	{};
 
 	template <typename T>
-	constexpr std::size_t componentId() noexcept
+	constexpr std::size_t componentID() noexcept
 	{
 		static_assert(tuple_index<T, ComponentTypes>::value < std::tuple_size_v<ComponentTypes>,
 					  "Component type not found in ComponentTypes list");

@@ -61,7 +61,7 @@ namespace Dimensia::ECS
 	{
 		for (auto &chunk : mChunks)
 		{
-			for (ui slot = 0; slot < chunk->count; ++slot)
+			for (ui slot = 0; slot < chunk->mCount; ++slot)
 			{
 				for (const ComponentTypeID &compID : mSortedRegular)
 				{
@@ -69,7 +69,7 @@ namespace Dimensia::ECS
 					assert(compID < mComponentSizes.size());
 
 					// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-					void *ptr = &chunk->buffer[mComponentOffsets[compID] + (slot * mComponentSizes[compID])];
+					void *ptr = &chunk->mBuffer[mComponentOffsets[compID] + (slot * mComponentSizes[compID])];
 
 					assert(compID < ComponentInfos.size());
 
@@ -100,7 +100,7 @@ namespace Dimensia::ECS
 		assert(chunkIndex < mChunks.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-		return mChunks[chunkIndex]->count;
+		return mChunks[chunkIndex]->mCount;
 	}
 
 	ATTR_NODISCARD void *Archetype::getComponentArray(const ui chunkIndex, const ComponentTypeID compID) const
@@ -116,7 +116,7 @@ namespace Dimensia::ECS
 		assert(chunkIndex < mChunks.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-		return &mChunks[chunkIndex]->buffer[mComponentOffsets[compID]];
+		return &mChunks[chunkIndex]->mBuffer[mComponentOffsets[compID]];
 	}
 
 	ATTR_NODISCARD Entity *Archetype::getEntityArray(const ui chunkIndex) const
@@ -127,7 +127,7 @@ namespace Dimensia::ECS
 		assert(mEntityArrayOffset < mChunks[chunkIndex]->buffer.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,cppcoreguidelines-pro-type-reinterpret-cast)
-		return reinterpret_cast<Entity *>(&mChunks[chunkIndex]->buffer[mEntityArrayOffset]);
+		return reinterpret_cast<Entity *>(&mChunks[chunkIndex]->mBuffer[mEntityArrayOffset]);
 	}
 
 	ATTR_NODISCARD ComponentMask Archetype::getTags(const ui chunkIndex, const ui slotIndex) const
@@ -149,7 +149,7 @@ namespace Dimensia::ECS
 		assert(mTagBitsetOffset < mChunks[chunkIndex]->buffer.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,cppcoreguidelines-pro-type-reinterpret-cast)
-		return reinterpret_cast<const ul *>(&mChunks[chunkIndex]->buffer[mTagBitsetOffset]);
+		return reinterpret_cast<const ul *>(&mChunks[chunkIndex]->mBuffer[mTagBitsetOffset]);
 	}
 
 	// MARK: Setter
@@ -223,12 +223,12 @@ namespace Dimensia::ECS
 
 		acquireFreeChunk(chunk, chunkIndex);
 
-		ui slot{chunk->count++};
+		ui slot{chunk->mCount++};
 
 		assert(mEntityArrayOffset < chunk->buffer.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,cppcoreguidelines-pro-type-reinterpret-cast)
-		Entity *entityArr{reinterpret_cast<Entity *>(&chunk->buffer[mEntityArrayOffset])};
+		Entity *entityArr{reinterpret_cast<Entity *>(&chunk->mBuffer[mEntityArrayOffset])};
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 		new (&entityArr[slot]) Entity(entity);
@@ -247,7 +247,7 @@ namespace Dimensia::ECS
 
 			assert(offset + (slot * size) <= chunk->buffer.size());
 
-			void *dest = &chunk->buffer[offset + (slot * size)];
+			void *dest = &chunk->mBuffer[offset + (slot * size)];
 
 			const ComponentInfo &info = ComponentInfos[componentTypeID];
 			if (moveData[componentTypeID] != nullptr)
@@ -284,7 +284,7 @@ namespace Dimensia::ECS
 
 		assert(slotIndex < chunk->count);
 
-		const ui lastSlot{chunk->count - 1};
+		const ui lastSlot{chunk->mCount - 1};
 
 		assert(mEntityArrayOffset < chunk->buffer.size());
 
@@ -300,7 +300,7 @@ namespace Dimensia::ECS
 
 			assert(offset + (slotIndex * size) < chunk->buffer.size());
 
-			void *ptr{&chunk->buffer[offset + (slotIndex * size)]};
+			void *ptr{&chunk->mBuffer[offset + (slotIndex * size)]};
 
 			ComponentInfos[componentTypeID].destructor(ptr);
 			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
@@ -310,14 +310,14 @@ namespace Dimensia::ECS
 
 		releaseChunk(chunk, movedEntity, slotIndex, lastSlot);
 
-		--chunk->count;
+		--chunk->mCount;
 
 		assert(chunkIndex < mChunkVersions.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		mChunkVersions[chunkIndex].bump();
 
-		if (chunk->count == 0)
+		if (chunk->mCount == 0)
 		{
 			mFreeChunks.push_back(chunkIndex);
 		}
@@ -341,7 +341,7 @@ namespace Dimensia::ECS
 			assert(readIndex < mChunks.size());
 
 			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			if (mChunks[readIndex]->count > 0)
+			if (mChunks[readIndex]->mCount > 0)
 			{
 				if (writeIndex != readIndex)
 				{
@@ -364,7 +364,7 @@ namespace Dimensia::ECS
 		assert(mTagBitsetOffset < chunk->buffer.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,cppcoreguidelines-pro-type-reinterpret-cast)
-		return reinterpret_cast<ul *>(&chunk->buffer[mTagBitsetOffset]);
+		return reinterpret_cast<ul *>(&chunk->mBuffer[mTagBitsetOffset]);
 	}
 
 	ATTR_NODISCARD const ul *Archetype::getTagBitset(const Chunk *chunk) const
@@ -372,7 +372,7 @@ namespace Dimensia::ECS
 		assert(mTagBitsetOffset < chunk->buffer.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,cppcoreguidelines-pro-type-reinterpret-cast)
-		return reinterpret_cast<const ul *>(&chunk->buffer[mTagBitsetOffset]);
+		return reinterpret_cast<const ul *>(&chunk->mBuffer[mTagBitsetOffset]);
 	}
 
 	// MARK: Private Member Functions
@@ -460,7 +460,7 @@ namespace Dimensia::ECS
 			assert(chunkIndex < mChunks.size());
 
 			// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			if (mChunks[chunkIndex]->count < mChunkCapacity)
+			if (mChunks[chunkIndex]->mCount < mChunkCapacity)
 			{
 				chunk = mChunks[chunkIndex].get();
 				break;
@@ -478,7 +478,7 @@ namespace Dimensia::ECS
 				chunkIndex = mChunks.size();
 				auto newChunk{std::make_unique<Chunk>()};
 
-				newChunk->capacity = mChunkCapacity;
+				newChunk->mCapacity = mChunkCapacity;
 				chunk = newChunk.get();
 
 				mChunks.push_back(std::move(newChunk));
@@ -490,14 +490,14 @@ namespace Dimensia::ECS
 
 				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 				chunk = mChunks[chunkIndex].get();
-				chunk->count = 0;
+				chunk->mCount = 0;
 			}
 		}
 
 		if (chunk == nullptr)
 		{
 			auto newChunk{std::make_unique<Chunk>()};
-			newChunk->capacity = mChunkCapacity;
+			newChunk->mCapacity = mChunkCapacity;
 
 			chunk = newChunk.get();
 			mChunks.push_back(std::move(newChunk));
@@ -510,7 +510,7 @@ namespace Dimensia::ECS
 	void Archetype::releaseChunk(Chunk *&chunk, Entity &movedEntity, const ui slotIndex, const ui lastSlot)
 	{
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,cppcoreguidelines-pro-type-reinterpret-cast)
-		Entity *entityArr{reinterpret_cast<Entity *>(&chunk->buffer[mEntityArrayOffset])};
+		Entity *entityArr{reinterpret_cast<Entity *>(&chunk->mBuffer[mEntityArrayOffset])};
 
 		ul *tagBits{getTagBitset(chunk)};
 
@@ -546,8 +546,8 @@ namespace Dimensia::ECS
 			assert(offset + (slotIndex * size) < chunk->buffer.size());
 			assert(offset + (lastSlot * size) < chunk->buffer.size());
 
-			void *dest{&chunk->buffer[offset + (slotIndex * size)]};
-			void *src{&chunk->buffer[offset + (lastSlot * size)]};
+			void *dest{&chunk->mBuffer[offset + (slotIndex * size)]};
+			void *src{&chunk->mBuffer[offset + (lastSlot * size)]};
 
 			ComponentInfos[componentTypeID].moveConstruct(dest, src);
 			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
@@ -568,7 +568,7 @@ namespace Dimensia::ECS
 
 			assert(offset + (lastSlot * size) < chunk->buffer.size());
 
-			void *ptr{&chunk->buffer[offset + (lastSlot * size)]};
+			void *ptr{&chunk->mBuffer[offset + (lastSlot * size)]};
 
 			ComponentInfos[componentTypeID].destructor(ptr);
 			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
@@ -590,9 +590,9 @@ namespace Dimensia::ECS
 		mChunkVersions[writeIndex] = mChunkVersions[readIndex];
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-		const Entity *entityArr{reinterpret_cast<Entity *>(&mChunks[writeIndex]->buffer[mEntityArrayOffset])};
+		const Entity *entityArr{reinterpret_cast<Entity *>(&mChunks[writeIndex]->mBuffer[mEntityArrayOffset])};
 
-		for (ui subscript{0}; subscript < mChunks[writeIndex]->count; ++subscript)
+		for (ui subscript{0}; subscript < mChunks[writeIndex]->mCount; ++subscript)
 		// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		{
 			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)

@@ -1,9 +1,11 @@
 /*! \file ecs.h
-	\brief Contains the function declarations for creating a Detailed file description
-	\date 02/14/2026
-	\version x.x.x
-	\since x.x.x
-	\author Matthew Moore
+	\brief Core Entity-Component-System API and iteration utilities.
+	\details This header defines the `ECS` class which is the central manager for entities, components, archetypes and queries in the
+   Dimensia engine. The `ECS` implements an archetype-based storage model, provides fast query caching (`QueryCache`), and multiple
+   execution policies for running systems over matching entities (sequential, parallel, batched, and work-stealing).
+	@author Matthew Moore
+	@date 02/25/2026
+	@version x.x.x
 */
 
 #ifndef INCLUDE_ECS_ECS_H
@@ -56,27 +58,82 @@ namespace Dimensia::ECS
 		ParStealing
 	};
 
+	/*! @class ECS include/ECS/ecs.h
+		@brief Central Entity-Component-System managing entities, components, and queries.
+		@details Provides creation/destruction of entities, component and tag management, query-driven iteration with
+		configurable execution policies, and versioned processing for systems. Threading pools are used for parallel
+		execution paths. Caller is responsible for valid entity handles.
+		@note Thread-safety: many operations assume external synchronization for concurrent writes; read-only forEach
+		variants are thread-safe when using parallel execution policies.
+		@date 02/25/2026
+		@version x.x.x
+		@since x.x.x
+		@author Matthew Moore
+	*/
 	class ECS
 	{
 		public:
 			// MARK: Constructor, Assignment Operators, and Destructor
 
+			/*! @brief Constructs a new empty ECS instance.
+				@details Initializes internal pools, registries, and caches to default state.
+				@post The ECS is ready to create entities and register components.
+				@date 02/25/2026
+				@author Matthew Moore
+			*/
 			explicit ECS();
 
+			/*! @brief Copy constructor (deleted).
+				@details `ECS` owns non-copyable resources (thread pools, unique archetype storage). Copying
+				would result in shallow copies and double ownership; therefore the copy constructor is
+				explicitly deleted to enforce single ownership semantics.
+			*/
 			ECS(const ECS &) = delete;
+
+			/*! @brief Copy assignment operator (deleted).
+				@details Prevents assigning one `ECS` to another. Assignment would imply transferring or
+				duplicating internal ownership, which is unsupported and unsafe for the contained resources.
+			*/
 			ECS &operator=(const ECS &) = delete;
+
+			/*! @brief Move constructor (deleted).
+				@details Moving an `ECS` would transfer ownership of internal pools and archetypes. To avoid
+				subtle lifetime and concurrency issues (dangling references, moved-from pools), move construction
+				is disallowed; clients should manage a single `ECS` instance instead.
+			*/
 			ECS(ECS &&) = delete;
+
+			/*! @brief Move assignment operator (deleted).
+				@details Move-assigning an `ECS` is disallowed for the same reasons as move construction: the
+				class holds resources that must not be implicitly transferred or invalidated by moves.
+			*/
 			ECS &operator=(ECS &&) = delete;
 
+			/*! @brief Destroys the ECS instance and associated resources.
+			@details Cleans up archetypes and thread pools. Users should ensure entities are properly destroyed
+			before ECS destruction to avoid undefined behavior.
+			*/
 			// NOLINTNEXTLINE(hicpp-use-equals-default,modernize-use-equals-default)
 			~ECS() {}
 
 			// MARK: Getters
 
+			/*! @brief Returns the direct children of @p parent.
+				@param[in] parent The parent entity.
+				@return Vector of child entities; empty if none or if @p parent is not alive.
+			*/
 			std::vector<Entity> getChildren(const Entity &parent) const;
 
+			/*! @brief Returns the parent of @p child.
+				@param[in] child The child entity.
+				@return The parent `Entity` handle, or an invalid/default entity if no parent exists.
+			*/
 			Entity getParent(const Entity &child) const;
 
+			/*! @brief Computes an adaptive batch size for parallel processing.
+				@param[in] allChunkSize Number of chunks to process.
+				@return Calculated batch size (at least 1) based on hardware concurrency.
+			*/
 			static std::size_t getBatchSize(const std::size_t allChunkSize) noexcept
 			{
 				// Adaptive batch size based on hardware concurrency
@@ -90,26 +147,53 @@ namespace Dimensia::ECS
 
 			// MARK: Setter
 
+			/*! @brief Sets or clears the parent relationship for @p child.
+				@param[in] child The entity whose parent is to be updated.
+				@param[in] parent The parent to set; an invalid entity may be used to clear the parent.
+			*/
 			void setParent(const Entity &child, const Entity &parent);
 
 			// MARK: Member Functions
 
+			/*! @brief Creates a new entity and returns a handle.
+				@return A newly created `Entity`.
+			*/
 			Entity createEntity();
 
+			/*! @brief Destroys @p entity and optionally its child hierarchy.
+				@param[in] entity The entity to destroy.
+				@param[in] destroyChildren If true, recursively destroys children; otherwise children are orphaned.
+			*/
 			void destroyEntity(const Entity &entity, const bool destroyChildren = true);
 
+			/*! @brief Returns whether @p entity refers to a currently alive entity.
+				@param[in] entity The entity handle to test.
+				@return True if alive, false otherwise.
+			*/
 			bool alive(const Entity &entity) const noexcept;
 
+			/*! @brief Performs internal compaction to reclaim storage and defragment data structures.
+			 */
 			void compact();
 
+			/*! @brief Removes the component identified by @p compID from @p entity.
+				@param[in] entity The entity to update.
+				@param[in] compID Component type identifier to remove.
+			*/
 			void removeComponent(const Entity &entity, const ComponentTypeID compID);
 
 			// MARK: Template Member Functions
 
+			/*! @brief Create an entity and emplace provided components/tags.
+				@tparam Ts Types of components or tags to attach.
+				@param components Forwarded component values.
+				@return Newly created `Entity` with components attached where applicable.
+				@note Preserves move semantics for rvalue arguments.
+			*/
 			template <typename... Ts>
 			Entity createEntityWith(Ts &&...components)
 			{
-				std::array<ComponentTypeID, sizeof...(Ts)> compIds{componentId<std::decay_t<Ts>>()...};
+				std::array<ComponentTypeID, sizeof...(Ts)> compIds{componentID<std::decay_t<Ts>>()...};
 
 				ComponentMask regularMask{0, 0};
 				ComponentMask tagMask{0, 0};
@@ -157,6 +241,12 @@ namespace Dimensia::ECS
 			}
 
 			// Component management
+			/*! @brief Adds or updates a component of type `T` on `entity`.
+				@tparam T Component type.
+				@param[in] entity Target entity.
+				@param[in] value Value to set (moved when possible).
+				@note If the component type is a tag, the tag bit is set instead.
+			*/
 			template <typename T>
 			void addComponent(Entity entity, T value)
 			{
@@ -165,7 +255,7 @@ namespace Dimensia::ECS
 					return;
 				}
 
-				ComponentTypeID compID{componentId<T>()};
+				ComponentTypeID compID{componentID<T>()};
 
 				assert(compID < ComponentInfos.size());
 
@@ -234,6 +324,10 @@ namespace Dimensia::ECS
 				moveEntity(entity, newRegular, copyData, moveData);
 			}
 
+			/*! @brief Removes component of type `T` from `entity`.
+				@tparam T Component type to remove.
+				@param[in] entity Target entity.
+			*/
 			template <typename T>
 			void removeComponent(Entity entity)
 			{
@@ -242,7 +336,7 @@ namespace Dimensia::ECS
 					return;
 				}
 
-				ComponentTypeID compID{componentId<T>()};
+				ComponentTypeID compID{componentID<T>()};
 
 				assert(compID < ComponentInfos.size());
 
@@ -267,19 +361,33 @@ namespace Dimensia::ECS
 				removeComponent(entity, compID); // non‑template version already updated
 			}
 
+			/*! @brief Returns a pointer to component `T` for `entity`.
+				@tparam T Component type.
+				@param[in] entity Entity to query.
+				@return Pointer to component data or nullptr if not present.
+			*/
 			template <typename T>
 			T *getComponent(Entity entity)
 			{
-				return static_cast<T *>(getComponentPtr(entity, componentId<T>()));
+				return static_cast<T *>(getComponentPtr(entity, componentID<T>()));
 			}
 
+			/*! @brief Const version: returns const pointer to component `T` for `entity`.
+				@tparam T Component type.
+				@param[in] entity Entity to query.
+				@return Const pointer to component data or nullptr if not present.
+			*/
 			template <typename T>
 			const T *getComponent(Entity entity) const
 			{
-				return static_cast<const T *>(getComponentPtr(entity, componentId<T>()));
+				return static_cast<const T *>(getComponentPtr(entity, componentID<T>()));
 			}
 
 			// Tag management
+			/*! @brief Adds a tag of type `Tag` to `entity`.
+				@tparam Tag Tag type (must be registered as a tag component).
+				@param[in] entity Target entity.
+			*/
 			template <typename Tag>
 			void addTag(Entity entity)
 			{
@@ -288,7 +396,7 @@ namespace Dimensia::ECS
 					return;
 				}
 
-				ComponentTypeID tagID{componentId<Tag>()};
+				ComponentTypeID tagID{componentID<Tag>()};
 
 				assert(tagID < ComponentInfos.size());
 
@@ -309,6 +417,10 @@ namespace Dimensia::ECS
 				// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			}
 
+			/*! @brief Removes a tag of type `Tag` from `entity`.
+				@tparam Tag Tag type to remove.
+				@param[in] entity Target entity.
+			*/
 			template <typename Tag>
 			void removeTag(Entity entity)
 			{
@@ -317,7 +429,7 @@ namespace Dimensia::ECS
 					return;
 				}
 
-				ComponentTypeID tagID{componentId<Tag>()};
+				ComponentTypeID tagID{componentID<Tag>()};
 
 				assert(tagID < ComponentInfos.size());
 
@@ -338,6 +450,11 @@ namespace Dimensia::ECS
 				// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			}
 
+			/*! @brief Tests whether `entity` has tag `Tag`.
+				@tparam Tag Tag type to test.
+				@param[in] entity Target entity.
+				@return True if the tag is present, false otherwise.
+			*/
 			template <typename Tag>
 			bool hasTag(Entity entity) const
 			{
@@ -346,7 +463,7 @@ namespace Dimensia::ECS
 					return false;
 				}
 
-				ComponentTypeID tagID{componentId<Tag>()};
+				ComponentTypeID tagID{componentID<Tag>()};
 
 				assert(tagID < ComponentInfos.size());
 
@@ -369,13 +486,27 @@ namespace Dimensia::ECS
 
 			// MARK: forEach Template Member Functions
 
-			// Queries (forEach)
+			/*! @brief Convenience overload that iterates entities matching `Components...` using the sequential execution policy.
+				@tparam Components Component types to include in the query.
+				@tparam Func Callable type. The callable is forwarded to the underlying implementation and may have one of the supported
+					   signatures used by the `forEach` helpers (per-entity or per-chunk forms). See `processChunkEntities` helpers
+					   for exact expected callable shapes.
+				@param[in] func User-provided callable that will be invoked for matching entities or chunks.
+				@note This overload simply forwards to `forEach<Components...>(ExecutionPolicy::Seq, std::forward<Func>(func))`.
+			*/
 			template <typename... Components, typename Func>
 			void forEach(Func &&func)
 			{
 				forEach<Components...>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
 
+			/*! @brief Const overload of the sequential `forEach` convenience wrapper.
+				@tparam Components Component types to include in the query.
+				@tparam Func Callable type; callable must be compatible with the const processing helpers (it will not modify ECS
+			   internals).
+				@param[in] func User-provided callable forwarded to the underlying const implementation.
+				@note Use this overload when only read access to components/entities is required.
+			*/
 			template <typename... Components, typename Func>
 			void forEach(Func &&func) const
 			{
@@ -384,6 +515,11 @@ namespace Dimensia::ECS
 
 			// MARK: forEachPolicyImpl
 
+			/*! @brief Sequential chunk processing implementation used by `forEach`.
+				@tparam Func Callable compatible with `(Archetype*, ui, ui)`.
+				@param[in] matchingArchetypes Archetypes matching the query.
+				@param[in] processChunk Callable invoked for each non-empty chunk with `(arch, chunkIndex, entityCount)`.
+			*/
 			template <typename Func>
 				requires InvocableWithArgs<Func, Archetype *, ui, ui>
 			static void forEachPolicySeqImpl(const std::vector<Archetype *> &matchingArchetypes, Func &&processChunk)
@@ -408,6 +544,12 @@ namespace Dimensia::ECS
 				}
 			}
 
+			/*! @brief Parallel per-chunk processing using `ThreadPool`.
+				@tparam Func Callable compatible with `(Archetype*, ui, ui)`.
+				@param[in] matchingArchetypes Archetypes matching the query.
+				@param[in,out] threadPool Thread pool used to submit per-chunk tasks.
+				@param[in] processChunk Callable invoked per-chunk; tasks are waited on before return.
+			*/
 			template <typename Func>
 				requires InvocableWithArgs<Func, Archetype *, ui, ui>
 			static void forEachPolicyParImpl(const std::vector<Archetype *> &matchingArchetypes, ThreadPool &threadPool,
@@ -441,6 +583,13 @@ namespace Dimensia::ECS
 				}
 			}
 
+			/*! @brief Parallel batched processing: groups chunks into batches and schedules each batch.
+				@tparam Components Component types used by per-entity helpers.
+				@tparam Func Callable invoked per-entity/ per-chunk.
+				@param[in] matchingArchetypes Archetypes matching the query.
+				@param[in,out] threadPool Thread pool used to execute batches.
+				@param[in] func User callable forwarded into batch tasks.
+			*/
 			template <typename... Components, typename Func>
 			static void forEachPolicyParBatchedImpl(const std::vector<Archetype *> &matchingArchetypes, ThreadPool &threadPool, Func &&func)
 			{
@@ -493,6 +642,13 @@ namespace Dimensia::ECS
 				latch.wait();
 			}
 
+			/*! @brief Parallel processing using a work-stealing pool for dynamic load balancing.
+				@tparam Components Component types used by per-entity helpers.
+				@tparam Func Callable invoked per-entity/ per-chunk.
+				@param[in] matchingArchetypes Archetypes matching the query.
+				@param[in,out] workStealingPool Work-stealing pool used to execute chunk processing.
+				@param[in] func User callable forwarded into worker tasks.
+			*/
 			template <typename... Components, typename Func>
 			static void forEachPolicyParStealingImpl(const std::vector<Archetype *> &matchingArchetypes, WorkStealingPool &workStealingPool,
 													 Func &&func)
@@ -535,6 +691,14 @@ namespace Dimensia::ECS
 				latch.wait();
 			}
 
+			/*! @brief Policy dispatcher for `forEach` that selects the execution strategy.
+				@tparam Self The ECS type (possibly const-qualified) for method dispatch.
+				@tparam Components Component types for the query.
+				@tparam Func User-provided callable.
+				@param[in,out] self Reference to ECS instance for accessing caches and pools.
+				@param[in] policy Execution policy to use.
+				@param[in] func Callable to execute for matching entities or chunks.
+			*/
 			template <class Self, typename... Components, typename Func>
 			static void forEachPolicyImpl(Self &self, const ExecutionPolicy &policy, Func &&func)
 			{
@@ -573,6 +737,15 @@ namespace Dimensia::ECS
 				}
 			}
 
+			/*! @brief Iterate over entities matching `Components...` using the specified execution policy.
+				@tparam Components Component types to include in the query.
+				@tparam Func Callable type provided by the user. The callable will be forwarded to the policy
+					   implementation and must match one of the callable signatures supported by the processing helpers
+					   (per-chunk or per-entity forms).
+				@param[in] policy Execution policy that controls parallelism and batching (Seq, Par, ParBatched, ParStealing).
+				@param[in] func User-provided callable invoked for matching entities or chunks.
+				@note This forwards to `forEachPolicyImpl` which performs dispatch based on @p policy.
+			*/
 			template <typename... Components, typename Func>
 			void forEach(const ExecutionPolicy &policy, Func &&func)
 
@@ -580,6 +753,13 @@ namespace Dimensia::ECS
 				forEachPolicyImpl<decltype(*this), Components...>(*this, policy, std::forward<Func>(func));
 			}
 
+			/*! @brief Const overload: iterate over entities matching `Components...` using @p policy without mutating ECS state.
+				@tparam Components Component types to include in the query.
+				@tparam Func Callable type; must be compatible with the const processing helpers.
+				@param[in] policy Execution policy to use.
+				@param[in] func User-provided callable forwarded to the const policy implementation.
+				@note Use this overload for read-only systems to enable safe parallel execution where applicable.
+			*/
 			template <typename... Components, typename Func>
 			void forEach(const ExecutionPolicy &policy, Func &&func) const
 			{
@@ -588,6 +768,11 @@ namespace Dimensia::ECS
 
 			// MARK: forEachPolicyCommandImpl
 
+			/*! @brief Sequential command-style chunk processing used when user functions accept an entity and its components.
+				@tparam Func Callable invoked per (arch, chunkIndex).
+				@param[in] matchingArchetypes Archetypes matching the query.
+				@param[in] processChunk Callable invoked per chunk.
+			*/
 			template <typename Func>
 			static void forEachPolicyCommandSeqImpl(const std::vector<Archetype *> &matchingArchetypes, Func &&processChunk)
 			{
@@ -609,6 +794,12 @@ namespace Dimensia::ECS
 				}
 			}
 
+			/*! @brief Parallel command-style per-chunk processing using a `ThreadPool`.
+				@tparam Func Callable invoked per chunk `(arch, chunkIndex)`.
+				@param[in] matchingArchetypes Archetypes matching the query.
+				@param[in,out] threadPool Thread pool used to execute tasks.
+				@param[in] processChunk Callable invoked per chunk.
+			*/
 			template <typename Func>
 			static void forEachPolicyCommandParImpl(const std::vector<Archetype *> &matchingArchetypes, ThreadPool &threadPool,
 													Func &&processChunk)
@@ -638,6 +829,12 @@ namespace Dimensia::ECS
 				}
 			}
 
+			/*! @brief Parallel batched command-style processing.
+				@tparam Func Callable invoked per chunk.
+				@param[in] matchingArchetypes Archetypes matching the query.
+				@param[in,out] threadPool Thread pool used to execute batched tasks.
+				@param[in] processChunk Callable invoked per chunk.
+			*/
 			template <typename Func>
 			static void forEachPolicyCommandParBatchedImpl(const std::vector<Archetype *> &matchingArchetypes, ThreadPool &threadPool,
 														   Func &&processChunk)
@@ -685,6 +882,12 @@ namespace Dimensia::ECS
 				latch.wait();
 			}
 
+			/*! @brief Parallel command-style processing using a work-stealing pool.
+				@tparam Func Callable invoked per chunk.
+				@param[in] matchingArchetypes Archetypes matching the query.
+				@param[in,out] workStealingPool Work-stealing pool used to execute chunk tasks.
+				@param[in] processChunk Callable invoked per chunk.
+			*/
 			template <typename Func>
 			static void forEachPolicyCommandParStealingImpl(const std::vector<Archetype *> &matchingArchetypes,
 															WorkStealingPool &workStealingPool, Func &&processChunk)
@@ -720,6 +923,15 @@ namespace Dimensia::ECS
 				latch.wait();
 			}
 
+			/*! @brief Dispatches command-style processing according to @p policy.
+				@tparam Self The ECS type (possibly const-qualified).
+				@tparam Components Component types in the query.
+				@tparam Func Callable accepting `(Entity, Components...)` or similar along with optional CommandBuffer.
+				@param[in,out] self ECS instance reference.
+				@param[in] policy Execution policy to use.
+				@param[in] cmds CommandBuffer passed to callbacks when required.
+				@param[in] func User callable invoked for each entity or chunk.
+			*/
 			template <class Self, typename... Components, typename Func>
 			static void forEachPolicyCommandImpl(Self &self, const ExecutionPolicy &policy, CommandBuffer & /*cmds*/, Func &&func)
 			{
@@ -764,12 +976,21 @@ namespace Dimensia::ECS
 				}
 			}
 
+			/*! @brief Iterate over matching entities with a `CommandBuffer` provided to callbacks using @p policy.
+				@tparam Components Component types to query.
+				@tparam Func Callable invoked with signature `(Entity, Components..., CommandBuffer&)` or similar.
+				@param[in] policy Execution policy to use.
+				@param[in,out] cmds CommandBuffer forwarded to user callbacks.
+				@param[in] func User callable.
+			*/
 			template <typename... Components, typename Func>
 			void forEach(const ExecutionPolicy &policy, CommandBuffer &cmds, Func &&func)
 			{
 				forEachPolicyCommandImpl<decltype(*this), Components...>(*this, policy, cmds, std::forward<Func>(func));
 			}
 
+			/*! @brief Const overload of the `forEach` variant that provides a `CommandBuffer` to callbacks.
+			 */
 			template <typename... Components, typename Func>
 			void forEach(const ExecutionPolicy &policy, CommandBuffer &cmds, Func &&func) const
 			{
@@ -778,6 +999,13 @@ namespace Dimensia::ECS
 
 			// MARK: forEachPolicyVersionImpl
 
+			/*! @brief Sequential processing for dirty chunks with post-processing version updates.
+				@tparam Func Callable invoked per chunk `(Archetype*, ui)`.
+				@tparam Ver Callable used to update version information after processing each chunk.
+				@param[in] dirtyChunks Vector of tuples `(arch, chunkIndex, chunkVersionPtr)` indicating work.
+				@param[in] processFunc Callable executed on each dirty chunk.
+				@param[in] updateVersion Callable used to update system/component versions after processing.
+			*/
 			template <typename Func, typename Ver>
 			static void forEachPolicyVersionAndVersionCommandSeqImpl(
 				const std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks, Func &&processFunc, Ver &&updateVersion)
@@ -792,6 +1020,14 @@ namespace Dimensia::ECS
 				}
 			}
 
+			/*! @brief Parallel processing of dirty chunks using ThreadPool; updates versions after processing.
+				@tparam Func Callable invoked per chunk.
+				@tparam Ver Callable to update version metadata.
+				@param[in] dirtyChunks Chunks requiring processing.
+				@param[in,out] threadPool ThreadPool used for parallel execution.
+				@param[in] processFunc Callable executed in parallel for each dirty chunk.
+				@param[in] updateVersion Callable executed once per chunk after processing to update versions.
+			*/
 			template <typename Func, typename Ver>
 			static void forEachPolicyVersionandVersionCommandParImpl(
 				const std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks, ThreadPool &threadPool,
@@ -823,6 +1059,14 @@ namespace Dimensia::ECS
 				}
 			}
 
+			/*! @brief Parallel batched processing for dirty chunks with post-update of versions.
+				@tparam Func Callable invoked per chunk.
+				@tparam Ver Callable used to update version info after processing.
+				@param[in] dirtyChunks Chunks requiring processing.
+				@param[in,out] threadPool ThreadPool used for batched submission.
+				@param[in] processFunc Callable executed inside worker tasks.
+				@param[in] updateVersion Callable applied after processing to adjust system versions.
+			*/
 			template <typename Func, typename Ver>
 			static void forEachPolicyVersionandVersionCommandParBatchedImpl(
 				const std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks, ThreadPool &threadPool,
@@ -868,6 +1112,14 @@ namespace Dimensia::ECS
 				}
 			}
 
+			/*! @brief Parallel dirty-chunk processing using work-stealing; updates versions after processing.
+				@tparam Func Callable invoked per chunk.
+				@tparam Ver Callable used to update version info after processing.
+				@param[in] dirtyChunks Chunks requiring processing.
+				@param[in,out] workStealingPool Work-stealing pool used to execute batch tasks.
+				@param[in] processFunc Callable executed per chunk.
+				@param[in] updateVersion Callable applied after processing to adjust system versions.
+			*/
 			template <typename Func, typename Ver>
 			static void forEachPolicyVersionandVersionCommandParStealingImpl(
 				const std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks, WorkStealingPool &workStealingPool,
@@ -899,6 +1151,15 @@ namespace Dimensia::ECS
 				}
 			}
 
+			/*! @brief Dispatches processing of chunks that are dirty with respect to @p version.
+				@tparam Self The ECS type (possibly const-qualified).
+				@tparam Components Component types used to build the required mask.
+				@tparam Func User callable invoked per-entity or per-chunk.
+				@param[in,out] self ECS instance providing archetypes/caches.
+				@param[in] policy Execution policy to use for processing.
+				@param[in,out] version SystemVersion used to determine dirty chunks and to update after processing.
+				@param[in] func Callable to execute for matching entities.
+			*/
 			template <class Self, typename... Components, typename Func>
 			static void forEachPolicyVersionImpl(Self &self, const ExecutionPolicy &policy, SystemVersion &version, Func &&func)
 			{
@@ -984,12 +1245,21 @@ namespace Dimensia::ECS
 				}
 			}
 
+			/*! @brief Iterate over entities matching `Components...` that are considered dirty by @p version.
+				@tparam Components Component types to query.
+				@tparam Func Callable invoked for matching entities.
+				@param[in] policy Execution policy controlling parallelism.
+				@param[in,out] version SystemVersion used to filter chunks and to update after processing.
+				@param[in] func User callable.
+			*/
 			template <typename... Components, typename Func>
 			void forEach(const ExecutionPolicy &policy, SystemVersion &version, Func &&func)
 			{
 				forEachPolicyVersionImpl<decltype(*this), Components...>(*this, policy, version, std::forward<Func>(func));
 			}
 
+			/*! @brief Const overload of versioned `forEach`.
+			 */
 			template <typename... Components, typename Func>
 			void forEach(const ExecutionPolicy &policy, SystemVersion &version, Func &&func) const
 			{
@@ -998,6 +1268,16 @@ namespace Dimensia::ECS
 
 			// MARK: forEachPolicyVersionCommandImpl
 
+			/*! @brief Dispatches version-filtered processing with a CommandBuffer provided to callbacks.
+				@tparam Self The ECS type (possibly const-qualified).
+				@tparam Components Component types used to build the required mask.
+				@tparam Func Callable invoked per-entity with an additional `CommandBuffer&` parameter.
+				@param[in,out] self ECS instance providing archetypes/caches.
+				@param[in] policy Execution policy to use for processing.
+				@param[in,out] version SystemVersion used to determine dirty chunks and to update after processing.
+				@param[in,out] cmds CommandBuffer forwarded to user callbacks.
+				@param[in] func User callable invoked for each matching entity and supplied `cmds`.
+			*/
 			template <class Self, typename... Components, typename Func>
 			static void forEachPolicyVersionCommandImpl(Self &self, const ExecutionPolicy &policy, SystemVersion &version,
 														CommandBuffer &cmds, Func &&func)
@@ -1089,12 +1369,37 @@ namespace Dimensia::ECS
 				}
 			}
 
+			/*! @brief Iterate over entities matching `Components...` that are dirty with respect to @p version and
+				provide a `CommandBuffer` to callbacks, using the specified execution @p policy.
+				@tparam Components Component types to query.
+				@tparam Func Callable type provided by the user. The callable must be compatible with the
+					   command-style processing helpers and may accept signatures such as
+					   `(Entity, Components..., CommandBuffer&)` (per-entity) or a per-chunk form that
+					   forwards `cmds` to the user's callback.
+				@param[in] policy Execution policy controlling parallelism (Seq, Par, ParBatched, ParStealing).
+				@param[in,out] version SystemVersion used to filter dirty chunks and updated after processing.
+				@param[in,out] cmds CommandBuffer forwarded to user callbacks for recording deferred commands.
+				@param[in] func User-provided callable invoked for each matching entity or chunk.
+				@note This overload forwards to `forEachPolicyVersionCommandImpl` for dispatch and will update
+					  `version` after processing each dirty chunk.
+			*/
 			template <typename... Components, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
 			{
 				forEachPolicyVersionCommandImpl<decltype(*this), Components...>(*this, policy, version, cmds, std::forward<Func>(func));
 			}
 
+			/*! @brief Const overload of the versioned `forEach` that provides a `CommandBuffer` to callbacks.
+				@tparam Components Component types to query (read-only).
+				@tparam Func Callable type; the callable must be compatible with the const processing helpers and may accept
+					   `(Entity, const Components..., CommandBuffer&)` or a const per-chunk form.
+				@param[in] policy Execution policy controlling parallelism.
+				@param[in,out] version SystemVersion used to select dirty chunks and updated after processing.
+				@param[in,out] cmds CommandBuffer forwarded to user callbacks (may be recorded to even in const systems).
+				@param[in] func User-provided callable invoked for each matching entity or chunk; callbacks must not
+					   attempt to mutate ECS internal state.
+				@note Use this overload for read-only systems that still require issuing commands via `cmds`.
+			*/
 			template <typename... Components, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
@@ -1104,17 +1409,49 @@ namespace Dimensia::ECS
 		private:
 			// MARK: Private Getters
 
+			/*! @brief Returns a mutable pointer to the component storage for @p compID on @p entity.
+				@param[in] entity The entity to query.
+				@param[in] compID Component type identifier.
+				@return Pointer to the component storage or nullptr if not present.
+			*/
 			void *getComponentPtr(const Entity &entity, const ComponentTypeID compID);
+
+			/*! @brief Const overload of getComponentPtr.
+				@param[in] entity The entity to query.
+				@param[in] compID Component type identifier.
+				@return Const pointer to the component storage or nullptr if not present.
+			*/
 			const void *getComponentPtr(const Entity &entity, const ComponentTypeID compID) const;
+
+			/*! @brief Finds or creates an Archetype for @p regularMask.
+				@param[in] regularMask ComponentMask describing the regular components for the archetype.
+				@return Pointer to an existing or newly created `Archetype`.
+			*/
 			Archetype *getOrCreateArchetype(ComponentMask regularMask);
 
 			// MARK: Private Member Functions
 
+			/*! @brief Moves an entity to a new archetype, copying/moving component data as specified.
+				@param[in] entity Entity to move.
+				@param[in] newRegularMask Regular component mask for the destination archetype.
+				@param[in] copyData Array of source pointers for components to copy.
+				@param[in] moveData Array of source pointers for components to move.
+				@param[in] newTags Optional tag mask to set on the destination chunk.
+			*/
 			void moveEntity(const Entity &entity, ComponentMask newRegularMask, const std::array<const void *, MAX_COMPONENTS> &copyData,
 							const std::array<void *, MAX_COMPONENTS> &moveData, ComponentMask newTags = ComponentMask(0));
 
+			/*! @brief Recursively destroys the hierarchy rooted at @p entity.
+				@param[in] entity Root entity of the hierarchy to destroy.
+			*/
 			void destroyHierarchy(const Entity &entity);
 
+			/*! @brief Compute override masks based on provided copy/move arrays.
+				@param[in] copyData Array of pointers to copy-source component values.
+				@param[in] moveData Array of pointers to move-source component values.
+				@param[out] moveOverrideMask Bitmask where move-specified components will be set.
+				@param[out] copyOverrideMask Bitmask where copy-specified components will be set.
+			*/
 			static void acquireOverrideMasks(const std::array<const void *, MAX_COMPONENTS> &copyData,
 											 const std::array<void *, MAX_COMPONENTS> &moveData, ComponentMask &moveOverrideMask,
 											 ComponentMask &copyOverrideMask)
@@ -1151,6 +1488,10 @@ namespace Dimensia::ECS
 				}
 			}
 
+			/*! @brief Sets the bit for @p componentTypeID in @p mask (handles low/high bit partition).
+				@param[in] componentTypeID Component type identifier.
+				@param[in,out] mask ComponentMask to update.
+			*/
 			static void updateTagMask(const ComponentTypeID componentTypeID, ComponentMask &mask)
 			{
 				if (componentTypeID < LOWER_HALF_BIT_MASK)
@@ -1163,6 +1504,16 @@ namespace Dimensia::ECS
 				}
 			}
 
+			/*! @brief Helper invoked during entity creation to classify a provided argument as a copy/move or tag.
+				@tparam Param The original parameter type (for constness detection).
+				@tparam Stored The decayed stored type.
+				@param[in] componentTypeID Component type identifier for the argument.
+				@param[out] copyData Array to record addresses for const (copy) parameters.
+				@param[out] moveData Array to record addresses for movable parameters.
+				@param[out] regularMask Updated to include this component if it is regular.
+				@param[out] tagMask Updated to include this component if it is a tag.
+				@param[in] stored The stored value (lvalue reference into the temporary storage tuple).
+			*/
 			template <typename Param, typename Stored>
 			static void processCreateComponent(const ComponentTypeID componentTypeID, std::array<const void *, MAX_COMPONENTS> &copyData,
 											   std::array<void *, MAX_COMPONENTS> &moveData, ComponentMask &regularMask,
@@ -1199,23 +1550,63 @@ namespace Dimensia::ECS
 			friend class CommandBuffer;
 
 		private:
+			/*! @var mQueryCache
+				@brief Cache mapping required component masks to matching archetype lists for fast query resolution.
+			*/
 			QueryCache mQueryCache{};
 
 			// NOLINTBEGIN(readability-redundant-member-init)
+
+			/*! @var mThreadPool
+				@brief Mutable thread pool used for parallel `forEach`/system execution where threads are needed.
+			*/
 			mutable ThreadPool mThreadPool{};
+
+			/*! @var mWorkStealingPool
+				@brief Mutable work-stealing pool for dynamic load balancing across chunks.
+			*/
 			mutable WorkStealingPool mWorkStealingPool{};
 
+			/*! @var mHierarchyMutex
+				@brief Protects parent/child hierarchy mutations.
+			*/
 			mutable std::mutex mHierarchyMutex{};
 
+			/*! @var mArchetypeMaskToID
+				@brief Map from component masks to archetype identifiers for quick lookup.
+			*/
 			std::unordered_map<ComponentMask, ui> mArchetypeMaskToID{};
+
 			// NOLINTEND(readability-redundant-member-init)
 
+			/*! @var mRecords
+				@brief Per-entity records containing archetype, chunk and slot indices.
+			*/
 			std::vector<EntityRecord> mRecords;
+
+			/*! @var mFreeIndices
+				@brief Free-list of entity indices available for reuse.
+			*/
 			std::vector<ui> mFreeIndices;
+
+			/*! @var mArchetypePtrs
+				@brief Owned pointers to all archetype instances managed by the ECS.
+			*/
 			std::vector<std::unique_ptr<Archetype>> mArchetypePtrs;
+
+			/*! @var mParent
+				@brief Parallel vector indexed by entity index storing each entity's parent handle (or invalid entity).
+			*/
 			std::vector<Entity> mParent;
+
+			/*! @var mChildren
+				@brief Parallel vector indexed by entity index storing a vector of direct children for that entity.
+			*/
 			std::vector<std::vector<Entity>> mChildren;
 
+			/*! @var mNextEntityIndex
+				@brief Monotonically increasing counter used to assign new entity indices when free-list is empty.
+			*/
 			ui mNextEntityIndex{0};
 	};
 } // namespace Dimensia::ECS
