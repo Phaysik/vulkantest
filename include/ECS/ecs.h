@@ -60,14 +60,11 @@ namespace Dimensia::ECS
 
 	/*! @class ECS include/ECS/ecs.h
 		@brief Central Entity-Component-System managing entities, components, and queries.
-		@details Provides creation/destruction of entities, component and tag management, query-driven iteration with
-		configurable execution policies, and versioned processing for systems. Threading pools are used for parallel
-		execution paths. Caller is responsible for valid entity handles.
-		@note Thread-safety: many operations assume external synchronization for concurrent writes; read-only forEach
-		variants are thread-safe when using parallel execution policies.
-		@date 02/25/2026
-		@version x.x.x
-		@since x.x.x
+		@details Provides creation/destruction of entities, component and tag management, query-driven iteration with configurable execution
+	   policies, and versioned processing for systems. Threading pools are used for parallel execution paths. Caller is responsible for
+	   valid entity handles.
+		@note Thread-safety: many operations assume external synchronization for concurrent writes; read-only forEach variants are
+	   thread-safe when using parallel execution policies.
 		@author Matthew Moore
 	*/
 	class ECS
@@ -78,43 +75,44 @@ namespace Dimensia::ECS
 			/*! @brief Constructs a new empty ECS instance.
 				@details Initializes internal pools, registries, and caches to default state.
 				@post The ECS is ready to create entities and register components.
-				@date 02/25/2026
 				@author Matthew Moore
 			*/
 			explicit ECS();
 
 			/*! @brief Copy constructor (deleted).
-				@details `ECS` owns non-copyable resources (thread pools, unique archetype storage). Copying
-				would result in shallow copies and double ownership; therefore the copy constructor is
-				explicitly deleted to enforce single ownership semantics.
+				@details `ECS` owns non-copyable resources (thread pools, unique archetype storage). Copying would result in shallow copies
+			   and double ownership; therefore the copy constructor is explicitly deleted to enforce single ownership semantics.
 			*/
 			ECS(const ECS &) = delete;
 
 			/*! @brief Copy assignment operator (deleted).
-				@details Prevents assigning one `ECS` to another. Assignment would imply transferring or
-				duplicating internal ownership, which is unsupported and unsafe for the contained resources.
+				@details Prevents assigning one `ECS` to another. Assignment would imply transferring or duplicating internal ownership,
+			   which is unsupported and unsafe for the contained resources.
 			*/
 			ECS &operator=(const ECS &) = delete;
 
 			/*! @brief Move constructor (deleted).
-				@details Moving an `ECS` would transfer ownership of internal pools and archetypes. To avoid
-				subtle lifetime and concurrency issues (dangling references, moved-from pools), move construction
-				is disallowed; clients should manage a single `ECS` instance instead.
+				@details Moving an `ECS` would transfer ownership of internal pools and archetypes. To avoid subtle lifetime and concurrency
+			   issues (dangling references, moved-from pools), move construction is disallowed; clients should manage a single `ECS`
+			   instance instead.
 			*/
 			ECS(ECS &&) = delete;
 
 			/*! @brief Move assignment operator (deleted).
-				@details Move-assigning an `ECS` is disallowed for the same reasons as move construction: the
-				class holds resources that must not be implicitly transferred or invalidated by moves.
+				@details Move-assigning an `ECS` is disallowed for the same reasons as move construction: the class holds resources that
+			   must not be implicitly transferred or invalidated by moves.
 			*/
 			ECS &operator=(ECS &&) = delete;
 
+			// NOLINTBEGIN(hicpp-use-equals-default,modernize-use-equals-default)
+
 			/*! @brief Destroys the ECS instance and associated resources.
-			@details Cleans up archetypes and thread pools. Users should ensure entities are properly destroyed
-			before ECS destruction to avoid undefined behavior.
+				@details Cleans up archetypes and thread pools. Users should ensure entities are properly destroyed before ECS destruction
+			   to avoid undefined behavior.
 			*/
-			// NOLINTNEXTLINE(hicpp-use-equals-default,modernize-use-equals-default)
 			~ECS() {}
+
+			// NOLINTEND(hicpp-use-equals-default,modernize-use-equals-default)
 
 			// MARK: Getters
 
@@ -383,7 +381,6 @@ namespace Dimensia::ECS
 				return static_cast<const T *>(getComponentPtr(entity, componentID<T>()));
 			}
 
-			// Tag management
 			/*! @brief Adds a tag of type `Tag` to `entity`.
 				@tparam Tag Tag type (must be registered as a tag component).
 				@param[in] entity Target entity.
@@ -489,8 +486,8 @@ namespace Dimensia::ECS
 			/*! @brief Convenience overload that iterates entities matching `Components...` using the sequential execution policy.
 				@tparam Components Component types to include in the query.
 				@tparam Func Callable type. The callable is forwarded to the underlying implementation and may have one of the supported
-					   signatures used by the `forEach` helpers (per-entity or per-chunk forms). See `processChunkEntities` helpers
-					   for exact expected callable shapes.
+			   signatures used by the `forEach` helpers (per-entity or per-chunk forms). See `processChunkEntities` helpers for exact
+			   expected callable shapes.
 				@param[in] func User-provided callable that will be invoked for matching entities or chunks.
 				@note This overload simply forwards to `forEach<Components...>(ExecutionPolicy::Seq, std::forward<Func>(func))`.
 			*/
@@ -739,9 +736,8 @@ namespace Dimensia::ECS
 
 			/*! @brief Iterate over entities matching `Components...` using the specified execution policy.
 				@tparam Components Component types to include in the query.
-				@tparam Func Callable type provided by the user. The callable will be forwarded to the policy
-					   implementation and must match one of the callable signatures supported by the processing helpers
-					   (per-chunk or per-entity forms).
+				@tparam Func Callable type provided by the user. The callable will be forwarded to the policy implementation and must match
+			   one of the callable signatures supported by the processing helpers (per-chunk or per-entity forms).
 				@param[in] policy Execution policy that controls parallelism and batching (Seq, Par, ParBatched, ParStealing).
 				@param[in] func User-provided callable invoked for matching entities or chunks.
 				@note This forwards to `forEachPolicyImpl` which performs dispatch based on @p policy.
@@ -1369,19 +1365,18 @@ namespace Dimensia::ECS
 				}
 			}
 
-			/*! @brief Iterate over entities matching `Components...` that are dirty with respect to @p version and
-				provide a `CommandBuffer` to callbacks, using the specified execution @p policy.
+			/*! @brief Iterate over entities matching `Components...` that are dirty with respect to @p version and provide a
+			   `CommandBuffer` to callbacks, using the specified execution @p policy.
 				@tparam Components Component types to query.
-				@tparam Func Callable type provided by the user. The callable must be compatible with the
-					   command-style processing helpers and may accept signatures such as
-					   `(Entity, Components..., CommandBuffer&)` (per-entity) or a per-chunk form that
-					   forwards `cmds` to the user's callback.
+				@tparam Func Callable type provided by the user. The callable must be compatible with the command-style processing helpers
+			   and may accept signatures such as `(Entity, Components..., CommandBuffer&)` (per-entity) or a per-chunk form that forwards
+			   `cmds` to the user's callback.
 				@param[in] policy Execution policy controlling parallelism (Seq, Par, ParBatched, ParStealing).
 				@param[in,out] version SystemVersion used to filter dirty chunks and updated after processing.
 				@param[in,out] cmds CommandBuffer forwarded to user callbacks for recording deferred commands.
 				@param[in] func User-provided callable invoked for each matching entity or chunk.
-				@note This overload forwards to `forEachPolicyVersionCommandImpl` for dispatch and will update
-					  `version` after processing each dirty chunk.
+				@note This overload forwards to `forEachPolicyVersionCommandImpl` for dispatch and will update `version` after processing
+			   each dirty chunk.
 			*/
 			template <typename... Components, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
@@ -1391,13 +1386,13 @@ namespace Dimensia::ECS
 
 			/*! @brief Const overload of the versioned `forEach` that provides a `CommandBuffer` to callbacks.
 				@tparam Components Component types to query (read-only).
-				@tparam Func Callable type; the callable must be compatible with the const processing helpers and may accept
-					   `(Entity, const Components..., CommandBuffer&)` or a const per-chunk form.
+				@tparam Func Callable type; the callable must be compatible with the const processing helpers and may accept `(Entity, const
+			   Components..., CommandBuffer&)` or a const per-chunk form.
 				@param[in] policy Execution policy controlling parallelism.
 				@param[in,out] version SystemVersion used to select dirty chunks and updated after processing.
 				@param[in,out] cmds CommandBuffer forwarded to user callbacks (may be recorded to even in const systems).
-				@param[in] func User-provided callable invoked for each matching entity or chunk; callbacks must not
-					   attempt to mutate ECS internal state.
+				@param[in] func User-provided callable invoked for each matching entity or chunk; callbacks must not attempt to mutate ECS
+			   internal state.
 				@note Use this overload for read-only systems that still require issuing commands via `cmds`.
 			*/
 			template <typename... Components, typename Func>

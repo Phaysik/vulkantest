@@ -11,7 +11,7 @@
 #include <array>
 #include <tuple>
 
-#include "ECS/componentRegistry_impl.h"
+#include "ECS/componentRegistryImpl.h"
 
 namespace Dimensia::Registry
 {
