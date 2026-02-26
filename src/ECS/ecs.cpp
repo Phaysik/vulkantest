@@ -153,7 +153,7 @@ namespace Dimensia::ECS
 			mRecords[index].generation = gen;
 		}
 
-		Entity entity{.index = index, .generation = gen};
+		Entity entity{.index = index, .generation = gen, .state = State::Initializing};
 
 		Archetype *emptyArch{getOrCreateArchetype(ComponentMask(0))};
 		std::array<const void *, MAX_COMPONENTS> noCopy{};
@@ -177,15 +177,19 @@ namespace Dimensia::ECS
 			mChildren.resize(index + 1);
 		}
 
+		entity.state = State::Active;
+
 		return entity;
 	}
 
-	void ECS::destroyEntity(const Entity &entity, const bool destroyChildren)
+	void ECS::destroyEntity(Entity &entity, const bool destroyChildren)
 	{
 		if (!alive(entity))
 		{
 			return;
 		}
+
+		entity.state = State::Destroying;
 
 		if (destroyChildren)
 		{
@@ -247,6 +251,8 @@ namespace Dimensia::ECS
 		rec.generation++;
 		rec.archetypeID = INVALID_ARCHETYPE_ID;
 		mFreeIndices.push_back(entity.index);
+
+		entity.state = State::Destroyed;
 	}
 
 	bool ECS::alive(const Entity &entity) const noexcept
@@ -259,7 +265,7 @@ namespace Dimensia::ECS
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		const EntityRecord &rec{mRecords[entity.index]};
 
-		return rec.generation == entity.generation && rec.archetypeID != INVALID_ARCHETYPE_ID;
+		return rec.generation == entity.generation && entity.state == State::Active && rec.archetypeID != INVALID_ARCHETYPE_ID;
 	}
 
 	void ECS::compact()
@@ -567,7 +573,7 @@ namespace Dimensia::ECS
 			}
 		}
 
-		for (const Entity &child : childrenCopy)
+		for (Entity &child : childrenCopy)
 		{
 			destroyEntity(child);
 		}

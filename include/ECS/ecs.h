@@ -162,7 +162,7 @@ namespace Dimensia::ECS
 				@param[in] entity The entity to destroy.
 				@param[in] destroyChildren If true, recursively destroys children; otherwise children are orphaned.
 			*/
-			void destroyEntity(const Entity &entity, const bool destroyChildren = true);
+			void destroyEntity(Entity &entity, const bool destroyChildren = true);
 
 			/*! @brief Returns whether @p entity refers to a currently alive entity.
 				@param[in] entity The entity handle to test.

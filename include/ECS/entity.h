@@ -19,6 +19,15 @@ namespace Dimensia::ECS
 {
 	using Dimensia::Core::ui;
 
+	enum class State : Dimensia::Core::ub
+	{
+		Uninitialized,
+		Initializing,
+		Active,
+		Destroying,
+		Destroyed
+	};
+
 	/*! @struct Entity
 		@brief Identifier for an entity in the ECS.
 		@details The `Entity` struct contains an `index` into the registry's entity arrays and a `generation` counter used to detect stale
@@ -49,14 +58,21 @@ namespace Dimensia::ECS
 			*/
 			ui generation{};
 
+			/*! @var state
+				@brief Current state of the entity.
+				@details Used to track the lifecycle of the entity within the ECS. Initialized to `State::Uninitialized`.
+			*/
+			State state{State::Uninitialized};
+
 			// NOLINTEND(misc-non-private-member-variables-in-classes)
 	};
 
 	/*! @var NULL_ENTITY
 		@brief Sentinel value representing a null/invalid entity.
-		@details Both `index` and `generation` are zero. Use this value to represent an empty handle where appropriate.
+		@details Both `index` and `generation` are zero and state is set to `State::Uninitialized`. Use this value to represent an empty
+	   handle where appropriate.
 	*/
-	constexpr Entity NULL_ENTITY{.index = 0, .generation = 0};
+	constexpr Entity NULL_ENTITY{.index = 0, .generation = 0, .state = State::Uninitialized};
 } // namespace Dimensia::ECS
 
 #endif

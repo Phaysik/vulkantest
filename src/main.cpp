@@ -134,11 +134,11 @@ int main()
 
 	// --- Hierarchy example ---
 	std::cout << "\n--- Hierarchy example ---\n";
-	const Entity parent = ecs.createEntityWith(Name{"Parent"});
-	const Entity child = ecs.createEntityWith(Name{"Child"});
+	Entity parent{ecs.createEntityWith(Name{"Parent"})};
+	const Entity child{ecs.createEntityWith(Name{"Child"})};
 	ecs.setParent(child, parent);
 	std::cout << "Child's parent: " << ecs.getParent(child).index << "\n";
-	auto children = ecs.getChildren(parent);
+	const std::vector<Entity> children{ecs.getChildren(parent)};
 	std::cout << "Parent's children count: " << children.size() << "\n";
 
 	// --- Hierarchical destruction with children ---
@@ -282,7 +282,7 @@ int main()
 	}
 
 	// Cleanup
-	for (const Entity &entity : iterEntities)
+	for (Entity &entity : iterEntities)
 	{
 		if (ecs.alive(entity))
 		{
@@ -368,7 +368,7 @@ int main()
 	}
 
 	// Cleanup
-	for (const Entity &entity : modEntities)
+	for (Entity &entity : modEntities)
 	{
 		if (ecs.alive(entity))
 		{
@@ -486,7 +486,7 @@ int main()
 
 	// Cleanup remaining entities
 	Dimensia::Utility::Clock::Timer::start();
-	for (const Entity entity : entities)
+	for (Entity &entity : entities)
 	{
 		if (ecs.alive(entity))
 		{

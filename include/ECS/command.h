@@ -88,6 +88,14 @@ namespace Dimensia::ECS
 			/*! @brief Returns the target entity for the command.
 				@return Reference to the `Entity` targeted by the command.
 			*/
+			ATTR_NODISCARD constexpr Entity &getEntity() noexcept
+			{
+				return mEntity;
+			}
+
+			/*! @brief Returns a const reference to the target entity for the command.
+				@return Const reference to the `Entity` targeted by the command.
+			*/
 			ATTR_NODISCARD constexpr const Entity &getEntity() const noexcept
 			{
 				return mEntity;
