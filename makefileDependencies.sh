@@ -387,8 +387,8 @@ main() {
                 pip3 install flawfinder --break-system-packages
             fi
 
-            if [ -x "$(command -v Tracy-Server)" ]; then
-                echo "Tracy-Server already exists"
+            if [ -x "$(command -v tracy-profiler)" ]; then
+                echo "tracy-profiler already exists"
             else
                 setUpTracy $gpp_priority
             fi

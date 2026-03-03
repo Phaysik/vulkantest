@@ -117,21 +117,15 @@ namespace Dimensia::ECS
 
 	ThreadBuffer *CommandBuffer::getThreadBuffer()
 	{
-		thread_local ThreadBuffer *tls = nullptr;
-		if (tls != nullptr)
-		{
-			return tls;
-		}
-
-		// slow path once per thread
 		const std::scoped_lock lock(mMapMutex);
-		auto &slot = mBuffers[std::this_thread::get_id()];
+		auto &slot{mBuffers[std::this_thread::get_id()]};
+
 		if (!slot)
 		{
 			slot = std::make_unique<ThreadBuffer>();
 		}
-		tls = slot.get();
-		return tls;
+
+		return slot.get();
 	}
 
 	void CommandBuffer::processAdd(ECS &ecs, const Entity &entity, const AddData &addData)
@@ -147,7 +141,6 @@ namespace Dimensia::ECS
 		assert(info.addFunc != nullptr && "No addFunc registered for this component type");
 
 		info.addFunc(&ecs, entity, static_cast<std::byte *>(addData.storage.getPtr()));
-		// info.destructor(buffer);
 	}
 
 	void CommandBuffer::dispatchRemove(ECS &ecs, const Entity &entity, const ComponentTypeID componentTypeID)

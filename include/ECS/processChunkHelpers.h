@@ -17,6 +17,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "Core/attributeMacros.h"
 #include "Core/cconcepts.h"
 #include "Core/typedefs.h"
 
@@ -219,8 +220,8 @@ namespace Dimensia::ECS
 		@note Avoids tag checks for marginally faster iteration when tags are not involved.
 	*/
 	template <bool IsConst, typename... Components, typename Func, std::size_t... Is>
-	void processChunkEntitiesNoTags(EntityPtr<IsConst> entityArr, ui entityCount, ui chunkIndex, ArchPtr<IsConst> arch, Func &&func,
-									std::index_sequence<Is...> /* indexSequence*/)
+	void processChunkEntitiesNoTags(EntityPtr<IsConst> entityArr, ui entityCount, ATTR_MAYBE_UNUSED ui chunkIndex,
+									ATTR_MAYBE_UNUSED ArchPtr<IsConst> arch, Func &&func, std::index_sequence<Is...> /* indexSequence*/)
 	{
 		using BytePtr = std::conditional_t<IsConst, const std::byte *, std::byte *>;
 

@@ -35,6 +35,7 @@
 #include "entityRecord.h"
 #include "processChunkHelpers.h"
 #include "queryCache.h"
+#include "queryFilter.h"
 #include "systemVersion.h"
 
 namespace Dimensia::ECS
@@ -164,6 +165,13 @@ namespace Dimensia::ECS
 			*/
 			void destroyEntity(Entity &entity, const bool destroyChildren = true);
 
+			/*! @brief Create a new entity that is a copy of @p src.
+				@param[in] src The source entity to clone. Must be alive.
+				@param[in] cloneHierarchy If true, recursively clone all children and set parent relationships.
+				@return A new entity handle with identical component values (and optionally same hierarchy).
+			*/
+			Entity cloneEntity(const Entity &src, bool cloneHierarchy = false);
+
 			/*! @brief Returns whether @p entity refers to a currently alive entity.
 				@param[in] entity The entity handle to test.
 				@return True if alive, false otherwise.
@@ -179,6 +187,8 @@ namespace Dimensia::ECS
 				@param[in] compID Component type identifier to remove.
 			*/
 			void removeComponent(const Entity &entity, const ComponentTypeID compID);
+
+			void invalidateQueries();
 
 			// MARK: Template Member Functions
 
@@ -492,6 +502,7 @@ namespace Dimensia::ECS
 				@note This overload simply forwards to `forEach<Components...>(ExecutionPolicy::Seq, std::forward<Func>(func))`.
 			*/
 			template <typename... Components, typename Func>
+				requires((!AllType<Components> && !AnyType<Components> && !NoneType<Components>) && ...)
 			void forEach(Func &&func)
 			{
 				forEach<Components...>(ExecutionPolicy::Seq, std::forward<Func>(func));
@@ -505,6 +516,7 @@ namespace Dimensia::ECS
 				@note Use this overload when only read access to components/entities is required.
 			*/
 			template <typename... Components, typename Func>
+				requires((!AllType<Components> && !AnyType<Components> && !NoneType<Components>) && ...)
 			void forEach(Func &&func) const
 			{
 				forEach<Components...>(ExecutionPolicy::Seq, std::forward<Func>(func));
@@ -519,7 +531,7 @@ namespace Dimensia::ECS
 			*/
 			template <typename Func>
 				requires InvocableWithArgs<Func, Archetype *, ui, ui>
-			static void forEachPolicySeqImpl(const std::vector<Archetype *> &matchingArchetypes, Func &&processChunk)
+			static void forEachSeqProcessChunkOnly(const std::vector<Archetype *> &matchingArchetypes, Func &&processChunk)
 			{
 				Func processChunkFunction{std::forward<Func>(processChunk)};
 
@@ -549,8 +561,8 @@ namespace Dimensia::ECS
 			*/
 			template <typename Func>
 				requires InvocableWithArgs<Func, Archetype *, ui, ui>
-			static void forEachPolicyParImpl(const std::vector<Archetype *> &matchingArchetypes, ThreadPool &threadPool,
-											 Func &&processChunk)
+			static void forEachParProcessChunkOnly(const std::vector<Archetype *> &matchingArchetypes, ThreadPool &threadPool,
+												   Func &&processChunk)
 			{
 				std::vector<std::future<void>> futures;
 				futures.reserve(matchingArchetypes.size() * 2);
@@ -587,8 +599,10 @@ namespace Dimensia::ECS
 				@param[in,out] threadPool Thread pool used to execute batches.
 				@param[in] func User callable forwarded into batch tasks.
 			*/
-			template <typename... Components, typename Func>
-			static void forEachPolicyParBatchedImpl(const std::vector<Archetype *> &matchingArchetypes, ThreadPool &threadPool, Func &&func)
+			template <typename Func>
+				requires InvocableWithArgs<Func, Archetype *, ui, ui>
+			static void forEachParBatchedProcessChunkOnly(const std::vector<Archetype *> &matchingArchetypes, ThreadPool &threadPool,
+														  Func &&func)
 			{
 				std::vector<std::pair<Archetype *, ui>> allChunks;
 
@@ -616,7 +630,7 @@ namespace Dimensia::ECS
 				// Move the user-provided callable into a shared pointer once so it can be safely
 				// captured by each batch task without forwarding/moving `func` multiple times.
 				using FuncT = std::decay_t<Func>;
-				FuncT sharedFunc = std::forward<Func>(func);
+				const FuncT processChunkFunction{std::forward<Func>(func)};
 
 				for (std::size_t i{0}; i < allChunks.size(); i += batchSize)
 				{
@@ -625,12 +639,11 @@ namespace Dimensia::ECS
 																		allChunks.begin() + static_cast<std::ptrdiff_t>(end));
 
 					threadPool.submitWithLatch(
-						[batch, sharedFunc]() mutable {
+						[batch, processChunkFunction]() mutable {
 							for (const auto &[arch, chunkIndex] : batch)
 							{
-								ui entityCount{arch->getEntityCount(chunkIndex)};
-								Entity *entityArr = arch->getEntityArray(chunkIndex);
-								processChunkEntities<Components...>(entityArr, entityCount, chunkIndex, arch, sharedFunc);
+								const ui entityCount{arch->getEntityCount(chunkIndex)};
+								processChunkFunction(arch, chunkIndex, entityCount);
 							}
 						},
 						latch);
@@ -646,9 +659,10 @@ namespace Dimensia::ECS
 				@param[in,out] workStealingPool Work-stealing pool used to execute chunk processing.
 				@param[in] func User callable forwarded into worker tasks.
 			*/
-			template <typename... Components, typename Func>
-			static void forEachPolicyParStealingImpl(const std::vector<Archetype *> &matchingArchetypes, WorkStealingPool &workStealingPool,
-													 Func &&func)
+			template <typename Func>
+				requires InvocableWithArgs<Func, Archetype *, ui, ui>
+			static void forEachParStealingProcessChunkOnly(const std::vector<Archetype *> &matchingArchetypes,
+														   WorkStealingPool &workStealingPool, Func &&func)
 			{
 				std::vector<std::pair<Archetype *, ui>> allChunks;
 
@@ -679,9 +693,9 @@ namespace Dimensia::ECS
 				workStealingPool.submitChunks(
 					allChunks,
 					[processChunkFunction](Archetype *arch, ui chunkIndex) {
-						ui entityCount{arch->getEntityCount(chunkIndex)};
-						Entity *entityArr = arch->getEntityArray(chunkIndex);
-						processChunkEntities<Components...>(entityArr, entityCount, chunkIndex, arch, processChunkFunction);
+						const ui entityCount{arch->getEntityCount(chunkIndex)};
+
+						processChunkFunction(arch, chunkIndex, entityCount);
 					},
 					latch, batchSize);
 
@@ -702,32 +716,34 @@ namespace Dimensia::ECS
 				constexpr ComponentMask requiredRegular{buildRequiredMask<Components...>()};
 				const std::vector<Archetype *> &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
 
+				const Func processChunkFunction{std::forward<Func>(func)};
+
 				auto processChunk = [&](Archetype *arch, const ui chunkIndex, const ui entityCount) {
 					if constexpr (std::is_const_v<Self>)
 					{
 						const Entity *entities{arch->getEntityArray(chunkIndex)};
-						processChunkEntitiesConst<Components...>(entities, entityCount, chunkIndex, arch, std::forward<Func>(func));
+						processChunkEntitiesConst<Components...>(entities, entityCount, chunkIndex, arch, processChunkFunction);
 					}
 					else
 					{
 						Entity *entities{arch->getEntityArray(chunkIndex)};
-						processChunkEntities<Components...>(entities, entityCount, chunkIndex, arch, std::forward<Func>(func));
+						processChunkEntities<Components...>(entities, entityCount, chunkIndex, arch, processChunkFunction);
 					}
 				};
 
 				switch (policy)
 				{
 					case ExecutionPolicy::Seq:
-						forEachPolicySeqImpl(matchingArchetypes, processChunk);
+						forEachSeqProcessChunkOnly(matchingArchetypes, processChunk);
 						break;
 					case ExecutionPolicy::Par:
-						forEachPolicyParImpl(matchingArchetypes, self.mThreadPool, processChunk);
+						forEachParProcessChunkOnly(matchingArchetypes, self.mThreadPool, processChunk);
 						break;
 					case ExecutionPolicy::ParBatched:
-						forEachPolicyParBatchedImpl<Components...>(matchingArchetypes, self.mThreadPool, std::forward<Func>(func));
+						forEachParBatchedProcessChunkOnly(matchingArchetypes, self.mThreadPool, processChunk);
 						break;
 					case ExecutionPolicy::ParStealing:
-						forEachPolicyParStealingImpl<Components...>(matchingArchetypes, self.mWorkStealingPool, std::forward<Func>(func));
+						forEachParStealingProcessChunkOnly(matchingArchetypes, self.mWorkStealingPool, processChunk);
 						break;
 					default:
 						assert(false && "Invalid execution policy");
@@ -743,6 +759,7 @@ namespace Dimensia::ECS
 				@note This forwards to `forEachPolicyImpl` which performs dispatch based on @p policy.
 			*/
 			template <typename... Components, typename Func>
+				requires((!AllType<Components> && !AnyType<Components> && !NoneType<Components>) && ...)
 			void forEach(const ExecutionPolicy &policy, Func &&func)
 
 			{
@@ -757,167 +774,13 @@ namespace Dimensia::ECS
 				@note Use this overload for read-only systems to enable safe parallel execution where applicable.
 			*/
 			template <typename... Components, typename Func>
+				requires((!AllType<Components> && !AnyType<Components> && !NoneType<Components>) && ...)
 			void forEach(const ExecutionPolicy &policy, Func &&func) const
 			{
 				forEachPolicyImpl<decltype(*this), Components...>(*this, policy, std::forward<Func>(func));
 			}
 
 			// MARK: forEachPolicyCommandImpl
-
-			/*! @brief Sequential command-style chunk processing used when user functions accept an entity and its components.
-				@tparam Func Callable invoked per (arch, chunkIndex).
-				@param[in] matchingArchetypes Archetypes matching the query.
-				@param[in] processChunk Callable invoked per chunk.
-			*/
-			template <typename Func>
-			static void forEachPolicyCommandSeqImpl(const std::vector<Archetype *> &matchingArchetypes, Func &&processChunk)
-			{
-				const Func processChunkFunction{std::forward<Func>(processChunk)};
-
-				for (Archetype *arch : matchingArchetypes)
-				{
-					const ui chunkCount{arch->getChunkCount()};
-
-					for (ui chunkIndex{0}; chunkIndex < chunkCount; ++chunkIndex)
-					{
-						if (arch->getEntityCount(chunkIndex) == 0)
-						{
-							continue;
-						}
-
-						processChunkFunction(arch, chunkIndex);
-					}
-				}
-			}
-
-			/*! @brief Parallel command-style per-chunk processing using a `ThreadPool`.
-				@tparam Func Callable invoked per chunk `(arch, chunkIndex)`.
-				@param[in] matchingArchetypes Archetypes matching the query.
-				@param[in,out] threadPool Thread pool used to execute tasks.
-				@param[in] processChunk Callable invoked per chunk.
-			*/
-			template <typename Func>
-			static void forEachPolicyCommandParImpl(const std::vector<Archetype *> &matchingArchetypes, ThreadPool &threadPool,
-													Func &&processChunk)
-			{
-				std::vector<std::future<void>> futures;
-				futures.reserve(matchingArchetypes.size() * 2);
-
-				for (Archetype *arch : matchingArchetypes)
-				{
-					const ui chunkCount{arch->getChunkCount()};
-
-					for (ui chunkIndex{0}; chunkIndex < chunkCount; ++chunkIndex)
-					{
-						if (arch->getEntityCount(chunkIndex) == 0)
-						{
-							continue;
-						}
-
-						futures.push_back(threadPool.submit(
-							[arch, chunkIndex, &function = std::forward<Func>(processChunk)]() { function(arch, chunkIndex); }));
-					}
-				}
-
-				for (std::future<void> &fut : futures)
-				{
-					fut.get();
-				}
-			}
-
-			/*! @brief Parallel batched command-style processing.
-				@tparam Func Callable invoked per chunk.
-				@param[in] matchingArchetypes Archetypes matching the query.
-				@param[in,out] threadPool Thread pool used to execute batched tasks.
-				@param[in] processChunk Callable invoked per chunk.
-			*/
-			template <typename Func>
-			static void forEachPolicyCommandParBatchedImpl(const std::vector<Archetype *> &matchingArchetypes, ThreadPool &threadPool,
-														   Func &&processChunk)
-			{
-				std::vector<std::pair<Archetype *, ui>> allChunks;
-
-				for (Archetype *arch : matchingArchetypes)
-				{
-					const ui chunkCount{arch->getChunkCount()};
-
-					for (ui chunkIndex{0}; chunkIndex < chunkCount; ++chunkIndex)
-					{
-						if (arch->getEntityCount(chunkIndex) > 0)
-						{
-							allChunks.emplace_back(arch, chunkIndex);
-						}
-					}
-				}
-
-				if (allChunks.empty())
-				{
-					return;
-				}
-
-				const std::size_t batchSize{getBatchSize(allChunks.size())};
-
-				std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
-
-				for (std::size_t i{0}; i < allChunks.size(); i += batchSize)
-				{
-					const std::size_t end{std::min(i + batchSize, allChunks.size())};
-					const std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
-																		allChunks.begin() + static_cast<std::ptrdiff_t>(end));
-
-					threadPool.submitWithLatch(
-						[batch, &function = std::forward<Func>(processChunk)]() {
-							for (const auto &[arch, chunkIndex] : batch)
-							{
-								function(arch, chunkIndex);
-							}
-						},
-						latch);
-				}
-
-				latch.wait();
-			}
-
-			/*! @brief Parallel command-style processing using a work-stealing pool.
-				@tparam Func Callable invoked per chunk.
-				@param[in] matchingArchetypes Archetypes matching the query.
-				@param[in,out] workStealingPool Work-stealing pool used to execute chunk tasks.
-				@param[in] processChunk Callable invoked per chunk.
-			*/
-			template <typename Func>
-			static void forEachPolicyCommandParStealingImpl(const std::vector<Archetype *> &matchingArchetypes,
-															WorkStealingPool &workStealingPool, Func &&processChunk)
-			{
-				std::vector<std::pair<Archetype *, ui>> allChunks;
-
-				for (Archetype *arch : matchingArchetypes)
-				{
-					const ui chunkCount{arch->getChunkCount()};
-
-					for (ui chunkIndex{0}; chunkIndex < chunkCount; ++chunkIndex)
-					{
-						if (arch->getEntityCount(chunkIndex) > 0)
-						{
-							allChunks.emplace_back(arch, chunkIndex);
-						}
-					}
-				}
-
-				if (allChunks.empty())
-				{
-					return;
-				}
-
-				const std::size_t batchSize{getBatchSize(allChunks.size())};
-				std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
-
-				workStealingPool.submitChunks(
-					allChunks,
-					[&function = std::forward<Func>(processChunk)](Archetype *arch, ui chunkIndex) { function(arch, chunkIndex); }, latch,
-					batchSize);
-
-				latch.wait();
-			}
 
 			/*! @brief Dispatches command-style processing according to @p policy.
 				@tparam Self The ECS type (possibly const-qualified).
@@ -934,38 +797,41 @@ namespace Dimensia::ECS
 				constexpr ComponentMask requiredRegular{buildRequiredMask<Components...>()};
 				const std::vector<Archetype *> &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
 
-				// Processing lambda – uses the appropriate chunk function based on constness
-				auto processChunk = [&, function = std::forward<Func>(func)](Archetype *arch, ui chunkIndex) {
-					const ui entityCount{arch->getEntityCount(chunkIndex)};
+				using FuncT = std::decay_t<Func>;
+				const FuncT processChunkFunction{std::forward<Func>(func)};
 
+				// Processing lambda – uses the appropriate chunk function based on constness
+				auto processChunk = [&, processChunkFunction](Archetype *arch, ui chunkIndex, const ui entityCount) {
 					if constexpr (std::is_const_v<Self>)
 					{
-						const Entity *entityArr = arch->getEntityArray(chunkIndex);
-						processChunkEntitiesConst<Components...>(entityArr, entityCount, chunkIndex, arch,
-																 [&](Entity entity, const auto &...comps) { function(entity, comps...); });
+						const Entity *entities{arch->getEntityArray(chunkIndex)};
+						processChunkEntitiesConst<Components...>(
+							entities, entityCount, chunkIndex, arch,
+							[&](const Entity &entity, const auto &...comps) { processChunkFunction(entity, comps...); });
 					}
 					else
 					{
-						Entity *entityArr = arch->getEntityArray(chunkIndex);
-						processChunkEntities<Components...>(entityArr, entityCount, chunkIndex, arch,
-															[&](Entity entity, auto &...comps) { function(entity, comps...); });
+						Entity *entities{arch->getEntityArray(chunkIndex)};
+						processChunkEntitiesConst<Components...>(
+							entities, entityCount, chunkIndex, arch,
+							[&](Entity &entity, const auto &...comps) { processChunkFunction(entity, comps...); });
 					}
 				};
 
 				switch (policy)
 				{
 					case ExecutionPolicy::Seq:
-						forEachPolicyCommandSeqImpl(matchingArchetypes, processChunk);
+						forEachSeqProcessChunkOnly(matchingArchetypes, processChunk);
 						break;
 					case ExecutionPolicy::Par:
 
-						forEachPolicyCommandParImpl(matchingArchetypes, self.mThreadPool, processChunk);
+						forEachParProcessChunkOnly(matchingArchetypes, self.mThreadPool, processChunk);
 						break;
 					case ExecutionPolicy::ParBatched:
-						forEachPolicyCommandParBatchedImpl(matchingArchetypes, self.mThreadPool, processChunk);
+						forEachParBatchedProcessChunkOnly(matchingArchetypes, self.mThreadPool, processChunk);
 						break;
 					case ExecutionPolicy::ParStealing:
-						forEachPolicyCommandParStealingImpl(matchingArchetypes, self.mWorkStealingPool, processChunk);
+						forEachParStealingProcessChunkOnly(matchingArchetypes, self.mWorkStealingPool, processChunk);
 						break;
 					default:
 						assert(false && "Invalid execution policy");
@@ -980,6 +846,7 @@ namespace Dimensia::ECS
 				@param[in] func User callable.
 			*/
 			template <typename... Components, typename Func>
+				requires((!AllType<Components> && !AnyType<Components> && !NoneType<Components>) && ...)
 			void forEach(const ExecutionPolicy &policy, CommandBuffer &cmds, Func &&func)
 			{
 				forEachPolicyCommandImpl<decltype(*this), Components...>(*this, policy, cmds, std::forward<Func>(func));
@@ -988,6 +855,7 @@ namespace Dimensia::ECS
 			/*! @brief Const overload of the `forEach` variant that provides a `CommandBuffer` to callbacks.
 			 */
 			template <typename... Components, typename Func>
+				requires((!AllType<Components> && !AnyType<Components> && !NoneType<Components>) && ...)
 			void forEach(const ExecutionPolicy &policy, CommandBuffer &cmds, Func &&func) const
 			{
 				forEachPolicyCommandImpl<decltype(*this), Components...>(*this, policy, cmds, std::forward<Func>(func));
@@ -1003,8 +871,8 @@ namespace Dimensia::ECS
 				@param[in] updateVersion Callable used to update system/component versions after processing.
 			*/
 			template <typename Func, typename Ver>
-			static void forEachPolicyVersionAndVersionCommandSeqImpl(
-				const std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks, Func &&processFunc, Ver &&updateVersion)
+			static void forEachSeqProcessChunkAndVersion(const std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks,
+														 Func &&processFunc, Ver &&updateVersion)
 			{
 				const Func processChunkFunction{std::forward<Func>(processFunc)};
 				const Ver updateVersionFunction{std::forward<Ver>(updateVersion)};
@@ -1025,9 +893,8 @@ namespace Dimensia::ECS
 				@param[in] updateVersion Callable executed once per chunk after processing to update versions.
 			*/
 			template <typename Func, typename Ver>
-			static void forEachPolicyVersionandVersionCommandParImpl(
-				const std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks, ThreadPool &threadPool,
-				Func &&processFunc, Ver &&updateVersion)
+			static void forEachParProcessChunkAndVersion(const std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks,
+														 ThreadPool &threadPool, Func &&processFunc, Ver &&updateVersion)
 			{
 				std::vector<std::future<void>> futures;
 				futures.reserve(dirtyChunks.size());
@@ -1064,7 +931,7 @@ namespace Dimensia::ECS
 				@param[in] updateVersion Callable applied after processing to adjust system versions.
 			*/
 			template <typename Func, typename Ver>
-			static void forEachPolicyVersionandVersionCommandParBatchedImpl(
+			static void forEachParBatchedProcessChunkAndVersion(
 				const std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks, ThreadPool &threadPool,
 				Func &&processFunc, Ver &&updateVersion)
 			{
@@ -1117,7 +984,7 @@ namespace Dimensia::ECS
 				@param[in] updateVersion Callable applied after processing to adjust system versions.
 			*/
 			template <typename Func, typename Ver>
-			static void forEachPolicyVersionandVersionCommandParStealingImpl(
+			static void forEachParStealingProcessChunkAndVersion(
 				const std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks, WorkStealingPool &workStealingPool,
 				Func &&processFunc, Ver &&updateVersion)
 			{
@@ -1165,25 +1032,7 @@ namespace Dimensia::ECS
 				// Collect chunks that need processing (dirty)
 				std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> dirtyChunks;
 
-				for (Archetype *arch : matchingArchetypes)
-				{
-					ui chunkCount{arch->getChunkCount()};
-
-					for (ui chunkIndex{0}; chunkIndex < chunkCount; ++chunkIndex)
-					{
-						if (arch->getEntityCount(chunkIndex) == 0)
-						{
-							continue;
-						}
-
-						const ChunkVersion &chunkVersion{arch->getChunkVersion(chunkIndex)};
-
-						if (version.needsUpdate(chunkVersion, requiredRegular))
-						{
-							dirtyChunks.emplace_back(arch, chunkIndex, &chunkVersion);
-						}
-					}
-				}
+				setDirtyChunks(dirtyChunks, matchingArchetypes, version, requiredRegular);
 
 				if (dirtyChunks.empty())
 				{
@@ -1224,17 +1073,16 @@ namespace Dimensia::ECS
 				switch (policy)
 				{
 					case ExecutionPolicy::Seq:
-						forEachPolicyVersionAndVersionCommandSeqImpl(dirtyChunks, processFunc, updateVersion);
+						forEachSeqProcessChunkAndVersion(dirtyChunks, processFunc, updateVersion);
 						break;
 					case ExecutionPolicy::Par:
-						forEachPolicyVersionandVersionCommandParImpl(dirtyChunks, self.mThreadPool, processFunc, updateVersion);
+						forEachParProcessChunkAndVersion(dirtyChunks, self.mThreadPool, processFunc, updateVersion);
 						break;
 					case ExecutionPolicy::ParBatched:
-						forEachPolicyVersionandVersionCommandParBatchedImpl(dirtyChunks, self.mThreadPool, processFunc, updateVersion);
+						forEachParBatchedProcessChunkAndVersion(dirtyChunks, self.mThreadPool, processFunc, updateVersion);
 						break;
 					case ExecutionPolicy::ParStealing:
-						forEachPolicyVersionandVersionCommandParStealingImpl(dirtyChunks, self.mWorkStealingPool, processFunc,
-																			 updateVersion);
+						forEachParStealingProcessChunkAndVersion(dirtyChunks, self.mWorkStealingPool, processFunc, updateVersion);
 						break;
 					default:
 						assert(false && "Invalid execution policy");
@@ -1249,6 +1097,7 @@ namespace Dimensia::ECS
 				@param[in] func User callable.
 			*/
 			template <typename... Components, typename Func>
+				requires((!AllType<Components> && !AnyType<Components> && !NoneType<Components>) && ...)
 			void forEach(const ExecutionPolicy &policy, SystemVersion &version, Func &&func)
 			{
 				forEachPolicyVersionImpl<decltype(*this), Components...>(*this, policy, version, std::forward<Func>(func));
@@ -1257,6 +1106,7 @@ namespace Dimensia::ECS
 			/*! @brief Const overload of versioned `forEach`.
 			 */
 			template <typename... Components, typename Func>
+				requires((!AllType<Components> && !AnyType<Components> && !NoneType<Components>) && ...)
 			void forEach(const ExecutionPolicy &policy, SystemVersion &version, Func &&func) const
 			{
 				forEachPolicyVersionImpl<decltype(*this), Components...>(*this, policy, version, std::forward<Func>(func));
@@ -1279,53 +1129,38 @@ namespace Dimensia::ECS
 														CommandBuffer &cmds, Func &&func)
 			{
 				constexpr ComponentMask requiredRegular{buildRequiredMask<Components...>()};
-				const auto &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
+				const std::vector<Archetype *> &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
 
 				// Collect chunks that are dirty according to the version
 				std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> dirtyChunks;
 
-				for (Archetype *arch : matchingArchetypes)
-				{
-					ui chunkCount{arch->getChunkCount()};
-
-					for (ui chunkIndex{0}; chunkIndex < chunkCount; ++chunkIndex)
-					{
-						if (arch->getEntityCount(chunkIndex) == 0)
-						{
-							continue;
-						}
-
-						const auto &chunkVersion{arch->getChunkVersion(chunkIndex)};
-
-						if (version.needsUpdate(chunkVersion, requiredRegular))
-						{
-							dirtyChunks.emplace_back(arch, chunkIndex, &chunkVersion);
-						}
-					}
-				}
+				setDirtyChunks(dirtyChunks, matchingArchetypes, version, requiredRegular);
 
 				if (dirtyChunks.empty())
 				{
 					return;
 				}
 
+				using FuncT = std::decay_t<Func>;
+				const FuncT processChunkFunction{std::forward<Func>(func)};
+
 				// Processing lambda – dispatches to the correct chunk processing function
-				auto processChunk = [&, function = std::forward<Func>(func)](Archetype *arch, ui chunkIndex) {
+				auto processChunk = [&, processChunkFunction](Archetype *arch, ui chunkIndex) {
 					ui entityCount{arch->getEntityCount(chunkIndex)};
 
 					if constexpr (std::is_const_v<Self>)
 					{
-						const Entity *entityArr = arch->getEntityArray(chunkIndex);
+						const Entity *entities{arch->getEntityArray(chunkIndex)};
 						processChunkEntitiesConst<Components...>(
-							entityArr, entityCount, chunkIndex, arch,
-							[&](const Entity &entity, const auto &...comps) { function(entity, comps..., cmds); });
+							entities, entityCount, chunkIndex, arch,
+							[&](const Entity &entity, const auto &...comps) { processChunkFunction(entity, comps..., cmds); });
 					}
 					else
 					{
 						Entity *entityArr = arch->getEntityArray(chunkIndex);
 						processChunkEntities<Components...>(
 							entityArr, entityCount, chunkIndex, arch,
-							[&](const Entity &entity, auto &...comps) { function(entity, comps..., cmds); });
+							[&](const Entity &entity, auto &...comps) { processChunkFunction(entity, comps..., cmds); });
 					}
 				};
 
@@ -1347,18 +1182,17 @@ namespace Dimensia::ECS
 				switch (policy)
 				{
 					case ExecutionPolicy::Seq:
-						forEachPolicyVersionAndVersionCommandSeqImpl(dirtyChunks, processChunk, updateVersion);
+						forEachSeqProcessChunkAndVersion(dirtyChunks, processChunk, updateVersion);
 						break;
 					case ExecutionPolicy::Par:
 
-						forEachPolicyVersionandVersionCommandParImpl(dirtyChunks, self.mThreadPool, processChunk, updateVersion);
+						forEachParProcessChunkAndVersion(dirtyChunks, self.mThreadPool, processChunk, updateVersion);
 						break;
 					case ExecutionPolicy::ParBatched:
-						forEachPolicyVersionandVersionCommandParBatchedImpl(dirtyChunks, self.mThreadPool, processChunk, updateVersion);
+						forEachParBatchedProcessChunkAndVersion(dirtyChunks, self.mThreadPool, processChunk, updateVersion);
 						break;
 					case ExecutionPolicy::ParStealing:
-						forEachPolicyVersionandVersionCommandParStealingImpl(dirtyChunks, self.mWorkStealingPool, processChunk,
-																			 updateVersion);
+						forEachParStealingProcessChunkAndVersion(dirtyChunks, self.mWorkStealingPool, processChunk, updateVersion);
 						break;
 					default:
 						assert(false && "Invalid execution policy");
@@ -1379,6 +1213,7 @@ namespace Dimensia::ECS
 			   each dirty chunk.
 			*/
 			template <typename... Components, typename Func>
+				requires((!AllType<Components> && !AnyType<Components> && !NoneType<Components>) && ...)
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
 			{
 				forEachPolicyVersionCommandImpl<decltype(*this), Components...>(*this, policy, version, cmds, std::forward<Func>(func));
@@ -1396,9 +1231,770 @@ namespace Dimensia::ECS
 				@note Use this overload for read-only systems that still require issuing commands via `cmds`.
 			*/
 			template <typename... Components, typename Func>
+				requires((!AllType<Components> && !AnyType<Components> && !NoneType<Components>) && ...)
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
 				forEachPolicyVersionCommandImpl<decltype(*this), Components...>(*this, policy, version, cmds, std::forward<Func>(func));
+			}
+
+			// MARK: forEachQueryImpl
+
+			template <class Self, typename ReqList, typename AnyList, typename NoneList, typename Func>
+			static void forEachQueryImpl(Self &self, ExecutionPolicy &policy, Func &&func)
+			{
+				constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
+				constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
+				constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
+
+				QueryKey key{.required = requiredMask, .any = anyMask, .none = noneMask};
+
+				const std::vector<Archetype *> &matchingArchetypes{
+					getMatchingArchetypesForQueryCalls<Self, AnyList, NoneList>(self, key, requiredMask, anyMask, noneMask)};
+
+				const Func forwardedFunction{std::forward<Func>(func)};
+
+				// Process each matching archetype (sequential; extend to parallel as needed)
+				auto processChunk = [&](Archetype *arch, const ui chunkIndex, const ui entityCount) {
+					if constexpr (std::is_const_v<Self>)
+					{
+						const Entity *entities{arch->getEntityArray(chunkIndex)};
+
+						[&]<typename... Req>(TypeList<Req...>) {
+							processChunkEntitiesConst<Req...>(entities, entityCount, chunkIndex, arch, forwardedFunction);
+						}(ReqList{});
+					}
+					else
+					{
+						Entity *entities{arch->getEntityArray(chunkIndex)};
+
+						[&]<typename... Req>(TypeList<Req...>) {
+							processChunkEntities<Req...>(entities, entityCount, chunkIndex, arch, std::forward<Func>(func));
+						}(ReqList{});
+					}
+				};
+
+				switch (policy)
+				{
+					case ExecutionPolicy::Seq:
+						forEachSeqProcessChunkOnly(matchingArchetypes, processChunk);
+						break;
+					case ExecutionPolicy::Par:
+						forEachParProcessChunkOnly(matchingArchetypes, self.mThreadPool, processChunk);
+						break;
+					case ExecutionPolicy::ParBatched:
+						forEachParBatchedProcessChunkOnly(matchingArchetypes, self.mThreadPool, processChunk);
+						break;
+					case ExecutionPolicy::ParStealing:
+						forEachParStealingProcessChunkOnly(matchingArchetypes, self.mWorkStealingPool, processChunk);
+						break;
+						break;
+					default:
+						assert(false && "Invalid execution policy");
+				}
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			template <class Self, AllType ReqList, AnyType AnyList, NoneType NoneList, typename Func>
+			static void forEachQueryVersionImpl(Self &self, const ExecutionPolicy &policy, SystemVersion &version, Func &&func)
+			{
+				constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
+				constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
+				constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
+
+				QueryKey key{.required = requiredMask, .any = anyMask, .none = noneMask};
+
+				const std::vector<Archetype *> &matchingArchetypes{
+					getMatchingArchetypesForQueryCalls<Self, AnyList, NoneList>(self, key, requiredMask, anyMask, noneMask)};
+
+				// Collect chunks that need processing (dirty)
+				std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> dirtyChunks;
+
+				setDirtyChunks(dirtyChunks, matchingArchetypes, version, requiredMask);
+
+				if (dirtyChunks.empty())
+				{
+					return;
+				}
+
+				using FuncT = std::decay_t<Func>;
+				const FuncT processChunkFunction{std::forward<Func>(func)};
+
+				// Process each matching archetype (sequential; extend to parallel as needed)
+				auto processChunk = [&, processChunkFunction](Archetype *arch, const ui chunkIndex) {
+					ui entityCount{arch->getEntityCount(chunkIndex)};
+
+					if constexpr (std::is_const_v<Self>)
+					{
+						const Entity *entities{arch->getEntityArray(chunkIndex)};
+
+						[&]<typename... Req>(TypeList<Req...>) {
+							processChunkEntitiesConst<Req...>(
+								entities, entityCount, chunkIndex, arch,
+								[&](Entity &entity, const auto &...comps) { processChunkFunction(entity, comps...); });
+						}(ReqList{});
+					}
+					else
+					{
+						Entity *entities{arch->getEntityArray(chunkIndex)};
+
+						[&]<typename... Req>(TypeList<Req...>) {
+							processChunkEntitiesConst<Req...>(
+								entities, entityCount, chunkIndex, arch,
+								[&](Entity &entity, const auto &...comps) { processChunkFunction(entity, comps...); });
+						}(ReqList{});
+					}
+				};
+
+				// Helper to update the SystemVersion after processing a chunk
+				auto updateVersion = [&](const std::tuple<Archetype *, ui, const ChunkVersion *> &chunk) {
+					const Archetype *arch{std::get<0>(chunk)};
+					const ui chunkIndex{std::get<1>(chunk)};
+
+					const ChunkVersion *chunkVer{std::get<2>(chunk)};
+
+					forEachSetBit(requiredMask, [&](const ComponentTypeID &componentTypeID) {
+						version.setComponentVersion(componentTypeID, std::max(version.getComponentVersion(componentTypeID),
+																			  chunkVer->getComponentVersion(componentTypeID)));
+					});
+
+					version.setVersion(std::max(version.getVersion(), arch->getChunkVersion(chunkIndex).getVersion()));
+				};
+
+				switch (policy)
+				{
+					case ExecutionPolicy::Seq:
+						forEachSeqProcessChunkAndVersion(dirtyChunks, processChunk, updateVersion);
+						break;
+					case ExecutionPolicy::Par:
+						forEachParProcessChunkAndVersion(dirtyChunks, self.mThreadPool, processChunk, updateVersion);
+						break;
+					case ExecutionPolicy::ParBatched:
+						forEachParBatchedProcessChunkAndVersion(dirtyChunks, self.mThreadPool, processChunk, updateVersion);
+						break;
+					case ExecutionPolicy::ParStealing:
+						forEachParStealingProcessChunkAndVersion(dirtyChunks, self.mWorkStealingPool, processChunk, updateVersion);
+						break;
+					default:
+						assert(false && "Invalid execution policy");
+				}
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			template <class Self, typename ReqList, typename AnyList, typename NoneList, typename Func>
+			static void forEachQueryCommandImpl(Self &self, ExecutionPolicy &policy, CommandBuffer & /*cmds*/, Func &&func)
+			{
+				constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
+				constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
+				constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
+
+				QueryKey key{.required = requiredMask, .any = anyMask, .none = noneMask};
+
+				const std::vector<Archetype *> &matchingArchetypes{
+					getMatchingArchetypesForQueryCalls<Self, AnyList, NoneList>(self, key, requiredMask, anyMask, noneMask)};
+
+				using FuncT = std::decay_t<Func>;
+				const FuncT processChunkFunction{std::forward<Func>(func)};
+
+				// Process each matching archetype (sequential; extend to parallel as needed)
+				auto processChunk = [&, processChunkFunction](Archetype *arch, const ui chunkIndex, const ui entityCount) {
+					if constexpr (std::is_const_v<Self>)
+					{
+						const Entity *entities{arch->getEntityArray(chunkIndex)};
+
+						[&]<typename... Req>(TypeList<Req...>) {
+							processChunkEntitiesConst<Req...>(
+								entities, entityCount, chunkIndex, arch,
+								[&](const Entity &entity, const auto &...comps) { processChunkFunction(entity, comps...); });
+						}(ReqList{});
+					}
+					else
+					{
+						Entity *entities{arch->getEntityArray(chunkIndex)};
+
+						[&]<typename... Req>(TypeList<Req...>) {
+							processChunkEntitiesConst<Req...>(
+								entities, entityCount, chunkIndex, arch,
+								[&](Entity &entity, const auto &...comps) { processChunkFunction(entity, comps...); });
+						}(ReqList{});
+					}
+				};
+
+				switch (policy)
+				{
+					case ExecutionPolicy::Seq:
+						forEachSeqProcessChunkOnly(matchingArchetypes, processChunk);
+						break;
+					case ExecutionPolicy::Par:
+						forEachParProcessChunkOnly(matchingArchetypes, self.mThreadPool, processChunk);
+						break;
+					case ExecutionPolicy::ParBatched:
+						forEachParBatchedProcessChunkOnly(matchingArchetypes, self.mThreadPool, processChunk);
+						break;
+					case ExecutionPolicy::ParStealing:
+						forEachParStealingProcessChunkOnly(matchingArchetypes, self.mWorkStealingPool, processChunk);
+						break;
+						break;
+					default:
+						assert(false && "Invalid execution policy");
+				}
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <class Self, typename ReqList, typename AnyList, typename NoneList, typename Func>
+			static void forEachQueryVersionCommandImpl(Self &self, ExecutionPolicy &policy, SystemVersion &version,
+													   CommandBuffer & /*cmds*/, Func &&func)
+			{
+				constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
+				constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
+				constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
+
+				QueryKey key{.required = requiredMask, .any = anyMask, .none = noneMask};
+
+				const std::vector<Archetype *> &matchingArchetypes{
+					getMatchingArchetypesForQueryCalls<Self, AnyList, NoneList>(self, key, requiredMask, anyMask, noneMask)};
+
+				// Collect chunks that are dirty according to the version
+				std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> dirtyChunks;
+
+				setDirtyChunks(dirtyChunks, matchingArchetypes, version, requiredMask);
+
+				if (dirtyChunks.empty())
+				{
+					return;
+				}
+
+				using FuncT = std::decay_t<Func>;
+				const FuncT processChunkFunction{std::forward<Func>(func)};
+
+				// Process each matching archetype (sequential; extend to parallel as needed)
+				auto processChunk = [&, processChunkFunction](Archetype *arch, const ui chunkIndex) {
+					ui entityCount{arch->getEntityCount(chunkIndex)};
+
+					if constexpr (std::is_const_v<Self>)
+					{
+						const Entity *entities{arch->getEntityArray(chunkIndex)};
+
+						[&]<typename... Req>(TypeList<Req...>) {
+							processChunkEntitiesConst<Req...>(
+								entities, entityCount, chunkIndex, arch,
+								[&](Entity &entity, const auto &...comps) { processChunkFunction(entity, comps...); });
+						}(ReqList{});
+					}
+					else
+					{
+						Entity *entities{arch->getEntityArray(chunkIndex)};
+
+						[&]<typename... Req>(TypeList<Req...>) {
+							processChunkEntitiesConst<Req...>(
+								entities, entityCount, chunkIndex, arch,
+								[&](Entity &entity, const auto &...comps) { processChunkFunction(entity, comps...); });
+						}(ReqList{});
+					}
+				};
+
+				// Helper to update the SystemVersion after processing a chunk
+				auto updateVersion = [&](const std::tuple<Archetype *, ui, const ChunkVersion *> &chunk) {
+					const Archetype *arch{std::get<0>(chunk)};
+					const ui chunkIndex{std::get<1>(chunk)};
+
+					const ChunkVersion *chunkVer{std::get<2>(chunk)};
+
+					forEachSetBit(requiredMask, [&](const ComponentTypeID &componentTypeID) {
+						version.setComponentVersion(componentTypeID, std::max(version.getComponentVersion(componentTypeID),
+																			  chunkVer->getComponentVersion(componentTypeID)));
+					});
+
+					version.setVersion(std::max(version.getVersion(), arch->getChunkVersion(chunkIndex).getVersion()));
+				};
+
+				switch (policy)
+				{
+					case ExecutionPolicy::Seq:
+						forEachSeqProcessChunkAndVersion(dirtyChunks, processChunk, updateVersion);
+						break;
+					case ExecutionPolicy::Par:
+
+						forEachParProcessChunkAndVersion(dirtyChunks, self.mThreadPool, processChunk, updateVersion);
+						break;
+					case ExecutionPolicy::ParBatched:
+						forEachParBatchedProcessChunkAndVersion(dirtyChunks, self.mThreadPool, processChunk, updateVersion);
+						break;
+					case ExecutionPolicy::ParStealing:
+						forEachParStealingProcessChunkAndVersion(dirtyChunks, self.mWorkStealingPool, processChunk, updateVersion);
+						break;
+					default:
+						assert(false && "Invalid execution policy");
+				}
+			}
+
+			// -----------------------------------------------------------------------------
+			// Two‑parameter overloads: (Req, None) – Any defaults to Any<>
+			// -----------------------------------------------------------------------------
+			template <AllType AllFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>; // empty – no "any" filter
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			// Const versions
+			template <AllType AllFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>; // empty – no "any" filter
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			// Const versions
+			template <AllType AllFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>; // empty – no "any" filter
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			// Const versions
+			template <AllType AllFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>; // empty – no "any" filter
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryVersionCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, cmds,
+																							std::forward<Func>(func));
+			}
+
+			// Const versions
+			template <AllType AllFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryVersionCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, cmds,
+																							std::forward<Func>(func));
+			}
+
+			// -----------------------------------------------------------------------------
+			// Two‑parameter overloads: (Req, Any) – None defaults to None<>
+			// -----------------------------------------------------------------------------
+			template <AllType AllFilter, AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>; // empty – no "none" filter
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			// Const versions
+			template <AllType AllFilter, AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>; // empty – no "none" filter
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>; // empty – no "none" filter
+				forEachQueryVersionCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, cmds,
+																							std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>;
+				forEachQueryVersionCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, cmds,
+																							std::forward<Func>(func));
+			}
+
+			// -----------------------------------------------------------------------------
+			// Two‑parameter overloads: (Any, None) – Req defaults to All<>
+			// -----------------------------------------------------------------------------
+			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func)
+			{
+				using ReqList = TypeList<>; // empty – no required components
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			// Const versions
+			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
+			{
+				using ReqList = TypeList<>; // empty – no required components
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
+			{
+				using ReqList = TypeList<>; // empty – no required components
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryVersionCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, cmds,
+																							std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryVersionCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, cmds,
+																							std::forward<Func>(func));
+			}
+
+			// -----------------------------------------------------------------------------
+			// One‑parameter overloads: (All) – Any defaults to Any<> and None defaults to None<>
+			// -----------------------------------------------------------------------------
+
+			template <AllType AllFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>;
+				using NoneList = TypeList<>;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			template <NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = TypeList<>;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>;
+				using NoneList = TypeList<>;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			template <NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = TypeList<>;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>;
+				using NoneList = TypeList<>;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = TypeList<>;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>;
+				using NoneList = TypeList<>;
+				forEachQueryVersionCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, cmds,
+																							std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>;
+				forEachQueryVersionCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, cmds,
+																							std::forward<Func>(func));
+			}
+
+			template <NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = TypeList<>;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryVersionCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, cmds,
+																							std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(Func &&func)
+			{
+				forEach<AllFilter, AnyFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
+			}
+
+			// Const version
+			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(Func &&func) const
+			{
+				forEach<AllFilter, AnyFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, NoneType NoneFilter, typename Func>
+			void forEach(Func &&func)
+			{
+				forEach<AllFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, NoneType NoneFilter, typename Func>
+			void forEach(Func &&func) const
+			{
+				forEach<AllFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, typename Func>
+			void forEach(Func &&func)
+			{
+				forEach<AllFilter, AnyFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, typename Func>
+			void forEach(Func &&func) const
+			{
+				forEach<AllFilter, AnyFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(Func &&func)
+			{
+				forEach<AnyFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(Func &&func) const
+			{
+				forEach<AnyFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, typename Func>
+			void forEach(Func &&func) const
+			{
+				forEach<AllFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, typename Func>
+			void forEach(Func &&func) const
+			{
+				forEach<AnyFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
+			}
+
+			template <NoneType NoneFilter, typename Func>
+			void forEach(Func &&func) const
+			{
+				forEach<NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
 
 		private:
@@ -1499,6 +2095,8 @@ namespace Dimensia::ECS
 				}
 			}
 
+			// MARK: Private Template Member Functions
+
 			/*! @brief Helper invoked during entity creation to classify a provided argument as a copy/move or tag.
 				@tparam Param The original parameter type (for constness detection).
 				@tparam Stored The decayed stored type.
@@ -1542,6 +2140,76 @@ namespace Dimensia::ECS
 				}
 			}
 
+			template <class Self, typename AnyList, typename NoneList>
+			static std::vector<Archetype *> &getMatchingArchetypesForQueryCalls(Self &self, const QueryKey &key,
+																				const ComponentMask &requiredMask,
+																				const ComponentMask &anyMask, const ComponentMask &noneMask)
+			{
+				auto iterator{self.mMultiQueryCache.find(key)};
+
+				if (iterator == self.mMultiQueryCache.end())
+				{
+					// Not cached – compute matching archetypes
+					std::vector<Archetype *> matching;
+					for (const auto &archPtr : self.mArchetypePtrs)
+					{
+						const ComponentMask archMask{archPtr->getRegularMask()};
+
+						if ((archMask & requiredMask) != requiredMask)
+						{
+							continue;
+						}
+
+						if constexpr (TypeListSize<AnyList>::value != 0)
+						{
+							if (!(archMask & anyMask))
+							{
+								continue;
+							}
+						}
+
+						if constexpr (TypeListSize<NoneList>::value != 0)
+						{
+							if (archMask & noneMask)
+							{
+								continue;
+							}
+						}
+
+						matching.push_back(archPtr.get());
+					}
+
+					iterator = self.mMultiQueryCache.emplace(key, std::move(matching)).first;
+				}
+
+				return iterator->second;
+			}
+
+			static void setDirtyChunks(std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks,
+									   const std::vector<Archetype *> &matchingArchetypes, const SystemVersion &version,
+									   const ComponentMask &requiredRegular)
+			{
+				for (Archetype *arch : matchingArchetypes)
+				{
+					ui chunkCount{arch->getChunkCount()};
+
+					for (ui chunkIndex{0}; chunkIndex < chunkCount; ++chunkIndex)
+					{
+						if (arch->getEntityCount(chunkIndex) == 0)
+						{
+							continue;
+						}
+
+						const ChunkVersion &chunkVersion{arch->getChunkVersion(chunkIndex)};
+
+						if (version.needsUpdate(chunkVersion, requiredRegular))
+						{
+							dirtyChunks.emplace_back(arch, chunkIndex, &chunkVersion);
+						}
+					}
+				}
+			}
+
 			friend class CommandBuffer;
 
 		private:
@@ -1549,6 +2217,8 @@ namespace Dimensia::ECS
 				@brief Cache mapping required component masks to matching archetype lists for fast query resolution.
 			*/
 			QueryCache mQueryCache{};
+
+			mutable std::unordered_map<QueryKey, std::vector<Archetype *>> mMultiQueryCache;
 
 			// NOLINTBEGIN(readability-redundant-member-init)
 

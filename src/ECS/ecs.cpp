@@ -66,6 +66,11 @@ namespace Dimensia::ECS
 
 	void ECS::setParent(const Entity &child, const Entity &parent)
 	{
+		if (parent == child)
+		{
+			return;
+		}
+
 		if (!alive(child))
 		{
 			return;
@@ -255,6 +260,78 @@ namespace Dimensia::ECS
 		entity.state = State::Destroyed;
 	}
 
+	Entity ECS::cloneEntity(const Entity &src, bool cloneHierarchy)
+	{
+		if (!alive(src))
+		{
+			return NULL_ENTITY;
+		}
+
+		assert(src.index < mRecords.size());
+
+		// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		const EntityRecord &srcRec{mRecords[src.index]};
+
+		assert(srcRec.archetypeID < mArchetypePtrs.size());
+
+		const Archetype *srcArch{mArchetypePtrs[srcRec.archetypeID].get()};
+
+		// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+
+		const ComponentMask srcTags{srcArch->getTags(srcRec.chunkIndex, srcRec.slotIndex)};
+
+		std::array<const void *, MAX_COMPONENTS> copyData{};
+		copyData.fill(nullptr);
+
+		srcArch->forEachComponent([&](ComponentTypeID compID) {
+			const void *srcPtr{getComponentPtr(src, compID)};
+
+			if (!srcPtr)
+			{
+				return; // shouldn't happen
+			}
+
+			assert(compID < ComponentInfos.size());
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			const ComponentInfo &info{ComponentInfos[compID]};
+
+			void *mem = operator new(info.size, std::align_val_t(info.alignment));
+			info.copyConstruct(mem, srcPtr);
+
+			assert(compID < copyData.size());
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			copyData[compID] = mem;
+		});
+
+		// Create a new entity (initially in the empty archetype)
+		Entity dst = createEntity();
+
+		// Move the new entity to the target archetype, constructing components from the copies
+		moveEntity(dst, srcArch->getRegularMask(), copyData, {}, srcTags);
+
+		// Recursively clone children if requested
+		if (cloneHierarchy)
+		{
+			const std::vector<Entity> children{getChildren(src)};
+
+			for (const Entity &child : children)
+			{
+				if (!alive(child))
+				{
+					continue;
+				}
+
+				const Entity childClone{cloneEntity(child, true)};
+
+				setParent(childClone, dst);
+			}
+		}
+
+		return dst;
+	}
+
 	bool ECS::alive(const Entity &entity) const noexcept
 	{
 		if (entity.index >= mRecords.size())
@@ -348,6 +425,12 @@ namespace Dimensia::ECS
 		moveEntity(entity, newRegular, copyData, moveData);
 	}
 
+	void ECS::invalidateQueries()
+	{
+		mQueryCache.clearResults();
+		mMultiQueryCache.clear();
+	}
+
 	// MARK: Private Getters
 
 	Archetype *ECS::getOrCreateArchetype(ComponentMask regularMask)
@@ -369,6 +452,8 @@ namespace Dimensia::ECS
 		mArchetypePtrs.push_back(std::move(newArch));
 		mArchetypeMaskToID[regularMask] = newID;
 		mQueryCache.addArchetype(regularMask, ptr);
+
+		invalidateQueries();
 
 		return ptr;
 	}

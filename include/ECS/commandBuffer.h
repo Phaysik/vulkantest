@@ -124,7 +124,6 @@ namespace Dimensia::ECS
 			// MARK: Private Member Functions
 
 			/*! @brief Return or create the `ThreadBuffer` for the calling thread.
-				@note Uses `thread_local` cache for the fast path and locks `mMapMutex` on first access.
 				@return Pointer to the caller's `ThreadBuffer`.
 			*/
 			ThreadBuffer *getThreadBuffer();

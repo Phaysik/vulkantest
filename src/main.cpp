@@ -16,6 +16,7 @@
 #include "ECS/commandBuffer.h"
 #include "ECS/ecs.h"
 #include "ECS/entity.h"
+#include "ECS/queryFilter.h"
 #include "ECS/systemVersion.h"
 #include "Tags/Alive/aliveTag.h"
 #include "Tags/Buffed/buffedTag.h"
@@ -38,12 +39,15 @@ int main()
 	using Dimensia::Tags::BuffedTag;
 	using Dimensia::Tags::DebugTag;
 
+	using Dimensia::ECS::All;
+	using Dimensia::ECS::Any;
 	using Dimensia::ECS::CommandBuffer;
 	using Dimensia::ECS::Entity;
 	using Dimensia::ECS::ExecutionPolicy;
+	using Dimensia::ECS::None;
 	using Dimensia::ECS::SystemVersion;
 
-	std::cout << alignof(void *) << '\n';
+	std::cout << alignof(std::unordered_map<Dimensia::ECS::QueryKey, std::vector<Dimensia::ECS::Archetype *>>) << '\n';
 	std::cout << alignof(void (*)(void *)) << '\n';
 	std::cout << alignof(Dimensia::ECS::ComponentTypeID) << '\n';
 	// std::cout << alignof(bool) << '\n';
@@ -69,36 +73,36 @@ int main()
 	std::cout << "After removing BuffedTag: " << ecs.hasTag<BuffedTag>(goblin) << "\n";
 
 	std::cout << "\n--- Before movement ---\n";
-	ecs.forEach<Position, Velocity>([](Entity entity, Position &position, Velocity &velocity) {
+	ecs.forEach<Position, Velocity>([](Entity &entity, Position &position, Velocity &velocity) {
 		std::cout << "Entity " << entity.index << ":" << entity.generation << " pos=(" << position.x << "," << position.y << ","
 				  << position.z << ")" << " vel=(" << velocity.dx << "," << velocity.dy << "," << velocity.dz << ")\n";
 	});
 
-	ecs.forEach<Position, Velocity>([](ATTR_MAYBE_UNUSED Entity entity, Position &position, Velocity &velocity) {
+	ecs.forEach<Position, Velocity>([](ATTR_MAYBE_UNUSED Entity &entity, Position &position, Velocity &velocity) {
 		position.x += velocity.dx;
 		position.y += velocity.dy;
 		position.z += velocity.dz;
 	});
 
 	std::cout << "\n--- After movement ---\n";
-	ecs.forEach<Position, Velocity>([](Entity entity, Position &position, Velocity &velocity) {
+	ecs.forEach<Position, Velocity>([](Entity &entity, Position &position, Velocity &velocity) {
 		std::cout << "Entity " << entity.index << ":" << entity.generation << " pos=(" << position.x << "," << position.y << ","
 				  << position.z << ")" << " vel=(" << velocity.dx << "," << velocity.dy << "," << velocity.dz << ")\n";
 	});
 
 	const ECS &cecs = ecs;
 	std::cout << "\n--- Const query (Health) ---\n";
-	cecs.forEach<Health>([](Entity entity, const Health &health) {
+	cecs.forEach<Health>([](Entity &entity, const Health &health) {
 		std::cout << "Entity " << entity.index << ":" << entity.generation << " HP=" << health.hp << "\n";
 	});
 
 	std::cout << "\n--- Entities with AliveTag ---\n";
-	ecs.forEach<Name, AliveTag>([](Entity entity, Name &name, AliveTag) {
+	ecs.forEach<Name, AliveTag>([](Entity &entity, Name &name, AliveTag) {
 		std::cout << "Entity " << entity.index << ":" << entity.generation << " name=" << name.name << "\n";
 	});
 
 	std::cout << "\n--- Buffs ---\n";
-	ecs.forEach<Buffs>([](Entity entity, Buffs &buffs) {
+	ecs.forEach<Buffs>([](Entity &entity, Buffs &buffs) {
 		for (const auto &buff : buffs.activeBuffs)
 		{
 			std::cout << "Entity " << entity.index << ":" << entity.generation << " has buff " << buff.name << " with duration "
@@ -121,16 +125,16 @@ int main()
 
 	// Batch processing
 	ecs.forEach<Position, Velocity>(ExecutionPolicy::ParBatched,
-									[](ATTR_MAYBE_UNUSED Entity entity, Position &pos, Velocity &vel) { pos.x += vel.dx; });
+									[](ATTR_MAYBE_UNUSED Entity &entity, Position &pos, Velocity &vel) { pos.x += vel.dx; });
 
 	// Work stealing
 	ecs.forEach<Position, Velocity>(ExecutionPolicy::ParStealing,
-									[](ATTR_MAYBE_UNUSED Entity entity, Position &pos, Velocity &vel) { pos.x += vel.dx; });
+									[](ATTR_MAYBE_UNUSED Entity &entity, Position &pos, Velocity &vel) { pos.x += vel.dx; });
 
 	// Version-aware (only process changed chunks)
 	SystemVersion physicsVersion;
 	ecs.forEach<Position, Velocity>(ExecutionPolicy::Par, physicsVersion,
-									[](ATTR_MAYBE_UNUSED Entity entity, Position &pos, Velocity &vel) { pos.x += vel.dx; });
+									[](ATTR_MAYBE_UNUSED Entity &entity, Position &pos, Velocity &vel) { pos.x += vel.dx; });
 
 	// --- Hierarchy example ---
 	std::cout << "\n--- Hierarchy example ---\n";
@@ -153,7 +157,7 @@ int main()
 	CommandBuffer cmds;
 	constexpr float startingHealth{200.F};
 
-	ecs.forEach<Name>(ExecutionPolicy::Seq, cmds, [&](Entity entity, Name &) {
+	ecs.forEach<Name>(ExecutionPolicy::Seq, cmds, [&](Entity &entity, const Name &) {
 		cmds.addComponent(entity, Health{startingHealth}); // defer adding Health
 	});
 	cmds.apply(ecs);
@@ -173,7 +177,7 @@ int main()
 	{
 		CommandBuffer commands;
 		ecs.forEach<Health>(ExecutionPolicy::ParBatched, healthVersion, commands,
-							[](Entity entity, Health &health, CommandBuffer &commandBuffer) {
+							[](const Entity &entity, Health &health, CommandBuffer &commandBuffer) {
 								// Simulate work: increment health
 								health.hp += 1.0F;
 								// Record a command to add a Name component to this entity
@@ -394,7 +398,7 @@ int main()
 
 	Dimensia::Utility::Clock::Timer::start();
 
-	ecs.forEach<Name>(ExecutionPolicy::ParStealing, stressCmds, [&](Entity entity, Name &) {
+	ecs.forEach<Name>(ExecutionPolicy::ParStealing, stressCmds, [&](Entity &entity, const Name &) {
 		volatile float dummy = 1.0;
 		for (int iter = 0; iter < WORKLOAD; ++iter)
 		{
@@ -447,7 +451,7 @@ int main()
 
 	ecs.forEach<Health>([&](Entity, Health &) { ++healthCount; });
 	ecs.forEach<Name>([&](Entity, Name &) { ++nameCount; });
-	for (const Entity entity : entities)
+	for (const Entity &entity : entities)
 	{
 		if (ecs.alive(entity))
 		{
@@ -497,6 +501,124 @@ int main()
 	std::cout << "Cleanup took " << time << " ms.\n";
 
 	ecs.compact();
+
+	// ------------------------------------------------------------------------
+	//  Query filter examples (All, Any, None)
+	// ------------------------------------------------------------------------
+	std::cout << "\n=== Query filter examples (All / Any / None) ===\n";
+
+	// Create a few entities with different component combinations for testing
+	Entity queryFilterE1{
+		ecs.createEntityWith(Name{"Entity1"}, Position{.x = 0, .y = 0, .z = 0}, Velocity{.dx = 1, .dy = 0, .dz = 0}, Health{100})};
+	Entity queryFilterE2{
+		ecs.createEntityWith(Name{"Entity2"}, Position{.x = 1, .y = 1, .z = 1}, Velocity{.dx = 0, .dy = 1, .dz = 0}, Mana{50})};
+	Entity queryFilterE3{
+		ecs.createEntityWith(Name{"Entity3"}, Position{.x = 2, .y = 2, .z = 2}, Velocity{.dx = 0, .dy = 0, .dz = 1}, Health{80}, Mana{30})};
+	Entity queryFilterE4{ecs.createEntityWith(Name{"Entity4"}, Position{.x = 3, .y = 3, .z = 3}, Health{120})};
+	Entity queryFilterE5{ecs.createEntityWith(Name{"Entity5"}, Velocity{.dx = 1, .dy = 2, .dz = 3}, Mana{20})};
+	Entity queryFilterE6{ecs.createEntityWith(Name{"Entity6"}, Health{90}, Mana{40}, Buffs{})};
+	Entity queryFilterE7{ecs.createEntityWith(Name{"Entity7"}, Buffs{})};
+
+	std::cout << "\nCreated test entities:\n";
+	std::cout << "e1: Name, Pos, Vel, Health\n";
+	std::cout << "e2: Name, Pos, Vel, Mana\n";
+	std::cout << "e3: Name, Pos, Vel, Health, Mana\n";
+	std::cout << "e4: Name, Pos, Health\n";
+	std::cout << "e5: Name, Vel, Mana\n";
+	std::cout << "e6: Name, Health, Mana, Buffs\n";
+	std::cout << "e7: Name, Buffs\n";
+
+	// Helper lambda to print matching entity indices
+	auto printMatches = [&](std::string_view description, const auto &queryFunc) {
+		std::cout << description << ": ";
+		queryFunc();
+		std::cout << "\n";
+	};
+
+	// 1. All<...> only
+	printMatches("All<Position, Velocity>", [&] {
+		ecs.forEach<All<Position, Velocity>>([](const Entity &entity, Position &, Velocity &) { std::cout << entity.index << " "; });
+	});
+
+	// 2. Any<...> only
+	printMatches("Any<Health, Mana>",
+				 [&] { ecs.forEach<All<>, Any<Health, Mana>>([](const Entity &entity) { std::cout << entity.index << " "; }); });
+
+	// 3. None<...> only
+	printMatches("None<Buffs>", [&] { ecs.forEach<All<>, None<Buffs>>([](const Entity &entity) { std::cout << entity.index << " "; }); });
+
+	// 4. All + Any
+	printMatches("All<Position> + Any<Health, Mana>", [&] {
+		ecs.forEach<All<Position>, Any<Health, Mana>>([](const Entity &entity, Position &) { std::cout << entity.index << " "; });
+	});
+
+	// 5. All + None
+	printMatches("All<Position> + None<Buffs>", [&] {
+		ecs.forEach<All<Position>, None<Buffs>>([](const Entity &entity, Position &) { std::cout << entity.index << " "; });
+	});
+
+	// 6. Any + None
+	printMatches("Any<Health, Mana> + None<Buffs>", [&] {
+		ecs.forEach<All<>, Any<Health, Mana>, None<Buffs>>([](const Entity &entity) { std::cout << entity.index << " "; });
+	});
+
+	// 7. All + Any + None
+	printMatches("All<Position> + Any<Health, Mana> + None<Buffs>", [&] {
+		ecs.forEach<All<Position>, Any<Health, Mana>, None<Buffs>>(
+			[](const Entity &entity, Position &) { std::cout << entity.index << " "; });
+	});
+
+	// 8. All<Name> (equivalent to original raw component query, but using new syntax)
+	printMatches("All<Name>", [&] { ecs.forEach<All<Name>>([](const Entity &entity, Name &) { std::cout << entity.index << " "; }); });
+
+	// 9. Any<Buffs> (entities that have Buffs)
+	printMatches("Any<Buffs>", [&] { ecs.forEach<All<>, Any<Buffs>>([](const Entity &entity) { std::cout << entity.index << " "; }); });
+
+	// 10. None<Position> (entities without Position)
+	printMatches("None<Position>",
+				 [&] { ecs.forEach<All<>, None<Position>>([](const Entity &entity) { std::cout << entity.index << " "; }); });
+
+	// Cleanup test entities (optional, they will be destroyed later anyway)
+	for (Entity entity : {queryFilterE1, queryFilterE2, queryFilterE3, queryFilterE4, queryFilterE5, queryFilterE6, queryFilterE7})
+	{
+		if (ecs.alive(entity))
+		{
+			ecs.destroyEntity(entity, false);
+		}
+	}
+
+	ecs.compact();
+
+	cmds.clear();
+
+	std::cout << "All<Position, Velocity> with command buffer: ";
+
+	ecs.forEach<All<Position, Velocity>>(ExecutionPolicy::Seq, cmds, [&](Entity &entity, const Position & /*p*/, const Velocity & /*v*/) {
+		// Do work and possibly record commands
+		cmds.addComponent(entity, Health{startingHealth});
+		std::cout << entity.index << ' ';
+	});
+
+	std::cout << "\n";
+
+	cmds.apply(ecs);
+
+	cmds.clear();
+
+	SystemVersion queryVersion;
+
+	std::cout << "All<Position, Velocity> with system version and command buffer: ";
+
+	ecs.forEach<All<Position, Velocity>>(ExecutionPolicy::Seq, queryVersion, cmds,
+										 [&](Entity &entity, const Position & /*p*/, const Velocity & /*v*/) {
+											 // Do work and possibly record commands
+											 cmds.addComponent(entity, Health{startingHealth});
+											 std::cout << entity.index << ' ';
+										 });
+
+	std::cout << "\n";
+
+	cmds.apply(ecs);
 
 	return 0;
 }
