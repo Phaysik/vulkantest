@@ -1311,6 +1311,94 @@ namespace Dimensia::ECS
 				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
 			}
 
+			// MARK: forEachQueryImpl 2 operator overloads
+
+			template <AllType AllFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>; // empty – no "any" filter
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			// Const versions
+			template <AllType AllFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>; // empty – no "none" filter
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func)
+			{
+				using ReqList = TypeList<>; // empty – no required components
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			// MARK: forEachQueryImpl 1 operator overloads
+
+			template <AllType AllFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>;
+				using NoneList = TypeList<>;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			template <NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = TypeList<>;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			// MARK: forEachQueryVersionImpl
+
 			template <class Self, AllType ReqList, AnyType AnyList, NoneType NoneList, typename Func>
 			static void forEachQueryVersionImpl(Self &self, const ExecutionPolicy &policy, SystemVersion &version, Func &&func)
 			{
@@ -1414,6 +1502,96 @@ namespace Dimensia::ECS
 				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
 			}
 
+			// MARK: forEachQueryVersionImpl 2 operator overloads
+
+			template <AllType AllFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>; // empty – no "any" filter
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			// Const versions
+			template <AllType AllFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			// Const versions
+			template <AllType AllFilter, AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			// Const versions
+			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			// MARK: forEachQueryVersionImpl 1 operator overloads
+
+			template <AllType AllFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>;
+				using NoneList = TypeList<>;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			template <NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = TypeList<>;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			// MARK: forEachQueryCommandImpl
+
 			template <class Self, typename ReqList, typename AnyList, typename NoneList, typename Func>
 			static void forEachQueryCommandImpl(Self &self, ExecutionPolicy &policy, CommandBuffer & /*cmds*/, Func &&func)
 			{
@@ -1490,6 +1668,94 @@ namespace Dimensia::ECS
 				using NoneList = PackExtractor<NoneFilter>::type;
 				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
 			}
+
+			// MARK: forEachQueryCommandImpl 2 operator overloads
+
+			template <AllType AllFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>; // empty – no "any" filter
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			// Const versions
+			template <AllType AllFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>; // empty – no "none" filter
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
+			{
+				using ReqList = TypeList<>; // empty – no required components
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			// MARK: forEachQueryCommandImpl 1 operator overloads
+
+			template <AllType AllFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>;
+				using NoneList = TypeList<>;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			{
+				using ReqList = TypeList<>;
+				using AnyList = TypeList<>;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			// MARK: forEachQueryVersionCommandImpl
 
 			template <class Self, typename ReqList, typename AnyList, typename NoneList, typename Func>
 			static void forEachQueryVersionCommandImpl(Self &self, ExecutionPolicy &policy, SystemVersion &version,
@@ -1578,65 +1844,28 @@ namespace Dimensia::ECS
 				}
 			}
 
-			// -----------------------------------------------------------------------------
-			// Two‑parameter overloads: (Req, None) – Any defaults to Any<>
-			// -----------------------------------------------------------------------------
-			template <AllType AllFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func)
+			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
-				using AnyList = TypeList<>; // empty – no "any" filter
+				using AnyList = PackExtractor<AnyFilter>::type;
 				using NoneList = PackExtractor<NoneFilter>::type;
-				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+				forEachQueryVersionCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, cmds,
+																							std::forward<Func>(func));
 			}
 
 			// Const versions
-			template <AllType AllFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func) const
+			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
-				using AnyList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
 				using NoneList = PackExtractor<NoneFilter>::type;
-				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+				forEachQueryVersionCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, cmds,
+																							std::forward<Func>(func));
 			}
 
-			template <AllType AllFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
-			{
-				using ReqList = PackExtractor<AllFilter>::type;
-				using AnyList = TypeList<>; // empty – no "any" filter
-				using NoneList = PackExtractor<NoneFilter>::type;
-				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
-			}
-
-			// Const versions
-			template <AllType AllFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
-			{
-				using ReqList = PackExtractor<AllFilter>::type;
-				using AnyList = TypeList<>;
-				using NoneList = PackExtractor<NoneFilter>::type;
-				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
-			}
-
-			template <AllType AllFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
-			{
-				using ReqList = PackExtractor<AllFilter>::type;
-				using AnyList = TypeList<>; // empty – no "any" filter
-				using NoneList = PackExtractor<NoneFilter>::type;
-				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
-			}
-
-			// Const versions
-			template <AllType AllFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
-			{
-				using ReqList = PackExtractor<AllFilter>::type;
-				using AnyList = TypeList<>;
-				using NoneList = PackExtractor<NoneFilter>::type;
-				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
-			}
+			// MARK: forEachQueryVersionCommandImpl 2 operator overloads
 
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
@@ -1659,64 +1888,6 @@ namespace Dimensia::ECS
 																							std::forward<Func>(func));
 			}
 
-			// -----------------------------------------------------------------------------
-			// Two‑parameter overloads: (Req, Any) – None defaults to None<>
-			// -----------------------------------------------------------------------------
-			template <AllType AllFilter, AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func)
-			{
-				using ReqList = PackExtractor<AllFilter>::type;
-				using AnyList = PackExtractor<AnyFilter>::type;
-				using NoneList = TypeList<>; // empty – no "none" filter
-				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
-			}
-
-			template <AllType AllFilter, AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func) const
-			{
-				using ReqList = PackExtractor<AllFilter>::type;
-				using AnyList = PackExtractor<AnyFilter>::type;
-				using NoneList = TypeList<>;
-				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
-			}
-
-			template <AllType AllFilter, AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
-			{
-				using ReqList = PackExtractor<AllFilter>::type;
-				using AnyList = PackExtractor<AnyFilter>::type;
-				using NoneList = TypeList<>;
-				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
-			}
-
-			// Const versions
-			template <AllType AllFilter, AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
-			{
-				using ReqList = PackExtractor<AllFilter>::type;
-				using AnyList = PackExtractor<AnyFilter>::type;
-				using NoneList = TypeList<>;
-				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
-			}
-
-			template <AllType AllFilter, AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
-			{
-				using ReqList = PackExtractor<AllFilter>::type;
-				using AnyList = PackExtractor<AnyFilter>::type;
-				using NoneList = TypeList<>; // empty – no "none" filter
-				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
-			}
-
-			template <AllType AllFilter, AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
-			{
-				using ReqList = PackExtractor<AllFilter>::type;
-				using AnyList = PackExtractor<AnyFilter>::type;
-				using NoneList = TypeList<>;
-				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
-			}
-
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
 			{
@@ -1735,64 +1906,6 @@ namespace Dimensia::ECS
 				using NoneList = TypeList<>;
 				forEachQueryVersionCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, cmds,
 																							std::forward<Func>(func));
-			}
-
-			// -----------------------------------------------------------------------------
-			// Two‑parameter overloads: (Any, None) – Req defaults to All<>
-			// -----------------------------------------------------------------------------
-			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func)
-			{
-				using ReqList = TypeList<>; // empty – no required components
-				using AnyList = PackExtractor<AnyFilter>::type;
-				using NoneList = PackExtractor<NoneFilter>::type;
-				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
-			}
-
-			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func) const
-			{
-				using ReqList = TypeList<>;
-				using AnyList = PackExtractor<AnyFilter>::type;
-				using NoneList = PackExtractor<NoneFilter>::type;
-				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
-			}
-
-			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
-			{
-				using ReqList = TypeList<>;
-				using AnyList = PackExtractor<AnyFilter>::type;
-				using NoneList = PackExtractor<NoneFilter>::type;
-				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
-			}
-
-			// Const versions
-			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
-			{
-				using ReqList = TypeList<>;
-				using AnyList = PackExtractor<AnyFilter>::type;
-				using NoneList = PackExtractor<NoneFilter>::type;
-				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
-			}
-
-			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
-			{
-				using ReqList = TypeList<>; // empty – no required components
-				using AnyList = PackExtractor<AnyFilter>::type;
-				using NoneList = PackExtractor<NoneFilter>::type;
-				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
-			}
-
-			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
-			{
-				using ReqList = TypeList<>;
-				using AnyList = PackExtractor<AnyFilter>::type;
-				using NoneList = PackExtractor<NoneFilter>::type;
-				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
 			}
 
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
@@ -1815,90 +1928,7 @@ namespace Dimensia::ECS
 																							std::forward<Func>(func));
 			}
 
-			// -----------------------------------------------------------------------------
-			// One‑parameter overloads: (All) – Any defaults to Any<> and None defaults to None<>
-			// -----------------------------------------------------------------------------
-
-			template <AllType AllFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func) const
-			{
-				using ReqList = PackExtractor<AllFilter>::type;
-				using AnyList = TypeList<>;
-				using NoneList = TypeList<>;
-				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
-			}
-
-			template <AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func) const
-			{
-				using ReqList = TypeList<>;
-				using AnyList = PackExtractor<AnyFilter>::type;
-				using NoneList = TypeList<>;
-				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
-			}
-
-			template <NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func) const
-			{
-				using ReqList = TypeList<>;
-				using AnyList = TypeList<>;
-				using NoneList = PackExtractor<NoneFilter>::type;
-				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
-			}
-
-			template <AllType AllFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
-			{
-				using ReqList = PackExtractor<AllFilter>::type;
-				using AnyList = TypeList<>;
-				using NoneList = TypeList<>;
-				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
-			}
-
-			template <AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
-			{
-				using ReqList = TypeList<>;
-				using AnyList = PackExtractor<AnyFilter>::type;
-				using NoneList = TypeList<>;
-				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
-			}
-
-			template <NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
-			{
-				using ReqList = TypeList<>;
-				using AnyList = TypeList<>;
-				using NoneList = PackExtractor<NoneFilter>::type;
-				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
-			}
-
-			template <AllType AllFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
-			{
-				using ReqList = PackExtractor<AllFilter>::type;
-				using AnyList = TypeList<>;
-				using NoneList = TypeList<>;
-				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
-			}
-
-			template <AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
-			{
-				using ReqList = TypeList<>;
-				using AnyList = PackExtractor<AnyFilter>::type;
-				using NoneList = TypeList<>;
-				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
-			}
-
-			template <NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
-			{
-				using ReqList = TypeList<>;
-				using AnyList = TypeList<>;
-				using NoneList = PackExtractor<NoneFilter>::type;
-				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
-			}
+			// MARK: forEachQueryVersionCommandImpl 1 operator overloads
 
 			template <AllType AllFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
@@ -1935,6 +1965,8 @@ namespace Dimensia::ECS
 			{
 				forEach<AllFilter, AnyFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
+
+			// MARK: forEachQuery
 
 			// Const version
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
@@ -1949,6 +1981,8 @@ namespace Dimensia::ECS
 				forEach<AllFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
 
+			// MARK: forEachQuery 2 operator overloads
+
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
 			void forEach(Func &&func) const
 			{
@@ -1978,6 +2012,8 @@ namespace Dimensia::ECS
 			{
 				forEach<AnyFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
+
+			// MARK: forEachQuery 1 operator overloads
 
 			template <AllType AllFilter, typename Func>
 			void forEach(Func &&func) const

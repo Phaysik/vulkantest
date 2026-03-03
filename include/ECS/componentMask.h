@@ -223,7 +223,10 @@ namespace std
 	template <>
 	struct hash<Dimensia::ECS::ComponentMask>
 	{
-			std::size_t operator()(const Dimensia::ECS::ComponentMask &componentMask) const noexcept;
+			std::size_t operator()(const Dimensia::ECS::ComponentMask &componentMask) const noexcept
+			{
+				return hash<Dimensia::Core::ul>{}(componentMask.mLow) ^ (hash<Dimensia::Core::ul>{}(componentMask.mHigh) << 1U);
+			}
 	};
 } // namespace std
 

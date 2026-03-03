@@ -156,6 +156,7 @@ int main()
 	std::cout << "\n--- Command buffer example ---\n";
 	CommandBuffer cmds;
 	constexpr float startingHealth{200.F};
+	constexpr int startingMana{50};
 
 	ecs.forEach<Name>(ExecutionPolicy::Seq, cmds, [&](Entity &entity, const Name &) {
 		cmds.addComponent(entity, Health{startingHealth}); // defer adding Health
@@ -508,25 +509,25 @@ int main()
 	std::cout << "\n=== Query filter examples (All / Any / None) ===\n";
 
 	// Create a few entities with different component combinations for testing
-	Entity queryFilterE1{
-		ecs.createEntityWith(Name{"Entity1"}, Position{.x = 0, .y = 0, .z = 0}, Velocity{.dx = 1, .dy = 0, .dz = 0}, Health{100})};
+	Entity queryFilterE1{ecs.createEntityWith(Name{"Entity1"}, Position{.x = 0, .y = 0, .z = 0}, Velocity{.dx = 1, .dy = 0, .dz = 0},
+											  Health{startingHealth})};
 	Entity queryFilterE2{
-		ecs.createEntityWith(Name{"Entity2"}, Position{.x = 1, .y = 1, .z = 1}, Velocity{.dx = 0, .dy = 1, .dz = 0}, Mana{50})};
-	Entity queryFilterE3{
-		ecs.createEntityWith(Name{"Entity3"}, Position{.x = 2, .y = 2, .z = 2}, Velocity{.dx = 0, .dy = 0, .dz = 1}, Health{80}, Mana{30})};
-	Entity queryFilterE4{ecs.createEntityWith(Name{"Entity4"}, Position{.x = 3, .y = 3, .z = 3}, Health{120})};
-	Entity queryFilterE5{ecs.createEntityWith(Name{"Entity5"}, Velocity{.dx = 1, .dy = 2, .dz = 3}, Mana{20})};
-	Entity queryFilterE6{ecs.createEntityWith(Name{"Entity6"}, Health{90}, Mana{40}, Buffs{})};
+		ecs.createEntityWith(Name{"Entity2"}, Position{.x = 1, .y = 1, .z = 1}, Velocity{.dx = 0, .dy = 1, .dz = 0}, Mana{startingMana})};
+	Entity queryFilterE3{ecs.createEntityWith(Name{"Entity3"}, Position{.x = 2, .y = 2, .z = 2}, Velocity{.dx = 0, .dy = 0, .dz = 1},
+											  Health{startingHealth}, Mana{startingMana})};
+	Entity queryFilterE4{ecs.createEntityWith(Name{"Entity4"}, Position{.x = 3, .y = 3, .z = 3}, Health{startingHealth})};
+	Entity queryFilterE5{ecs.createEntityWith(Name{"Entity5"}, Velocity{.dx = 1, .dy = 2, .dz = 3}, Mana{startingMana})};
+	Entity queryFilterE6{ecs.createEntityWith(Name{"Entity6"}, Health{startingHealth}, Mana{startingMana}, Buffs{})};
 	Entity queryFilterE7{ecs.createEntityWith(Name{"Entity7"}, Buffs{})};
 
 	std::cout << "\nCreated test entities:\n";
-	std::cout << "e1: Name, Pos, Vel, Health\n";
-	std::cout << "e2: Name, Pos, Vel, Mana\n";
-	std::cout << "e3: Name, Pos, Vel, Health, Mana\n";
-	std::cout << "e4: Name, Pos, Health\n";
-	std::cout << "e5: Name, Vel, Mana\n";
-	std::cout << "e6: Name, Health, Mana, Buffs\n";
-	std::cout << "e7: Name, Buffs\n";
+	std::cout << "queryFilterE1: Name, Pos, Vel, Health with index: " << queryFilterE1.index << "\n";
+	std::cout << "queryFilterE2: Name, Pos, Vel, Mana with index: " << queryFilterE2.index << "\n";
+	std::cout << "queryFilterE3: Name, Pos, Vel, Health, Mana with index: " << queryFilterE3.index << "\n";
+	std::cout << "queryFilterE4: Name, Pos, Health with index: " << queryFilterE4.index << "\n";
+	std::cout << "queryFilterE5: Name, Vel, Mana with index: " << queryFilterE5.index << "\n";
+	std::cout << "queryFilterE6: Name, Health, Mana, Buffs with index: " << queryFilterE6.index << "\n";
+	std::cout << "queryFilterE7: Name, Buffs with index: " << queryFilterE7.index << "\n";
 
 	// Helper lambda to print matching entity indices
 	auto printMatches = [&](std::string_view description, const auto &queryFunc) {
@@ -578,17 +579,6 @@ int main()
 	printMatches("None<Position>",
 				 [&] { ecs.forEach<All<>, None<Position>>([](const Entity &entity) { std::cout << entity.index << " "; }); });
 
-	// Cleanup test entities (optional, they will be destroyed later anyway)
-	for (Entity entity : {queryFilterE1, queryFilterE2, queryFilterE3, queryFilterE4, queryFilterE5, queryFilterE6, queryFilterE7})
-	{
-		if (ecs.alive(entity))
-		{
-			ecs.destroyEntity(entity, false);
-		}
-	}
-
-	ecs.compact();
-
 	cmds.clear();
 
 	std::cout << "All<Position, Velocity> with command buffer: ";
@@ -619,6 +609,16 @@ int main()
 	std::cout << "\n";
 
 	cmds.apply(ecs);
+
+	for (Entity entity : {queryFilterE1, queryFilterE2, queryFilterE3, queryFilterE4, queryFilterE5, queryFilterE6, queryFilterE7})
+	{
+		if (ecs.alive(entity))
+		{
+			ecs.destroyEntity(entity, false);
+		}
+	}
+
+	ecs.compact();
 
 	return 0;
 }
