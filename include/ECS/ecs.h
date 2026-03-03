@@ -1239,6 +1239,22 @@ namespace Dimensia::ECS
 
 			// MARK: forEachQueryImpl
 
+			/*! @brief Core implementation that executes a query described by three type-lists.
+				@details This function builds `ComponentMask` values from the supplied type-lists, constructs a `QueryKey`, queries the
+			   archetype cache to find matching archetypes, then dispatches per-chunk processing according to @p policy. The implementation
+			   is responsible for selecting const vs non-const per-chunk helpers and for forwarding the user callable into worker tasks when
+			   parallel policies are selected. The routine is intended to be instantiated at compile-time for specific type-lists and
+			   callables, producing zero-overhead dispatch into per-chunk processing.
+				@tparam Self The `ECS` type (possibly const-qualified) used for dispatching and accessing caches/pools.
+				@tparam ReqList A `TypeList<...>` containing component/tag types that are required for the query.
+				@tparam AnyList A `TypeList<...>` containing component/tag types where any single match satisfies the clause.
+				@tparam NoneList A `TypeList<...>` containing component/tag types that must be absent.
+				@tparam Func Callable type invoked for matching entities or chunks; this callable is forwarded into the per-chunk processing
+			   helpers and must be compatible with the `processChunkEntities...` helpers.
+				@param[in,out] self Reference to the `ECS` instance used to resolve archetypes, thread pools, and caches.
+				@param[in] policy Execution policy that controls whether processing is sequential or parallel (see `ExecutionPolicy`).
+				@param[in] func User-provided callable that will be invoked for matching entities or chunks.
+			*/
 			template <class Self, typename ReqList, typename AnyList, typename NoneList, typename Func>
 			static void forEachQueryImpl(Self &self, ExecutionPolicy &policy, Func &&func)
 			{
@@ -1293,6 +1309,17 @@ namespace Dimensia::ECS
 				}
 			}
 
+			/*! @brief Query overload that accepts query clause wrappers (`All<...>`, `Any<...>`, `None<...>`) and executes the supplied
+			   callable using the given `ExecutionPolicy`.
+				@tparam AllFilter Type of `All<...>` clause specifying required components.
+				@tparam AnyFilter Type of `Any<...>` clause specifying optional-match components.
+				@tparam NoneFilter Type of `None<...>` clause specifying excluded components.
+				@tparam Func Callable type invoked for matching entities or chunks.
+				@param[in] policy Execution policy that controls parallelism and batching.
+				@param[in] func User-provided callable forwarded to the underlying implementation.
+				@note This overload transforms the clause wrappers into `TypeList` aliases via `PackExtractor` and forwards to
+			   `forEachQueryImpl` which performs archetype matching and dispatch.
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, Func &&func)
 			{
@@ -1302,6 +1329,17 @@ namespace Dimensia::ECS
 				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified variant of the query overload that accepts clause wrappers and runs the callable without permitting
+			   modification of `ECS` internal state.
+				@tparam AllFilter Type of `All<...>` clause specifying required components.
+				@tparam AnyFilter Type of `Any<...>` clause specifying optional-match components.
+				@tparam NoneFilter Type of `None<...>` clause specifying excluded components.
+				@tparam Func Callable type invoked for matching entities or chunks; must be compatible with const processing helpers.
+				@param[in] policy Execution policy that controls parallelism and batching.
+				@param[in] func User-provided callable forwarded to the underlying const implementation.
+				@note Use this overload for read-only systems; it forwards to `forEachQueryImpl` instantiated with a const-qualified `Self`
+			   so const-safe processing helpers are selected.
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, Func &&func) const
 			{
@@ -1313,6 +1351,14 @@ namespace Dimensia::ECS
 
 			// MARK: forEachQueryImpl 2 operator overloads
 
+			/*! @brief Query overload for `All<...>` (required) together with `None<...>` (excluded) clause wrappers.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked for matching entities or chunks.
+				@param[in] policy Execution policy to use.
+				@param[in] func User-provided callable forwarded to `forEachQueryImpl`.
+				@note This overload sets the `Any` clause to empty (`TypeList<>`) and forwards to the core query implementation.
+			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, Func &&func)
 			{
@@ -1322,7 +1368,13 @@ namespace Dimensia::ECS
 				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
 			}
 
-			// Const versions
+			/*! @brief Const variant of the `All` + `None` query overload.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked for matching entities or chunks; must be compatible with const processing helpers.
+				@param[in] policy Execution policy to use.
+				@param[in] func User-provided callable forwarded to the core const implementation.
+			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, Func &&func) const
 			{
@@ -1332,6 +1384,14 @@ namespace Dimensia::ECS
 				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
 			}
 
+			/*! @brief Query overload for `All<...>` (required) and `Any<...>` (at-least-one) clause wrappers.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types where any single match satisfies the clause.
+				@tparam Func Callable invoked for matching entities or chunks.
+				@param[in] policy Execution policy to use.
+				@param[in] func User-provided callable forwarded to `forEachQueryImpl`.
+				@note This overload sets the `None` clause to empty (`TypeList<>`).
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
 			void forEach(ExecutionPolicy policy, Func &&func)
 			{
@@ -1341,6 +1401,13 @@ namespace Dimensia::ECS
 				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
 			}
 
+			/*! @brief Const variant of the `All` + `Any` query overload.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types.
+				@tparam Func Callable type compatible with const processing helpers.
+				@param[in] policy Execution policy to use.
+				@param[in] func User-provided callable forwarded to the core const implementation.
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
 			void forEach(ExecutionPolicy policy, Func &&func) const
 			{
@@ -1350,6 +1417,14 @@ namespace Dimensia::ECS
 				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
 			}
 
+			/*! @brief Query overload for `Any<...>` (at-least-one) together with `None<...>` (excluded) clause wrappers.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types where any single match satisfies the clause.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked for matching entities or chunks.
+				@param[in] policy Execution policy to use.
+				@param[in] func User-provided callable forwarded to `forEachQueryImpl`.
+				@note This overload sets the `All` (required) clause to empty (`TypeList<>`).
+			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, Func &&func)
 			{
@@ -1359,6 +1434,13 @@ namespace Dimensia::ECS
 				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
 			}
 
+			/*! @brief Const variant of the `Any` + `None` query overload.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable type compatible with const processing helpers.
+				@param[in] policy Execution policy to use.
+				@param[in] func User-provided callable forwarded to the core const implementation.
+			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, Func &&func) const
 			{
@@ -1370,6 +1452,32 @@ namespace Dimensia::ECS
 
 			// MARK: forEachQueryImpl 1 operator overloads
 
+			/*! @brief Query overload that iterates entities matching a required-only `All<...>` clause.
+				@tparam AllFilter A `All<...>` clause listing required component/tag types.
+				@tparam Func Callable invoked for matching entities or chunks; the callable will be forwarded to the mutable processing
+			   helpers and may modify ECS state or components.
+				@param[in] policy Execution policy controlling parallelism and batching (Seq, Par, ParBatched, ParStealing).
+				@param[in] func User-provided callable forwarded to `forEachQueryImpl`.
+				@note This overload converts `AllFilter` into a `TypeList` via `PackExtractor` and forwards to the core implementation
+				with empty `Any` and `None` clauses.
+			*/
+			template <AllType AllFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>;
+				using NoneList = TypeList<>;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			/*! @brief Const query overload for a required-only `All<...>` clause.
+				@tparam AllFilter A `All<...>` clause listing required component/tag types.
+				@tparam Func Callable invoked for matching entities or chunks; must be compatible with the const processing helpers.
+				@param[in] policy Execution policy to use for processing (Seq, Par, ParBatched, ParStealing).
+				@param[in] func User-provided callable forwarded to the underlying implementation.
+				@note This overload converts `AllFilter` to a `TypeList` via `PackExtractor` and forwards to `forEachQueryImpl` with empty
+			   `Any`/`None` clauses.
+			*/
 			template <AllType AllFilter, typename Func>
 			void forEach(ExecutionPolicy policy, Func &&func) const
 			{
@@ -1379,6 +1487,31 @@ namespace Dimensia::ECS
 				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
 			}
 
+			/*! @brief Query overload that iterates entities matching an `Any<...>` clause (at-least-one match required).
+				@tparam AnyFilter An `Any<...>` clause listing alternative component/tag types where any single match satisfies the clause.
+				@tparam Func Callable invoked for matching entities or chunks; the callable will be forwarded to the mutable processing
+			   helpers and may modify ECS state or components.
+				@param[in] policy Execution policy controlling parallelism and batching (Seq, Par, ParBatched, ParStealing).
+				@param[in] func User-provided callable forwarded to the underlying implementation.
+				@note This overload converts `AnyFilter` into a `TypeList` via `PackExtractor` and forwards to `forEachQueryImpl` with empty
+			   `All` and `None` clauses.
+			*/
+			template <AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func)
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
+				using NoneList = TypeList<>;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			/*! @brief Const query overload for an `Any<...>` (at-least-one) clause.
+				@tparam AnyFilter An `Any<...>` clause listing alternative component/tag types where any one match satisfies the clause.
+				@tparam Func Callable invoked for matching entities or chunks; must be compatible with the const processing helpers.
+				@param[in] policy Execution policy to use for processing.
+				@param[in] func User-provided callable forwarded to the underlying implementation.
+				@note This overload converts `AnyFilter` to a `TypeList` and uses empty `All`/`None` clauses.
+			*/
 			template <AnyType AnyFilter, typename Func>
 			void forEach(ExecutionPolicy policy, Func &&func) const
 			{
@@ -1388,6 +1521,31 @@ namespace Dimensia::ECS
 				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
 			}
 
+			/*! @brief Query overload that iterates entities while excluding types listed in `None<...>`.
+				@tparam NoneFilter A `None<...>` clause listing component/tag types that must be absent for a match.
+				@tparam Func Callable invoked for matching entities or chunks; the callable will be forwarded to the mutable
+				processing helpers and may modify ECS state or components.
+				@param[in] policy Execution policy controlling parallelism and batching (Seq, Par, ParBatched, ParStealing).
+				@param[in] func User-provided callable forwarded to the underlying implementation.
+				@note This overload converts `NoneFilter` into a `TypeList` via `PackExtractor` and forwards to `forEachQueryImpl`
+				with empty `All` and `Any` clauses.
+			*/
+			template <NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, Func &&func)
+			{
+				using ReqList = TypeList<>;
+				using AnyList = TypeList<>;
+				using NoneList = PackExtractor<NoneFilter>::type;
+				forEachQueryImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, std::forward<Func>(func));
+			}
+
+			/*! @brief Const query overload for a `None<...>` (excluded) clause.
+				@tparam NoneFilter A `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked for matching entities or chunks; must be compatible with the const processing helpers.
+				@param[in] policy Execution policy to use for processing.
+				@param[in] func User-provided callable forwarded to the underlying implementation.
+				@note This overload converts `NoneFilter` to a `TypeList` and uses empty `All`/`Any` clauses.
+			*/
 			template <NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, Func &&func) const
 			{
@@ -1513,7 +1671,6 @@ namespace Dimensia::ECS
 				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
 			}
 
-			// Const versions
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
 			{
@@ -1532,7 +1689,6 @@ namespace Dimensia::ECS
 				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
 			}
 
-			// Const versions
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
 			{
@@ -1551,7 +1707,6 @@ namespace Dimensia::ECS
 				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
 			}
 
-			// Const versions
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
 			{
@@ -1564,10 +1719,28 @@ namespace Dimensia::ECS
 			// MARK: forEachQueryVersionImpl 1 operator overloads
 
 			template <AllType AllFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>;
+				using NoneList = TypeList<>;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = TypeList<>;
+				using NoneList = TypeList<>;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
 				using NoneList = TypeList<>;
 				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
 			}
@@ -1578,6 +1751,15 @@ namespace Dimensia::ECS
 				using ReqList = TypeList<>;
 				using AnyList = PackExtractor<AnyFilter>::type;
 				using NoneList = TypeList<>;
+				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
+			}
+
+			template <NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
+			{
+				using ReqList = TypeList<>;
+				using AnyList = TypeList<>;
+				using NoneList = PackExtractor<NoneFilter>::type;
 				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
 			}
 
@@ -1680,7 +1862,6 @@ namespace Dimensia::ECS
 				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
 			}
 
-			// Const versions
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
 			{
@@ -1729,10 +1910,28 @@ namespace Dimensia::ECS
 			// MARK: forEachQueryCommandImpl 1 operator overloads
 
 			template <AllType AllFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>;
+				using NoneList = TypeList<>;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, typename Func>
 			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = TypeList<>;
+				using NoneList = TypeList<>;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
 				using NoneList = TypeList<>;
 				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
 			}
@@ -1743,6 +1942,15 @@ namespace Dimensia::ECS
 				using ReqList = TypeList<>;
 				using AnyList = PackExtractor<AnyFilter>::type;
 				using NoneList = TypeList<>;
+				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
+			}
+
+			template <NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
+			{
+				using ReqList = TypeList<>;
+				using AnyList = TypeList<>;
+				using NoneList = PackExtractor<NoneFilter>::type;
 				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
 			}
 
@@ -1854,7 +2062,6 @@ namespace Dimensia::ECS
 																							std::forward<Func>(func));
 			}
 
-			// Const versions
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
@@ -1877,7 +2084,6 @@ namespace Dimensia::ECS
 																							std::forward<Func>(func));
 			}
 
-			// Const versions
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
@@ -1931,10 +2137,30 @@ namespace Dimensia::ECS
 			// MARK: forEachQueryVersionCommandImpl 1 operator overloads
 
 			template <AllType AllFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
+			{
+				using ReqList = PackExtractor<AllFilter>::type;
+				using AnyList = TypeList<>;
+				using NoneList = TypeList<>;
+				forEachQueryVersionCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, cmds,
+																							std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = TypeList<>;
+				using NoneList = TypeList<>;
+				forEachQueryVersionCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, cmds,
+																							std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
+			{
+				using ReqList = TypeList<>;
+				using AnyList = PackExtractor<AnyFilter>::type;
 				using NoneList = TypeList<>;
 				forEachQueryVersionCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, cmds,
 																							std::forward<Func>(func));
@@ -1946,6 +2172,16 @@ namespace Dimensia::ECS
 				using ReqList = TypeList<>;
 				using AnyList = PackExtractor<AnyFilter>::type;
 				using NoneList = TypeList<>;
+				forEachQueryVersionCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, cmds,
+																							std::forward<Func>(func));
+			}
+
+			template <NoneType NoneFilter, typename Func>
+			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
+			{
+				using ReqList = TypeList<>;
+				using AnyList = TypeList<>;
+				using NoneList = PackExtractor<NoneFilter>::type;
 				forEachQueryVersionCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, cmds,
 																							std::forward<Func>(func));
 			}
@@ -1968,20 +2204,19 @@ namespace Dimensia::ECS
 
 			// MARK: forEachQuery
 
-			// Const version
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(Func &&func) const
 			{
 				forEach<AllFilter, AnyFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
 
+			// MARK: forEachQuery 2 operator overloads
+
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
 			void forEach(Func &&func)
 			{
 				forEach<AllFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
-
-			// MARK: forEachQuery 2 operator overloads
 
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
 			void forEach(Func &&func) const
@@ -2016,15 +2251,33 @@ namespace Dimensia::ECS
 			// MARK: forEachQuery 1 operator overloads
 
 			template <AllType AllFilter, typename Func>
+			void forEach(Func &&func)
+			{
+				forEach<AllFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
+			}
+
+			template <AllType AllFilter, typename Func>
 			void forEach(Func &&func) const
 			{
 				forEach<AllFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
 
 			template <AnyType AnyFilter, typename Func>
+			void forEach(Func &&func)
+			{
+				forEach<AnyFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
+			}
+
+			template <AnyType AnyFilter, typename Func>
 			void forEach(Func &&func) const
 			{
 				forEach<AnyFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
+			}
+
+			template <NoneType NoneFilter, typename Func>
+			void forEach(Func &&func)
+			{
+				forEach<NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
 
 			template <NoneType NoneFilter, typename Func>
