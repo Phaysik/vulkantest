@@ -1557,6 +1557,24 @@ namespace Dimensia::ECS
 
 			// MARK: forEachQueryVersionImpl
 
+			/*! @brief Dispatch and process chunks filtered by a `SystemVersion` (dirty-chunk processing).
+				@details Builds masks from the compile-time type lists, finds matching archetypes, collects chunks that are "dirty" with
+			   respect to @p version, then processes those chunks and updates the provided `SystemVersion` afterwards. The implementation
+			   selects const vs. non-const processing helpers based on whether `Self` is const-qualified and supports sequential and several
+			   parallel execution strategies.
+				@tparam Self The `ECS` type (possibly const-qualified) used for dispatching and accessing pools/caches.
+				@tparam ReqList `TypeList` of required component/tag types.
+				@tparam AnyList `TypeList` of alternative types where any single match satisfies the clause.
+				@tparam NoneList `TypeList` of excluded component/tag types.
+				@tparam Func Callable invoked per entity/chunk; forwarded into the per-chunk processing helpers.
+				@param[in,out] self Reference to the `ECS` instance providing archetypes, thread pools and caches.
+				@param[in] policy Execution policy controlling parallelism (Seq, Par, ParBatched, ParStealing).
+				@param[in,out] version SystemVersion used to determine dirty chunks and updated after processing.
+				@param[in] func User callable forwarded into per-chunk processing; must be callable with the signatures used by
+				the processing helpers.
+				@note Expensive setup (collecting dirty chunks) is performed before dispatch; processing measures and updates component
+			   versions via `forEachSetBit` to ensure version state is consistent after completion.
+			*/
 			template <class Self, AllType ReqList, AnyType AnyList, NoneType NoneList, typename Func>
 			static void forEachQueryVersionImpl(Self &self, const ExecutionPolicy &policy, SystemVersion &version, Func &&func)
 			{
@@ -1642,6 +1660,16 @@ namespace Dimensia::ECS
 				}
 			}
 
+			/*! @brief Iterate over entities matching the provided clause lists but only process chunks that are dirty according to @p
+			   version.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types (at-least-one match).
+				@tparam NoneFilter `None<...>` clause listing excluded component/tag types.
+				@tparam Func Callable invoked for matching entities or chunks; will be forwarded into the versioned implementation.
+				@param[in] policy Execution policy to use for processing (Seq, Par, ParBatched, ParStealing).
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in] func User callable forwarded to `forEachQueryVersionImpl`.
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
 			{
@@ -1651,6 +1679,16 @@ namespace Dimensia::ECS
 				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
 			}
 
+			/*! @brief Const variant of the versioned `forEach` that processes only dirty chunks determined by @p version.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types (at-least-one match).
+				@tparam NoneFilter `None<...>` clause listing excluded component/tag types.
+				@tparam Func Callable invoked for matching entities or chunks; must be compatible with const processing helpers.
+				@param[in] policy Execution policy to use for processing.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in] func User callable forwarded to `forEachQueryVersionImpl`.
+				@note Use this overload for read-only systems that still require version-aware processing.
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
 			{
@@ -1662,6 +1700,15 @@ namespace Dimensia::ECS
 
 			// MARK: forEachQueryVersionImpl 2 operator overloads
 
+			/*! @brief Version-aware query overload for `All<...>` + `None<...>` clauses.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked for matching entities or chunks; forwarded to the versioned implementation.
+				@param[in] policy Execution policy controlling parallelism.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in] func User-provided callable forwarded to `forEachQueryVersionImpl`.
+				@note This overload sets the `Any` clause to empty and forwards to the core versioned implementation.
+			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
 			{
@@ -1671,6 +1718,14 @@ namespace Dimensia::ECS
 				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
 			}
 
+			/*! @brief Const variant of the `All` + `None` versioned overload.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam NoneFilter `None<...>` clause listing excluded component/tag types.
+				@tparam Func Callable invoked for matching entities or chunks; must be compatible with const processing helpers.
+				@param[in] policy Execution policy controlling parallelism.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in] func User-provided callable forwarded to the core const implementation.
+			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
 			{
@@ -1680,6 +1735,15 @@ namespace Dimensia::ECS
 				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
 			}
 
+			/*! @brief Version-aware query overload for `All<...>` + `Any<...>` clauses.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types (at-least-one match).
+				@tparam Func Callable invoked for matching entities or chunks; forwarded to the versioned implementation.
+				@param[in] policy Execution policy controlling parallelism.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in] func User-provided callable forwarded to `forEachQueryVersionImpl`.
+				@note This overload sets the `None` clause to empty and forwards to the core versioned implementation.
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
 			{
@@ -1689,6 +1753,14 @@ namespace Dimensia::ECS
 				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
 			}
 
+			/*! @brief Const variant of the `All` + `Any` versioned overload.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types.
+				@tparam Func Callable invoked for matching entities or chunks; must be compatible with const processing helpers.
+				@param[in] policy Execution policy controlling parallelism.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in] func User-provided callable forwarded to the core const implementation.
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
 			{
@@ -1698,6 +1770,15 @@ namespace Dimensia::ECS
 				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
 			}
 
+			/*! @brief Version-aware query overload for `Any<...>` + `None<...>` clauses.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types where any single match satisfies the clause.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked for matching entities or chunks; forwarded to the versioned implementation.
+				@param[in] policy Execution policy controlling parallelism.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in] func User-provided callable forwarded to `forEachQueryVersionImpl`.
+				@note This overload sets the `All` (required) clause to empty and forwards to the core versioned implementation.
+			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
 			{
@@ -1707,6 +1788,14 @@ namespace Dimensia::ECS
 				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
 			}
 
+			/*! @brief Const variant of the `Any` + `None` versioned overload.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked for matching entities or chunks; must be compatible with const processing helpers.
+				@param[in] policy Execution policy controlling parallelism.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in] func User-provided callable forwarded to the core const implementation.
+			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
 			{
@@ -1718,6 +1807,14 @@ namespace Dimensia::ECS
 
 			// MARK: forEachQueryVersionImpl 1 operator overloads
 
+			/*! @brief Version-aware `forEach` for a required-only `All<...>` clause.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam Func Callable invoked for matching entities or chunks; forwarded to the versioned implementation.
+				@param[in] policy Execution policy controlling parallelism.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in] func User-provided callable forwarded to `forEachQueryVersionImpl`.
+				@note Use this overload for mutable systems that need version-aware (dirty-chunk) processing.
+			*/
 			template <AllType AllFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
 			{
@@ -1727,6 +1824,13 @@ namespace Dimensia::ECS
 				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
 			}
 
+			/*! @brief Const variant of the required-only versioned `forEach` (`All<...>`).
+				@tparam AllFilter `All<...>` clause listing required component/tag types (read-only).
+				@tparam Func Callable invoked for matching entities or chunks; must be compatible with const processing helpers.
+				@param[in] policy Execution policy controlling parallelism.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in] func User-provided callable forwarded to the const versioned implementation.
+			*/
 			template <AllType AllFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
 			{
@@ -1736,6 +1840,14 @@ namespace Dimensia::ECS
 				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
 			}
 
+			/*! @brief Version-aware `forEach` for an `Any<...>` (at-least-one) clause.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types where any single match satisfies the clause.
+				@tparam Func Callable invoked for matching entities or chunks; forwarded to the versioned implementation.
+				@param[in] policy Execution policy controlling parallelism.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in] func User-provided callable forwarded to `forEachQueryVersionImpl`.
+				@note Use this overload when a match requires at least one of the listed component types.
+			*/
 			template <AnyType AnyFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
 			{
@@ -1745,6 +1857,13 @@ namespace Dimensia::ECS
 				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
 			}
 
+			/*! @brief Const variant of the `Any<...>` versioned `forEach`.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types (read-only).
+				@tparam Func Callable invoked for matching entities or chunks; must be compatible with const processing helpers.
+				@param[in] policy Execution policy controlling parallelism.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in] func User-provided callable forwarded to the const versioned implementation.
+			*/
 			template <AnyType AnyFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
 			{
@@ -1754,6 +1873,14 @@ namespace Dimensia::ECS
 				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
 			}
 
+			/*! @brief Version-aware `forEach` that excludes component types listed in `None<...>`.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent for a match.
+				@tparam Func Callable invoked for matching entities or chunks; forwarded to the versioned implementation.
+				@param[in] policy Execution policy controlling parallelism.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in] func User-provided callable forwarded to `forEachQueryVersionImpl`.
+				@note This overload is useful for queries that only exclude specific components.
+			*/
 			template <NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
 			{
@@ -1763,6 +1890,13 @@ namespace Dimensia::ECS
 				forEachQueryVersionImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, version, std::forward<Func>(func));
 			}
 
+			/*! @brief Const variant of the `None<...>` versioned `forEach`.
+				@tparam NoneFilter `None<...>` clause listing excluded component/tag types (read-only).
+				@tparam Func Callable invoked for matching entities or chunks; must be compatible with const processing helpers.
+				@param[in] policy Execution policy controlling parallelism.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in] func User-provided callable forwarded to the const versioned implementation.
+			*/
 			template <NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
 			{
@@ -1774,6 +1908,21 @@ namespace Dimensia::ECS
 
 			// MARK: forEachQueryCommandImpl
 
+			/*! @brief Dispatches processing with a `CommandBuffer` provided to callbacks.
+				@details Builds compile-time masks from the supplied type-lists, queries the archetype cache for matches, and then processes
+			   matching chunks using the selected `ExecutionPolicy`. This variant forwards a `CommandBuffer` reference into user callbacks
+			   so systems may record deferred ECS commands during processing.
+				@tparam Self The `ECS` type (possibly const-qualified) used for dispatch and to access thread pools/caches.
+				@tparam ReqList `TypeList` of required component/tag types.
+				@tparam AnyList `TypeList` of types where any single match satisfies the clause.
+				@tparam NoneList `TypeList` of component/tag types that must be absent.
+				@tparam Func Callable invoked per-entity or per-chunk; must accept a `CommandBuffer&` parameter when used in per-entity
+			   form.
+				@param[in,out] self ECS instance providing archetypes, thread pools and caches.
+				@param[in] policy Execution policy controlling parallelism (Seq, Par, ParBatched, ParStealing).
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for recording deferred operations.
+				@param[in] func User callable forwarded into per-chunk processing; compatible with `processChunkEntities...` helpers.
+			*/
 			template <class Self, typename ReqList, typename AnyList, typename NoneList, typename Func>
 			static void forEachQueryCommandImpl(Self &self, ExecutionPolicy &policy, CommandBuffer & /*cmds*/, Func &&func)
 			{
@@ -1827,12 +1976,22 @@ namespace Dimensia::ECS
 					case ExecutionPolicy::ParStealing:
 						forEachParStealingProcessChunkOnly(matchingArchetypes, self.mWorkStealingPool, processChunk);
 						break;
-						break;
 					default:
 						assert(false && "Invalid execution policy");
 				}
 			}
 
+			/*! @brief Command-style overload that accepts clause wrappers (`All`, `Any`, `None`) and forwards a `CommandBuffer`.
+				@tparam AllFilter `All<...>` clause specifying required types.
+				@tparam AnyFilter `Any<...>` clause specifying alternative-match types.
+				@tparam NoneFilter `None<...>` clause specifying excluded types.
+				@tparam Func Callable invoked per-entity or per-chunk; must accept a `CommandBuffer&` when used per-entity.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying implementation.
+				@note This overload transforms clause wrappers into `TypeList` aliases via `PackExtractor` and forwards to
+			   `forEachQueryCommandImpl`.
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
 			{
@@ -1842,6 +2001,16 @@ namespace Dimensia::ECS
 				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified command-style overload that accepts clause wrappers and forwards a `CommandBuffer`.
+				@tparam AllFilter `All<...>` clause specifying required types (read-only).
+				@tparam AnyFilter `Any<...>` clause specifying alternative-match types.
+				@tparam NoneFilter `None<...>` clause specifying excluded types.
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers and accept a
+			   `CommandBuffer&` when used in per-entity form.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying const implementation.
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
 			{
@@ -1853,6 +2022,15 @@ namespace Dimensia::ECS
 
 			// MARK: forEachQueryCommandImpl 2 operator overloads
 
+			/*! @brief Command-style `forEach` overload for `All<...>` + `None<...>` clauses.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked per-entity or per-chunk; when used per-entity the callable must accept a `CommandBuffer&`.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying implementation.
+				@note This overload sets the `Any` clause to empty (`TypeList<>`) and forwards to `forEachQueryCommandImpl`.
+			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
 			{
@@ -1862,6 +2040,16 @@ namespace Dimensia::ECS
 				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified command-style `forEach` overload for `All<...>` + `None<...>` clauses.
+				@tparam AllFilter `All<...>` clause listing required component/tag types (read-only).
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers and accept a
+			   `CommandBuffer&` when used per-entity.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the const implementation.
+				@note This overload sets the `Any` clause to empty (`TypeList<>`) and forwards to the const `forEachQueryCommandImpl`.
+			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
 			{
@@ -1871,6 +2059,15 @@ namespace Dimensia::ECS
 				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
 			}
 
+			/*! @brief Command-style `forEach` overload for `All<...>` + `Any<...>` clauses.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types where any single match satisfies the clause.
+				@tparam Func Callable invoked per-entity or per-chunk; when used per-entity the callable must accept a `CommandBuffer&`.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying implementation.
+				@note This overload sets the `None` clause to empty (`TypeList<>`) and forwards to `forEachQueryCommandImpl`.
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
 			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
 			{
@@ -1880,6 +2077,16 @@ namespace Dimensia::ECS
 				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified command-style `forEach` overload for `All<...>` + `Any<...>` clauses.
+				@tparam AllFilter `All<...>` clause listing required component/tag types (read-only).
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types.
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers and accept a
+			   `CommandBuffer&` when used per-entity.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the const implementation.
+				@note This overload sets the `None` clause to empty (`TypeList<>`) and forwards to the const `forEachQueryCommandImpl`.
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
 			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
 			{
@@ -1889,6 +2096,15 @@ namespace Dimensia::ECS
 				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
 			}
 
+			/*! @brief Command-style `forEach` overload for `Any<...>` + `None<...>` clauses.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types where any single match satisfies the clause.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked per-entity or per-chunk; when used per-entity the callable must accept a `CommandBuffer&`.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying implementation.
+				@note This overload sets the `All` (required) clause to empty (`TypeList<>`) and forwards to `forEachQueryCommandImpl`.
+			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
 			{
@@ -1898,6 +2114,17 @@ namespace Dimensia::ECS
 				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified command-style `forEach` overload for `Any<...>` + `None<...>` clauses.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types (read-only).
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers and accept a
+			   `CommandBuffer&` when used per-entity.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the const implementation.
+				@note This overload sets the `All` (required) clause to empty (`TypeList<>`) and forwards to the const
+			   `forEachQueryCommandImpl`.
+			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
 			{
@@ -1909,6 +2136,15 @@ namespace Dimensia::ECS
 
 			// MARK: forEachQueryCommandImpl 1 operator overloads
 
+			/*! @brief Command-style `forEach` for a required-only `All<...>` clause.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam Func Callable invoked per-entity or per-chunk; when used per-entity the callable must accept a `CommandBuffer&`.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying implementation.
+				@note This overload converts `AllFilter` to a `TypeList` via `PackExtractor` and forwards to `forEachQueryCommandImpl` with
+			   empty `Any`/`None` clauses.
+			*/
 			template <AllType AllFilter, typename Func>
 			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
 			{
@@ -1918,6 +2154,14 @@ namespace Dimensia::ECS
 				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified command-style `forEach` for a required-only `All<...>` clause.
+				@tparam AllFilter `All<...>` clause listing required component/tag types (read-only).
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers and accept a
+			   `CommandBuffer&` when used per-entity.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the const implementation.
+			*/
 			template <AllType AllFilter, typename Func>
 			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
 			{
@@ -1927,6 +2171,15 @@ namespace Dimensia::ECS
 				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
 			}
 
+			/*! @brief Command-style `forEach` for an `Any<...>` (at-least-one) clause.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types where any single match satisfies the clause.
+				@tparam Func Callable invoked per-entity or per-chunk; when used per-entity the callable must accept a `CommandBuffer&`.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying implementation.
+				@note This overload converts `AnyFilter` to a `TypeList` via `PackExtractor` and forwards to `forEachQueryCommandImpl` with
+			   empty `All`/`None` clauses.
+			*/
 			template <AnyType AnyFilter, typename Func>
 			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
 			{
@@ -1936,6 +2189,14 @@ namespace Dimensia::ECS
 				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified command-style `forEach` for an `Any<...>` (at-least-one) clause.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types (read-only).
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers and accept a
+			   `CommandBuffer&` when used per-entity.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the const implementation.
+			*/
 			template <AnyType AnyFilter, typename Func>
 			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
 			{
@@ -1945,6 +2206,15 @@ namespace Dimensia::ECS
 				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
 			}
 
+			/*! @brief Command-style `forEach` that excludes types listed in `None<...>`.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent for a match.
+				@tparam Func Callable invoked per-entity or per-chunk; when used per-entity the callable must accept a `CommandBuffer&`.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying implementation.
+				@note This overload converts `NoneFilter` to a `TypeList` via `PackExtractor` and forwards to `forEachQueryCommandImpl` with
+			   empty `All`/`Any` clauses.
+			*/
 			template <NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
 			{
@@ -1954,6 +2224,14 @@ namespace Dimensia::ECS
 				forEachQueryCommandImpl<decltype(*this), ReqList, AnyList, NoneList>(*this, policy, cmds, std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified command-style `forEach` that excludes types listed in `None<...>`.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent (read-only).
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers and accept a
+			   `CommandBuffer&` when used per-entity.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the const implementation.
+			*/
 			template <NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
 			{
@@ -1965,6 +2243,23 @@ namespace Dimensia::ECS
 
 			// MARK: forEachQueryVersionCommandImpl
 
+			/*! @brief Version-aware dispatch that forwards a `CommandBuffer` into callbacks.
+				@details Builds compile-time masks from the supplied type-lists, queries the archetype cache for matches, collects chunks
+			   that are dirty according to @p version, then processes those chunks while forwarding @p cmds into user callbacks. After
+			   processing the collected dirty chunks the helper updates @p version to reflect component/chunk versions observed during
+			   processing. The implementation selects const vs non-const processing helpers based on whether `Self` is const-qualified and
+			   supports sequential and parallel execution policies.
+				@tparam Self The `ECS` type (possibly const-qualified) used for dispatch and to access pools/caches.
+				@tparam ReqList `TypeList` of required component/tag types.
+				@tparam AnyList `TypeList` of alternative types where any single match satisfies the clause.
+				@tparam NoneList `TypeList` of component/tag types that must be absent.
+				@tparam Func Callable invoked per-entity or per-chunk; when used per-entity the callable must accept a `CommandBuffer&`.
+				@param[in,out] self Reference to the `ECS` instance providing archetypes, thread pools and caches.
+				@param[in] policy Execution policy controlling parallelism (Seq, Par, ParBatched, ParStealing).
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for recording deferred operations.
+				@param[in] func User callable forwarded into per-chunk processing; compatible with the per-chunk helpers.
+			*/
 			template <class Self, typename ReqList, typename AnyList, typename NoneList, typename Func>
 			static void forEachQueryVersionCommandImpl(Self &self, ExecutionPolicy &policy, SystemVersion &version,
 													   CommandBuffer & /*cmds*/, Func &&func)
@@ -2052,6 +2347,18 @@ namespace Dimensia::ECS
 				}
 			}
 
+			/*! @brief Version-aware command-style `forEach` that accepts clause wrappers and a `CommandBuffer`.
+				@tparam AllFilter `All<...>` clause specifying required types.
+				@tparam AnyFilter `Any<...>` clause specifying alternative-match types.
+				@tparam NoneFilter `None<...>` clause specifying excluded types.
+				@tparam Func Callable invoked per-entity or per-chunk; when used per-entity the callable must accept a `CommandBuffer&`.
+				@param[in] policy Execution policy controlling parallelism.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying versioned implementation.
+				@note Transforms clause wrappers into `TypeList` aliases via `PackExtractor` and forwards to
+			   `forEachQueryVersionCommandImpl` which performs dirty-chunk selection and processing.
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
 			{
@@ -2062,6 +2369,17 @@ namespace Dimensia::ECS
 																							std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified version-aware command-style `forEach` that accepts clause wrappers and a `CommandBuffer`.
+				@tparam AllFilter `All<...>` clause specifying required types (read-only).
+				@tparam AnyFilter `Any<...>` clause specifying alternative-match types.
+				@tparam NoneFilter `None<...>` clause specifying excluded types.
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers and accept a
+			   `CommandBuffer&` when used per-entity.
+				@param[in] policy Execution policy controlling parallelism.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying const versioned implementation.
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
@@ -2074,6 +2392,16 @@ namespace Dimensia::ECS
 
 			// MARK: forEachQueryVersionCommandImpl 2 operator overloads
 
+			/*! @brief Version-aware command-style `forEach` for `All<...>` + `None<...>` clauses.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked per-entity or per-chunk; when used per-entity the callable must accept a `CommandBuffer&`.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying versioned implementation.
+				@note This overload sets the `Any` clause to empty (`TypeList<>`) and forwards to `forEachQueryVersionCommandImpl`.
+			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
 			{
@@ -2084,6 +2412,16 @@ namespace Dimensia::ECS
 																							std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified version-aware command-style `forEach` for `All<...>` + `None<...>` clauses.
+				@tparam AllFilter `All<...>` clause listing required component/tag types (read-only).
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers and accept a
+			   `CommandBuffer&` when used per-entity.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the const versioned implementation.
+			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
@@ -2094,6 +2432,16 @@ namespace Dimensia::ECS
 																							std::forward<Func>(func));
 			}
 
+			/*! @brief Version-aware command-style `forEach` for `All<...>` + `Any<...>` clauses.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types where any single match satisfies the clause.
+				@tparam Func Callable invoked per-entity or per-chunk; when used per-entity the callable must accept a `CommandBuffer&`.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying versioned implementation.
+				@note This overload sets the `None` clause to empty (`TypeList<>`) and forwards to `forEachQueryVersionCommandImpl`.
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
 			{
@@ -2104,6 +2452,16 @@ namespace Dimensia::ECS
 																							std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified version-aware command-style `forEach` for `All<...>` + `Any<...>` clauses.
+				@tparam AllFilter `All<...>` clause listing required component/tag types (read-only).
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types.
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers and accept a
+			   `CommandBuffer&` when used per-entity.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying const versioned implementation.
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
@@ -2114,6 +2472,17 @@ namespace Dimensia::ECS
 																							std::forward<Func>(func));
 			}
 
+			/*! @brief Version-aware command-style `forEach` for `Any<...>` + `None<...>` clauses.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types where any single match satisfies the clause.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked per-entity or per-chunk; when used per-entity the callable must accept a `CommandBuffer&`.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying versioned implementation.
+				@note This overload sets the `All` (required) clause to empty (`TypeList<>`) and forwards to
+			   `forEachQueryVersionCommandImpl`.
+			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
 			{
@@ -2124,6 +2493,16 @@ namespace Dimensia::ECS
 																							std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified version-aware command-style `forEach` for `Any<...>` + `None<...>` clauses.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types (read-only).
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers and accept a
+			   `CommandBuffer&` when used per-entity.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying const versioned implementation.
+			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
@@ -2136,6 +2515,16 @@ namespace Dimensia::ECS
 
 			// MARK: forEachQueryVersionCommandImpl 1 operator overloads
 
+			/*! @brief Version-aware command-style `forEach` for a required-only `All<...>` clause.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam Func Callable invoked per-entity or per-chunk; when used per-entity the callable must accept a `CommandBuffer&`.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying versioned implementation.
+				@note This overload converts `AllFilter` to a `TypeList` via `PackExtractor` and forwards to
+			   `forEachQueryVersionCommandImpl` with empty `Any`/`None` clauses.
+			*/
 			template <AllType AllFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
 			{
@@ -2146,6 +2535,15 @@ namespace Dimensia::ECS
 																							std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified version-aware command-style `forEach` for a required-only `All<...>` clause.
+				@tparam AllFilter `All<...>` clause listing required component/tag types (read-only).
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers and accept a
+			   `CommandBuffer&` when used per-entity.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying const versioned implementation.
+			*/
 			template <AllType AllFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
@@ -2156,6 +2554,16 @@ namespace Dimensia::ECS
 																							std::forward<Func>(func));
 			}
 
+			/*! @brief Version-aware command-style `forEach` for an `Any<...>` (at-least-one) clause.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types where any single match satisfies the clause.
+				@tparam Func Callable invoked per-entity or per-chunk; when used per-entity the callable must accept a `CommandBuffer&`.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying versioned implementation.
+				@note This overload converts `AnyFilter` to a `TypeList` via `PackExtractor` and forwards to
+			   `forEachQueryVersionCommandImpl` with empty `All`/`None` clauses.
+			*/
 			template <AnyType AnyFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
 			{
@@ -2166,6 +2574,15 @@ namespace Dimensia::ECS
 																							std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified version-aware command-style `forEach` for an `Any<...>` clause.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types (read-only).
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers and accept a
+			   `CommandBuffer&` when used per-entity.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying const versioned implementation.
+			*/
 			template <AnyType AnyFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
@@ -2176,6 +2593,16 @@ namespace Dimensia::ECS
 																							std::forward<Func>(func));
 			}
 
+			/*! @brief Version-aware command-style `forEach` that excludes types listed in `None<...>`.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent for a match.
+				@tparam Func Callable invoked per-entity or per-chunk; when used per-entity the callable must accept a `CommandBuffer&`.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying versioned implementation.
+				@note This overload converts `NoneFilter` to a `TypeList` via `PackExtractor` and forwards to
+			   `forEachQueryVersionCommandImpl` with empty `All`/`Any` clauses.
+			*/
 			template <NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
 			{
@@ -2186,6 +2613,15 @@ namespace Dimensia::ECS
 																							std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified version-aware command-style `forEach` that excludes types listed in `None<...>`.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent (read-only).
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers and accept a
+			   `CommandBuffer&` when used per-entity.
+				@param[in] policy Execution policy controlling parallelism and batching.
+				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
+				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for scheduling deferred operations.
+				@param[in] func User-provided callable forwarded to the underlying const versioned implementation.
+			*/
 			template <NoneType NoneFilter, typename Func>
 			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
@@ -2196,14 +2632,30 @@ namespace Dimensia::ECS
 																							std::forward<Func>(func));
 			}
 
+			// MARK: forEachQuery
+
+			/*! @brief Convenience `forEach` that runs the query with `ExecutionPolicy::Seq`.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked per-entity or per-chunk. Forwarded to the underlying `forEach` overload.
+				@param[in] func User-provided callable forwarded to the sequential `forEach` implementation.
+				@note This overload is a convenience wrapper that selects the sequential execution policy.
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(Func &&func)
 			{
 				forEach<AllFilter, AnyFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
 
-			// MARK: forEachQuery
-
+			/*! @brief Const-qualified convenience `forEach` that runs the query with `ExecutionPolicy::Seq`.
+				@tparam AllFilter `All<...>` clause listing required component/tag types (read-only).
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers.
+				@param[in] func User-provided callable forwarded to the sequential const `forEach` implementation.
+				@note This overload is a const convenience wrapper that selects the sequential execution policy.
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(Func &&func) const
 			{
@@ -2212,36 +2664,70 @@ namespace Dimensia::ECS
 
 			// MARK: forEachQuery 2 operator overloads
 
+			/*! @brief Convenience `forEach` (required + excluded) using `ExecutionPolicy::Seq`.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked per-entity or per-chunk; forwarded to the underlying implementation.
+				@param[in] func User-provided callable forwarded to the sequential `forEach` implementation.
+				@note This is a convenience wrapper that selects the sequential execution policy.
+			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
 			void forEach(Func &&func)
 			{
 				forEach<AllFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified convenience `forEach` (required + excluded) using `ExecutionPolicy::Seq`.
+				@tparam AllFilter `All<...>` clause listing required component/tag types (read-only).
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers.
+				@param[in] func User-provided callable forwarded to the sequential const `forEach` implementation.
+			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
 			void forEach(Func &&func) const
 			{
 				forEach<AllFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
 
+			/*! @brief Convenience `forEach` (required + alternative) using `ExecutionPolicy::Seq`.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types.
+				@tparam Func Callable invoked per-entity or per-chunk; forwarded to the underlying implementation.
+				@param[in] func User-provided callable forwarded to the sequential `forEach` implementation.
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
 			void forEach(Func &&func)
 			{
 				forEach<AllFilter, AnyFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified convenience `forEach` (required + alternative) using `ExecutionPolicy::Seq`.
+				@tparam AllFilter `All<...>` clause listing required component/tag types (read-only).
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types.
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers.
+			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
 			void forEach(Func &&func) const
 			{
 				forEach<AllFilter, AnyFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
 
+			/*! @brief Convenience `forEach` (alternative + excluded) using `ExecutionPolicy::Seq`.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked per-entity or per-chunk; forwarded to the underlying implementation.
+			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(Func &&func)
 			{
 				forEach<AnyFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified convenience `forEach` (alternative + excluded) using `ExecutionPolicy::Seq`.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types (read-only where applicable).
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent.
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers.
+			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
 			void forEach(Func &&func) const
 			{
@@ -2250,36 +2736,62 @@ namespace Dimensia::ECS
 
 			// MARK: forEachQuery 1 operator overloads
 
+			/*! @brief Convenience `forEach` for a required-only `All<...>` clause using `ExecutionPolicy::Seq`.
+				@tparam AllFilter `All<...>` clause listing required component/tag types.
+				@tparam Func Callable invoked per-entity or per-chunk; forwarded to the underlying implementation.
+				@param[in] func User-provided callable forwarded to the sequential `forEach` implementation.
+				@note This overload is a convenience wrapper that selects the sequential execution policy.
+			*/
 			template <AllType AllFilter, typename Func>
 			void forEach(Func &&func)
 			{
 				forEach<AllFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified convenience `forEach` for a required-only `All<...>` clause using `ExecutionPolicy::Seq`.
+				@tparam AllFilter `All<...>` clause listing required component/tag types (read-only).
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers.
+			*/
 			template <AllType AllFilter, typename Func>
 			void forEach(Func &&func) const
 			{
 				forEach<AllFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
 
+			/*! @brief Convenience `forEach` for an `Any<...>` clause (at-least-one match) using `ExecutionPolicy::Seq`.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types where any single match satisfies the clause.
+				@tparam Func Callable invoked per-entity or per-chunk; forwarded to the underlying implementation.
+			*/
 			template <AnyType AnyFilter, typename Func>
 			void forEach(Func &&func)
 			{
 				forEach<AnyFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified convenience `forEach` for an `Any<...>` clause using `ExecutionPolicy::Seq`.
+				@tparam AnyFilter `Any<...>` clause listing alternative component/tag types (read-only where applicable).
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers.
+			*/
 			template <AnyType AnyFilter, typename Func>
 			void forEach(Func &&func) const
 			{
 				forEach<AnyFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
 
+			/*! @brief Convenience `forEach` that excludes types listed in `None<...>` using `ExecutionPolicy::Seq`.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent for a match.
+				@tparam Func Callable invoked per-entity or per-chunk; forwarded to the underlying implementation.
+			*/
 			template <NoneType NoneFilter, typename Func>
 			void forEach(Func &&func)
 			{
 				forEach<NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
 
+			/*! @brief Const-qualified convenience `forEach` that excludes types listed in `None<...>` using `ExecutionPolicy::Seq`.
+				@tparam NoneFilter `None<...>` clause listing component/tag types that must be absent (read-only where applicable).
+				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers.
+			*/
 			template <NoneType NoneFilter, typename Func>
 			void forEach(Func &&func) const
 			{
@@ -2429,6 +2941,20 @@ namespace Dimensia::ECS
 				}
 			}
 
+			/*! @brief Returns the cached list of archetypes matching a multi-clause query, computing and caching it if absent.
+				@tparam Self The ECS type used for dispatch; may be const-qualified when called from const contexts.
+				@tparam AnyList TypeList of alternative types used for the `Any<...>` clause (may be empty).
+				@tparam NoneList TypeList of types used for the `None<...>` clause (may be empty).
+				@param[in,out] self Reference to the ECS instance that owns the archetype list and query cache.
+				@param[in] key QueryKey computed for the requested clause combination and used as the cache key.
+				@param[in] requiredMask Bitmask of required (All) regular component types.
+				@param[in] anyMask Bitmask representing the union of types in the Any clause (may be zero).
+				@param[in] noneMask Bitmask representing the union of types in the None clause (may be zero).
+				@return Reference to a std::vector of matching `Archetype *` stored inside the ECS instance's cache.
+				@note If the key is not present in the cache the function computes the matching archetypes by iterating all archetypes and
+			   testing the masks. The function uses compile-time checks on `AnyList`/`NoneList` to avoid unnecessary runtime tests when
+			   clauses are empty.
+			*/
 			template <class Self, typename AnyList, typename NoneList>
 			static std::vector<Archetype *> &getMatchingArchetypesForQueryCalls(Self &self, const QueryKey &key,
 																				const ComponentMask &requiredMask,
@@ -2474,6 +3000,15 @@ namespace Dimensia::ECS
 				return iterator->second;
 			}
 
+			/*! @brief Collects archetype chunks whose versions indicate they need processing for the supplied mask.
+				@param[out] dirtyChunks Vector to which matching (archetype, chunkIndex, ChunkVersion const*) tuples are appended.
+				@param[in] matchingArchetypes Pre-filtered list of archetypes that match the query masks.
+				@param[in] version SystemVersion used to decide whether a chunk requires an update for the requested mask.
+				@param[in] requiredRegular ComponentMask of the regular components that the system depends on; used when querying
+			   `version.needsUpdate` so only relevant component changes mark a chunk dirty.
+				@note Empty chunks (no entities) are skipped. The function appends pointers into the archetype-managed chunk versions;
+			   callers must ensure archetypes outlive use of the returned ChunkVersion pointers.
+			*/
 			static void setDirtyChunks(std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks,
 									   const std::vector<Archetype *> &matchingArchetypes, const SystemVersion &version,
 									   const ComponentMask &requiredRegular)
