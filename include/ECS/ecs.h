@@ -3044,8 +3044,6 @@ namespace Dimensia::ECS
 
 			mutable std::unordered_map<QueryKey, std::vector<Archetype *>> mMultiQueryCache;
 
-			// NOLINTBEGIN(readability-redundant-member-init)
-
 			/*! @var mThreadPool
 				@brief Mutable thread pool used for parallel `forEach`/system execution where threads are needed.
 			*/
@@ -3065,8 +3063,6 @@ namespace Dimensia::ECS
 				@brief Map from component masks to archetype identifiers for quick lookup.
 			*/
 			std::unordered_map<ComponentMask, ui> mArchetypeMaskToID{};
-
-			// NOLINTEND(readability-redundant-member-init)
 
 			/*! @var mRecords
 				@brief Per-entity records containing archetype, chunk and slot indices.
