@@ -8,19 +8,60 @@ COMPILER_FLAGS_TEST = ${COMPILER_VERSION} --coverage -fPIC -O0 -g -fprofile-arcs
 COMPILER_FLAGS_VALGRIND = ${COMPILER_VERSION} -O0 -g ${COMPILE_FLAGS_COMMON}
 COMPILER_FLAGS_BENCHMARK = ${COMPILER_VERSION} -O3 -pg ${COMPILE_FLAGS_COMMON}
 
-WARNINGS = -fdelete-null-pointer-checks -fstrict-aliasing -fimplicit-constexpr -pedantic -pedantic-errors -Wall -Wextra -Wcast-align -Wcast-qual -Wctor-dtor-privacy -Wdisabled-optimization -Wformat=2 -Wformat-nonliteral -Wformat-security -Wformat-signedness -Wformat-truncation=2 -Wformat-y2k -Wlogical-op -Wmissing-declarations -Wmissing-include-dirs -Wnull-dereference -Wnoexcept -Woverloaded-virtual -Wredundant-decls -Wshadow -Wsign-conversion -Wsign-promo -Wstrict-null-sentinel -Wswitch-default -Wswitch-enum -Wundef -Wunused -Wunused-const-variable=2 -Wuseless-cast -Wuninitialized -Wstrict-aliasing -Wduplicated-branches -Wtrampolines -Wduplicated-cond -Wbidi-chars=any -Wfloat-equal -Wconversion -Winline -Wzero-as-null-pointer-constant -Wmissing-noreturn -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=malloc -Wsuggest-attribute=cold -Wsuggest-attribute=format -Wmissing-format-attribute -Wpacked -Wunused-macros -Wno-missing-requires -Wno-missing-template-keyword -Wvariadic-macros -Wunsafe-loop-optimizations -Wno-changes-meaning -Wdouble-promotion -Wcomma-subscript -Wdangling-reference -Wsuggest-final-types -Wsuggest-override -Wsuggest-final-methods -Winvalid-constexpr -Wold-style-cast -Wextra-semi -Wenum-conversion  $(if $(filter-out 13,$(COMPILER_STANDARD)), -Wnrvo -Wsuggest-attribute=returns_nonnull)
+GCC_WARNINGS = $(if $(findstring g++,$(COMPILER)), -fdelete-null-pointer-checks -fstrict-aliasing -fimplicit-constexpr -pedantic -pedantic-errors -Wall -Wextra -Weffc++ -Wcast-align -Wcast-qual -Wctor-dtor-privacy -Wdisabled-optimization -Wformat=2 -Wformat-nonliteral -Wformat-security -Wformat-signedness -Wformat-truncation=2 -Wformat-y2k -Wlogical-op -Wmissing-declarations -Wmissing-include-dirs -Wnull-dereference -Wnoexcept -Woverloaded-virtual -Wredundant-decls -Wshadow -Wsign-conversion -Wsign-promo -Wstrict-null-sentinel -Wswitch-default -Wswitch-enum -Wundef -Wunused -Wunused-const-variable=2 -Wuseless-cast -Wuninitialized -Wstrict-aliasing -Wduplicated-branches -Wtrampolines -Wduplicated-cond -Wbidi-chars=any -Wfloat-equal -Wconversion -Winline -Wzero-as-null-pointer-constant -Wmissing-noreturn -Wsuggest-attribute=pure -Wsuggest-attribute=const -Wsuggest-attribute=malloc -Wsuggest-attribute=cold -Wsuggest-attribute=format -Wmissing-format-attribute -Wpacked -Wunused-macros -Wno-missing-requires -Wno-missing-template-keyword -Wvariadic-macros -Wunsafe-loop-optimizations -Wno-changes-meaning -Wdouble-promotion -Wcomma-subscript -Wdangling-reference -Wsuggest-final-types -Wsuggest-override -Wsuggest-final-methods -Winvalid-constexpr -Wold-style-cast -Wextra-semi -Wenum-conversion -Werror $(if $(filter-out 13,$(COMPILER_STANDARD)), -Wnrvo -Wsuggest-attribute=returns_nonnull))
 
-RELEASE_WARNINGS = $(if $(filter-out 13,$(COMPILER_STANDARD)), -fhardened -Whardened)
+CLANG_WARNINGS = $(if $(findstring clang,$(COMPILER)), -fdelete-null-pointer-checks -fstrict-aliasing -pedantic -pedantic-errors -Wall -Wextra -Weffc++ -Wcast-align -Wcast-qual -Wctor-dtor-privacy -Wdisabled-optimization -Wformat=2 -Wformat-nonliteral -Wformat-security -Wformat-signedness -Wformat-y2k -Wmissing-declarations -Wmissing-include-dirs -Wnull-dereference -Woverloaded-virtual -Wredundant-decls -Wshadow -Wsign-conversion -Wsign-promo -Wswitch-default -Wswitch-enum -Wundef -Wunused -Wuninitialized -Wstrict-aliasing -Wfloat-equal -Wconversion -Winline -Wzero-as-null-pointer-constant -Wmissing-noreturn -Wmissing-format-attribute -Wpacked -Wunused-macros -Wvariadic-macros -Wdouble-promotion -Wsuggest-override -Winvalid-constexpr -Wold-style-cast -Wextra-semi -Wenum-conversion -Werror $(if $(filter-out 13,$(COMPILER_STANDARD)), -Wnrvo))
 
-DEBUG_WARNINGS = -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=leak -fsanitize=undefined -fsanitize=shift -fsanitize=shift-exponent -fsanitize=shift-base -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=return -fsanitize=signed-integer-overflow -fsanitize=bounds -fsanitize=bounds-strict -fsanitize=alignment -fsanitize=object-size -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=bool -fsanitize=enum -fsanitize=vptr -fsanitize=pointer-overflow -fsanitize=builtin -fsanitize-address-use-after-scope
+WARNINGS = ${GCC_WARNINGS} ${CLANG_WARNINGS}
+
+GCC_RELEASE_WARNINGS = $(if $(findstring g++,$(COMPILER)), $(if $(filter-out 13,$(COMPILER_STANDARD)), -fhardened -Whardened))
+
+CLANG_RELEASE_WARNINGS = $(if $(findstring clang,$(COMPILER)), )
+
+RELEASE_WARNINGS = ${GCC_RELEASE_WARNINGS} ${CLANG_RELEASE_WARNINGS}
+
+GCC_DEBUG_WARNINGS = $(if $(findstring g++,$(COMPILER)), -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=leak -fsanitize=undefined -fsanitize=shift -fsanitize=shift-exponent -fsanitize=shift-base -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=return -fsanitize=signed-integer-overflow -fsanitize=bounds -fsanitize=bounds-strict -fsanitize=alignment -fsanitize=object-size -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=bool -fsanitize=enum -fsanitize=vptr -fsanitize=pointer-overflow -fsanitize=builtin -fsanitize-address-use-after-scope)
+
+CLANG_DEBUG_WARNINGS = $(if $(findstring clang,$(COMPILER)), -fsanitize=address -fsanitize=pointer-compare -fsanitize=pointer-subtract -fsanitize=leak -fsanitize=undefined -fsanitize=shift -fsanitize=shift-exponent -fsanitize=shift-base -fsanitize=integer-divide-by-zero -fsanitize=unreachable -fsanitize=vla-bound -fsanitize=null -fsanitize=return -fsanitize=signed-integer-overflow -fsanitize=bounds -fsanitize=alignment -fsanitize=float-divide-by-zero -fsanitize=float-cast-overflow -fsanitize=nonnull-attribute -fsanitize=returns-nonnull-attribute -fsanitize=bool -fsanitize=enum -fsanitize=pointer-overflow -fsanitize=builtin -fsanitize-address-use-after-scope)
+
+DEBUG_WARNINGS = ${GCC_DEBUG_WARNINGS} ${CLANG_DEBUG_WARNINGS}
 
 INCLUDE_FOLDER = include
 INCLUDE_ARGUMENT = -I${INCLUDE_FOLDER}
-LIBRARIES = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi -lconfigcat -lcurl -lz -lssl -lcrypto -lhash-library
+
+GCC_LIBRARIES = $(if $(findstring g++,$(COMPILER)), -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi -lconfigcat -lcurl -lz -lssl -lcrypto -lhash-library)
+CLANG_LIBRARIES = $(if $(findstring clang,$(COMPILER)), -lstdc++)
+LIBRARIES = ${GCC_LIBRARIES} ${CLANG_LIBRARIES}
+
 RESOURCES_FOLDER = resources
 
+TRACY_SOURCES = $(SOURCES) src/tracy/public/TracyClient.cpp
+TRACY_FOLDER = tracy
+TRACY_LIBRARIES = ${LIBRARIES} -lTracyClient
+TRACY_FLAGS = -DTRACY_ENABLE -DTRACY_TIMER_FALLBACK -DTRACY_ON_DEMAND
+OUTPUT_FILE_TRACY = tracy-client
+OUTPUT_FOLDER_TRACY = ${BUILD_FOLDER}/${TRACY_FOLDER}
+
+EXCLUDED_FOLDERS = ${TRACY_FOLDER}
+EXCLUDE_FOLDER_PATHS = $(foreach dir,$(EXCLUDED_FOLDERS),-not -path '*/$(dir)/*')
+
+EXCLUDED_FILES = testMain.cpp configCat.cpp
+EXCLUDE_FILE_PATHS = $(foreach file,$(EXCLUDED_FILES),-not -path '*/$(file)')
+
+TESTS_EXCLUDED_FOLDERS = ${TRACY_FOLDER}
+TESTS_EXCLUDE_FOLDER_PATHS = $(foreach dir,$(TESTS_EXCLUDED_FOLDERS),-not -path '*/$(dir)/*')
+
+TESTS_EXCLUDED_FILES = main.cpp configCat.cpp
+TESTS_EXCLUDE_FILE_PATHS = $(foreach file,$(TESTS_EXCLUDED_FILES),-not -path '*/$(file)')
+
+BENCHMARKS_EXCLUDED_FOLDERS = ${TRACY_FOLDER}
+BENCHMARKS_EXCLUDE_FOLDER_PATHS = $(foreach dir,$(BENCHMARKS_EXCLUDED_FOLDERS),-not -path '*/$(dir)/*')
+
+BENCHMARKS_EXCLUDED_FILES = ${EXCLUDED_FILES}
+BENCHMARKS_EXCLUDE_FILE_PATHS = $(foreach file,$(BENCHMARKS_EXCLUDED_FILES),-not -path '*/$(file)')
+
 SOURCE_FOLDER = src
-SOURCES = $(shell find ${SOURCE_FOLDER} -type f -not -path '*/tracy/*.cpp' -name '*.cpp')
+SOURCES = $(shell find ${SOURCE_FOLDER} -type f ${EXCLUDE_FILE_PATHS} ${EXCLUDE_FOLDER_PATHS} -name '*.cpp')
 INCLUDE_SOURCES = $(shell find ${INCLUDE_FOLDER} -type f \( -name '*.h' -o -name '*.hpp' \))
 
 BUILD_FOLDER = build
@@ -36,29 +77,22 @@ VALGRIND_FOLDER = valgrind
 OUTPUT_FOLDER_VALGRIND = ${BUILD_FOLDER}/${VALGRIND_FOLDER}
 OUTPUT_FILE_VALGRIND = valgrind
 
-TRACY_SOURCES = $(SOURCES) src/tracy/public/TracyClient.cpp
-TRACY_FOLDER = tracy
-TRACY_LIBRARIES = ${LIBRARIES} -lTracyClient
-TRACY_FLAGS = -DTRACY_ENABLE -DTRACY_TIMER_FALLBACK -DTRACY_ON_DEMAND
-OUTPUT_FILE_TRACY = tracy-client
-OUTPUT_FOLDER_TRACY = ${BUILD_FOLDER}/${TRACY_FOLDER}
-
 TEST_FOLDER = tests
-TEST_SOURCES = $(shell find ${TEST_FOLDER} ${SOURCE_FOLDER} -type f -not -path '*/main.cpp' -not -path '*/${TRACY_FOLDER}/*' -name '*.cpp')
+TEST_SOURCES = $(shell find ${TEST_FOLDER} ${SOURCE_FOLDER} -type f ${TESTS_EXCLUDE_FILE_PATHS} ${TESTS_EXCLUDE_FOLDER_PATHS} -name '*.cpp')
 TEST_INCLUDE_FOLDER =
 TEST_INCLUDE_ARGUMENT =
 TEST_INTEGRATIONS_FOLDER = ${TEST_FOLDER}/integrations
 TEST_INTEGRATIONS_INCLUDE_ARUGMENT = ${TEST_INCLUDE_ARGUMENT}
-TEST_INTEGRATIONS_SOURCES = $(shell find ${TEST_INTEGRATIONS_FOLDER} ${SOURCE_FOLDER} -type f -not -path '*/main.cpp' -not -path '*/${TRACY_FOLDER}/*' -name '*.cpp')
+TEST_INTEGRATIONS_SOURCES = $(shell find ${TEST_INTEGRATIONS_FOLDER} ${SOURCE_FOLDER} -type f ${TESTS_EXCLUDE_FILE_PATHS} ${TESTS_EXCLUDE_FOLDER_PATHS} -name '*.cpp')
 TEST_MOCKS_FOLDER = ${TEST_FOLDER}/mocks
 TEST_MOCKS_INCLUDE_ARUGMENT = ${TEST_INCLUDE_ARGUMENT}
-TEST_MOCKS_SOURCES = $(shell find ${TEST_MOCKS_FOLDER} ${SOURCE_FOLDER} -type f -not -path '*/main.cpp' -not -path '*/${TRACY_FOLDER}/*' -name '*.cpp')
+TEST_MOCKS_SOURCES = $(shell find ${TEST_MOCKS_FOLDER} ${SOURCE_FOLDER} -type f ${TESTS_EXCLUDE_FILE_PATHS} ${TESTS_EXCLUDE_FOLDER_PATHS} -name '*.cpp')
 TEST_UNITS_FOLDER = ${TEST_FOLDER}/unit
 TEST_UNITS_INCLUDE_ARUGMENT = ${TEST_INCLUDE_ARGUMENT}
-TEST_UNITS_SOURCES = $(shell find ${TEST_UNITS_FOLDER} ${SOURCE_FOLDER} -type f -not -path '*/main.cpp' -not -path '*/${TRACY_FOLDER}/*' -name '*.cpp')
+TEST_UNITS_SOURCES = $(shell find ${TEST_UNITS_FOLDER} ${SOURCE_FOLDER} -type f ${TESTS_EXCLUDE_FILE_PATHS} ${TESTS_EXCLUDE_FOLDER_PATHS} -name '*.cpp')
 TEST_MAIN_FOLDER = ${TEST_FOLDER}/main
 TEST_MAIN_INCLUDE_ARUGMENT = ${TEST_INCLUDE_ARGUMENT}
-TEST_MAIN_SOURCES = $(shell find ${TEST_MAIN_FOLDER} ${SOURCE_FOLDER} -type f -not -path '*/main.cpp' -not -path '*/${TRACY_FOLDER}/*' -name '*.cpp')
+TEST_MAIN_SOURCES = $(shell find ${TEST_MAIN_FOLDER} ${SOURCE_FOLDER} -type f ${TESTS_EXCLUDE_FILE_PATHS} ${TESTS_EXCLUDE_FOLDER_PATHS} -name '*.cpp')
 TEST_LIBRARIES = ${LIBRARIES} -lgcov -lgtest -lgmock -lpthread
 TEST_RESOURCES = ${RESOURCES_FOLDER}
 TEST_REPEAT_COUNT = 1
@@ -68,7 +102,7 @@ OUTPUT_FOLDER_TEST = ${BUILD_FOLDER}/${TEST_FOLDER}
 OUTPUT_FILE_TEST = test
 
 BENCHMARK_FOLDER = benchmarks
-BENCHMARK_SOURCES = $(shell find ${BENCHMARK_FOLDER} ${SOURCE_FOLDER} -type f -not -path '*/main.cpp' -not -path '*/${TRACY_FOLDER}/*' -name '*.cpp')
+BENCHMARK_SOURCES = $(shell find ${BENCHMARK_FOLDER} ${SOURCE_FOLDER} -type f ${BENCHMARKS_EXCLUDE_FILE_PATHS} ${BENCHMARKS_EXCLUDE_FOLDER_PATHS} -name '*.cpp')
 BENCHMARK_INCLUDE_FOLDER =
 BENCHMARK_INCLUDE_ARGUMENT =
 BENCHMARK_LIBRARIES = ${LIBRARIES} -lbenchmark -lpthread
