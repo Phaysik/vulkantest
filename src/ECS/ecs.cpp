@@ -172,7 +172,8 @@ namespace Dimensia::ECS
 		assert(index < mRecords.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-		mRecords[index] = {.generation = gen, .archetypeID = emptyArch->getId(), .chunkIndex = chunk, .slotIndex = slot, .state = State::Active};
+		mRecords[index]
+			= {.generation = gen, .archetypeID = emptyArch->getId(), .chunkIndex = chunk, .slotIndex = slot, .state = State::Active};
 
 		const std::scoped_lock<std::mutex> lock(mHierarchyMutex);
 
@@ -370,6 +371,65 @@ namespace Dimensia::ECS
 		{
 			archPtr->compact(mRecords);
 		}
+
+		// Prune empty archetypes (skip index 0 — the empty archetype)
+		for (std::size_t i{mArchetypePtrs.size()}; i > 1; --i)
+		{
+			const std::size_t idx{i - 1};
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			const Archetype *arch{mArchetypePtrs[idx].get()};
+
+			// Check if archetype has any entities across all chunks
+			bool empty{true};
+			for (ui chunk{0}; chunk < arch->getChunkCount(); ++chunk)
+			{
+				if (arch->getEntityCount(chunk) > 0)
+				{
+					empty = false;
+					break;
+				}
+			}
+
+			if (!empty)
+			{
+				continue;
+			}
+
+			mQueryCache.removeArchetype(arch);
+			mArchetypeMaskToID.erase(arch->getRegularMask());
+
+			// Swap with last element and pop to avoid shifting
+			const std::size_t lastIdx{mArchetypePtrs.size() - 1};
+
+			if (idx != lastIdx)
+			{
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				const ui movedOldId{mArchetypePtrs[lastIdx]->getId()};
+
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				std::swap(mArchetypePtrs[idx], mArchetypePtrs[lastIdx]);
+
+				// Update the swapped archetype's internal ID and mask-to-ID map
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				mArchetypePtrs[idx]->setId(static_cast<ui>(idx));
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				mArchetypeMaskToID[mArchetypePtrs[idx]->getRegularMask()] = static_cast<ui>(idx);
+
+				// Update all entity records that reference the moved archetype
+				for (EntityRecord &rec : mRecords)
+				{
+					if (rec.archetypeID == movedOldId)
+					{
+						rec.archetypeID = static_cast<ui>(idx);
+					}
+				}
+			}
+
+			mArchetypePtrs.pop_back();
+		}
+
+		invalidateQueries();
 	}
 
 	void ECS::removeComponent(const Entity &entity, const ComponentTypeID compID)
@@ -447,6 +507,8 @@ namespace Dimensia::ECS
 	void ECS::invalidateQueries()
 	{
 		mQueryCache.clearResults();
+
+		const std::unique_lock lock(mMultiQueryMutex);
 		mMultiQueryCache.clear();
 	}
 
@@ -619,7 +681,7 @@ namespace Dimensia::ECS
 		ComponentMask moveOverrideMask{0, 0};
 		ComponentMask copyOverrideMask{0, 0};
 
-		acquireOverrideMasks(copyData, moveData, moveOverrideMask, copyOverrideMask);
+		acquireOverrideMasks(copyData, moveData, moveOverrideMask, copyOverrideMask, newRegularMask);
 
 		forEachSetBit(moveOverrideMask, [&](ComponentTypeID componentTypeID) {
 			assert(componentTypeID < finalMove.size());

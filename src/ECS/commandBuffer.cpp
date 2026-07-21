@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -42,7 +43,7 @@ namespace Dimensia::ECS
 	{
 		std::vector<std::vector<Command>> local_command_lists;
 		{
-			const std::scoped_lock lock(mMapMutex);
+			const std::unique_lock lock(mMapMutex);
 			local_command_lists.reserve(mBuffers.size());
 			for (auto &[threadID, buf] : mBuffers)
 			{
@@ -109,23 +110,54 @@ namespace Dimensia::ECS
 
 	void CommandBuffer::clear()
 	{
-		const std::scoped_lock<std::mutex> lock(mMapMutex);
-		mBuffers.clear();
+		const std::unique_lock lock(mMapMutex);
+
+		for (auto &[threadID, buf] : mBuffers)
+		{
+			buf->commands.clear();
+		}
 	}
 
 	// MARK: Private Member Functions
 
 	ThreadBuffer *CommandBuffer::getThreadBuffer()
 	{
-		const std::scoped_lock lock(mMapMutex);
-		auto &slot{mBuffers[std::this_thread::get_id()]};
+		// Fast path: thread_local caches the buffer pointer to avoid locking on every call
+		thread_local ThreadBuffer *cachedBuffer{nullptr};
+		const thread_local CommandBuffer *cachedOwner{nullptr};
+
+		if (cachedOwner == this && cachedBuffer != nullptr)
+		{
+			return cachedBuffer;
+		}
+
+		// Slow path: check if this thread already has a buffer under a shared lock
+		const auto threadId{std::this_thread::get_id()};
+
+		{
+			const std::shared_lock readLock(mMapMutex);
+			auto iterator{mBuffers.find(threadId)};
+
+			if (iterator != mBuffers.end())
+			{
+				cachedBuffer = iterator->second.get();
+				cachedOwner = this;
+				return cachedBuffer;
+			}
+		}
+
+		// Registration path: take exclusive lock to insert a new buffer
+		const std::unique_lock writeLock(mMapMutex);
+		auto &slot{mBuffers[threadId]};
 
 		if (!slot)
 		{
 			slot = std::make_unique<ThreadBuffer>();
 		}
 
-		return slot.get();
+		cachedBuffer = slot.get();
+		cachedOwner = this;
+		return cachedBuffer;
 	}
 
 	void CommandBuffer::processAdd(ECS &ecs, const Entity &entity, const AddData &addData)

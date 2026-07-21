@@ -15,7 +15,7 @@
 #define INCLUDE_ECS_COMMANDBUFFER_H
 
 #include <memory>
-#include <mutex>
+#include <shared_mutex>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -150,9 +150,9 @@ namespace Dimensia::ECS
 			std::unordered_map<std::thread::id, std::unique_ptr<ThreadBuffer>> mBuffers;
 
 			/*! @var mMapMutex
-				@brief Mutex protecting `mBuffers`.
+				@brief Mutex protecting `mBuffers` for registration of new threads and `apply()`/`clear()` operations.
 			*/
-			std::mutex mMapMutex;
+			std::shared_mutex mMapMutex;
 	};
 } // namespace Dimensia::ECS
 

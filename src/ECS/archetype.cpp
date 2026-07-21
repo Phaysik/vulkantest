@@ -414,14 +414,17 @@ namespace Dimensia::ECS
 		}
 
 		perEntity += sizeof(ul) * TAG_WORDS_PER_ENTITY; // tag bitset (2 words for 128-bit mask)
-		ui cap{static_cast<ui>(CHUNK_SIZE / perEntity) + 1};
 
-		while (true)
-		{
+		// Binary search for the largest capacity that fits in CHUNK_SIZE
+		ui low{1};
+		ui high{static_cast<ui>(CHUNK_SIZE / perEntity) + 1};
+
+		// Lambda to compute the actual byte layout for a given capacity
+		auto layoutFits = [&](const ui testCap) -> bool {
 			std::size_t offset{0};
-			offset += cap * sizeof(Entity);
+			offset += testCap * sizeof(Entity);
 			offset = (offset + alignof(ul) - 1) & ~(alignof(ul) - 1);
-			offset += cap * sizeof(ul) * TAG_WORDS_PER_ENTITY;
+			offset += testCap * sizeof(ul) * TAG_WORDS_PER_ENTITY;
 
 			for (const ComponentTypeID componentTypeID : mSortedRegular)
 			{
@@ -431,19 +434,28 @@ namespace Dimensia::ECS
 				const ComponentInfo &info{ComponentInfos[componentTypeID]};
 
 				offset = (offset + info.alignment - 1) & ~(info.alignment - 1);
-				offset += cap * info.size;
+				offset += testCap * info.size;
 			}
 
-			if (offset <= CHUNK_SIZE)
+			return offset <= CHUNK_SIZE;
+		};
+
+		// Find the largest cap where layoutFits returns true
+		while (low < high)
+		{
+			const ui mid{low + ((high - low + 1) / 2)};
+
+			if (layoutFits(mid))
 			{
-				break;
+				low = mid;
 			}
-
-			--cap;
-			assert(cap > 0);
+			else
+			{
+				high = mid - 1;
+			}
 		}
 
-		return cap;
+		return low;
 	}
 
 	void Archetype::computeLayout(ui capacity)

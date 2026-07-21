@@ -15,6 +15,7 @@
 #include <latch>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -491,6 +492,17 @@ namespace Dimensia::ECS
 				// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			}
 
+			/*! @brief Tests whether `entity` has component `T`.
+				@tparam T Component type to test.
+				@param[in] entity Target entity.
+				@return True if the component is present, false otherwise.
+			*/
+			template <typename T>
+			ATTR_NODISCARD bool hasComponent(Entity entity) const
+			{
+				return getComponent<T>(entity) != nullptr;
+			}
+
 			// MARK: forEach Template Member Functions
 
 			/*! @brief Convenience overload that iterates entities matching `Components...` using the sequential execution policy.
@@ -785,11 +797,12 @@ namespace Dimensia::ECS
 			/*! @brief Dispatches command-style processing according to @p policy.
 				@tparam Self The ECS type (possibly const-qualified).
 				@tparam Components Component types in the query.
-				@tparam Func Callable accepting `(Entity, Components...)` or similar along with optional CommandBuffer.
+				@tparam Func Callable accepting `(Entity, Components...)`.
 				@param[in,out] self ECS instance reference.
 				@param[in] policy Execution policy to use.
-				@param[in] cmds CommandBuffer passed to callbacks when required.
+				@param[in] cmds CommandBuffer available for the caller to capture by reference in the callable.
 				@param[in] func User callable invoked for each entity or chunk.
+				@note The `cmds` parameter is not forwarded into the callback; callers should capture it by reference in their lambda.
 			*/
 			template <class Self, typename... Components, typename Func>
 			static void forEachPolicyCommandImpl(Self &self, const ExecutionPolicy &policy, CommandBuffer & /*cmds*/, Func &&func)
@@ -1039,54 +1052,41 @@ namespace Dimensia::ECS
 					return;
 				}
 
-				// Processing lambda – calls the appropriate chunk processing function
-				auto processFunc = [&func](Archetype *arch, ui chunkIndex) {
-					ui entityCount{arch->getEntityCount(chunkIndex)};
+				// Processing lambda – adapts (Archetype*, ui) to (Archetype*, ui, ui) for ProcessChunkOnly dispatch
+				auto processChunk = [&func](Archetype *arch, const ui chunkIndex, ATTR_MAYBE_UNUSED const ui entityCount) {
+					const ui count{arch->getEntityCount(chunkIndex)};
 
 					if constexpr (std::is_const_v<Self>)
 					{
 						const Entity *entityArr{arch->getEntityArray(chunkIndex)};
-						processChunkEntitiesConst<Components...>(entityArr, entityCount, chunkIndex, arch, std::forward<Func>(func));
+						processChunkEntitiesConst<Components...>(entityArr, count, chunkIndex, arch, std::forward<Func>(func));
 					}
 					else
 					{
 						Entity *entityArr{arch->getEntityArray(chunkIndex)};
-						processChunkEntities<Components...>(entityArr, entityCount, chunkIndex, arch, std::forward<Func>(func));
+						processChunkEntities<Components...>(entityArr, count, chunkIndex, arch, std::forward<Func>(func));
 					}
-				};
-
-				// Helper to update the SystemVersion after processing
-				auto updateVersion = [&](const std::tuple<Archetype *, ui, const ChunkVersion *> &chunk) {
-					const Archetype *arch{std::get<0>(chunk)};
-					const ui chunkIndex{std::get<1>(chunk)};
-
-					const ChunkVersion *chunkVer{std::get<2>(chunk)};
-
-					forEachSetBit(requiredRegular, [&](ComponentTypeID compID) {
-						version.setComponentVersion(compID,
-													std::max(version.getComponentVersion(compID), chunkVer->getComponentVersion(compID)));
-					});
-
-					version.setVersion(std::max(version.getVersion(), arch->getChunkVersion(chunkIndex).getVersion()));
 				};
 
 				switch (policy)
 				{
 					case ExecutionPolicy::Seq:
-						forEachSeqProcessChunkAndVersion(dirtyChunks, processFunc, updateVersion);
+						forEachSeqProcessChunkOnly(matchingArchetypes, processChunk);
 						break;
 					case ExecutionPolicy::Par:
-						forEachParProcessChunkAndVersion(dirtyChunks, self.mThreadPool, processFunc, updateVersion);
+						forEachParProcessChunkOnly(matchingArchetypes, self.mThreadPool, processChunk);
 						break;
 					case ExecutionPolicy::ParBatched:
-						forEachParBatchedProcessChunkAndVersion(dirtyChunks, self.mThreadPool, processFunc, updateVersion);
+						forEachParBatchedProcessChunkOnly(matchingArchetypes, self.mThreadPool, processChunk);
 						break;
 					case ExecutionPolicy::ParStealing:
-						forEachParStealingProcessChunkAndVersion(dirtyChunks, self.mWorkStealingPool, processFunc, updateVersion);
+						forEachParStealingProcessChunkOnly(matchingArchetypes, self.mWorkStealingPool, processChunk);
 						break;
 					default:
 						assert(false && "Invalid execution policy");
 				}
+
+				bulkMergeVersions(version, dirtyChunks, requiredRegular);
 			}
 
 			/*! @brief Iterate over entities matching `Components...` that are considered dirty by @p version.
@@ -1144,59 +1144,45 @@ namespace Dimensia::ECS
 				using FuncT = std::decay_t<Func>;
 				const FuncT processChunkFunction{std::forward<Func>(func)};
 
-				// Processing lambda – dispatches to the correct chunk processing function
-				auto processChunk = [&, processChunkFunction](Archetype *arch, ui chunkIndex) {
-					ui entityCount{arch->getEntityCount(chunkIndex)};
+				// Processing lambda – adapts to (Archetype*, ui, ui) for ProcessChunkOnly dispatch
+				auto processChunk = [&, processChunkFunction](Archetype *arch, const ui chunkIndex, ATTR_MAYBE_UNUSED const ui entityCount) {
+					const ui count{arch->getEntityCount(chunkIndex)};
 
 					if constexpr (std::is_const_v<Self>)
 					{
 						const Entity *entities{arch->getEntityArray(chunkIndex)};
 						processChunkEntitiesConst<Components...>(
-							entities, entityCount, chunkIndex, arch,
+							entities, count, chunkIndex, arch,
 							[&](const Entity &entity, const auto &...comps) { processChunkFunction(entity, comps..., cmds); });
 					}
 					else
 					{
 						Entity *entityArr = arch->getEntityArray(chunkIndex);
 						processChunkEntities<Components...>(
-							entityArr, entityCount, chunkIndex, arch,
+							entityArr, count, chunkIndex, arch,
 							[&](const Entity &entity, auto &...comps) { processChunkFunction(entity, comps..., cmds); });
 					}
-				};
-
-				// Helper to update the SystemVersion after processing a chunk
-				auto updateVersion = [&](const std::tuple<Archetype *, ui, const ChunkVersion *> &chunk) {
-					const Archetype *arch{std::get<0>(chunk)};
-					const ui chunkIndex{std::get<1>(chunk)};
-
-					const ChunkVersion *chunkVer{std::get<2>(chunk)};
-
-					forEachSetBit(requiredRegular, [&](const ComponentTypeID &componentTypeID) {
-						version.setComponentVersion(componentTypeID, std::max(version.getComponentVersion(componentTypeID),
-																			  chunkVer->getComponentVersion(componentTypeID)));
-					});
-
-					version.setVersion(std::max(version.getVersion(), arch->getChunkVersion(chunkIndex).getVersion()));
 				};
 
 				switch (policy)
 				{
 					case ExecutionPolicy::Seq:
-						forEachSeqProcessChunkAndVersion(dirtyChunks, processChunk, updateVersion);
+						forEachSeqProcessChunkOnly(matchingArchetypes, processChunk);
 						break;
 					case ExecutionPolicy::Par:
-
-						forEachParProcessChunkAndVersion(dirtyChunks, self.mThreadPool, processChunk, updateVersion);
+						forEachParProcessChunkOnly(matchingArchetypes, self.mThreadPool, processChunk);
 						break;
 					case ExecutionPolicy::ParBatched:
-						forEachParBatchedProcessChunkAndVersion(dirtyChunks, self.mThreadPool, processChunk, updateVersion);
+						forEachParBatchedProcessChunkOnly(matchingArchetypes, self.mThreadPool, processChunk);
 						break;
 					case ExecutionPolicy::ParStealing:
-						forEachParStealingProcessChunkAndVersion(dirtyChunks, self.mWorkStealingPool, processChunk, updateVersion);
+						forEachParStealingProcessChunkOnly(matchingArchetypes, self.mWorkStealingPool, processChunk);
 						break;
 					default:
 						assert(false && "Invalid execution policy");
 				}
+
+				bulkMergeVersions(version, dirtyChunks, requiredRegular);
 			}
 
 			/*! @brief Iterate over entities matching `Components...` that are dirty with respect to @p version and provide a
@@ -1599,9 +1585,8 @@ namespace Dimensia::ECS
 				using FuncT = std::decay_t<Func>;
 				const FuncT processChunkFunction{std::forward<Func>(func)};
 
-				// Process each matching archetype (sequential; extend to parallel as needed)
-				auto processChunk = [&, processChunkFunction](Archetype *arch, const ui chunkIndex) {
-					ui entityCount{arch->getEntityCount(chunkIndex)};
+				auto processChunk = [&, processChunkFunction](Archetype *arch, const ui chunkIndex, ATTR_MAYBE_UNUSED const ui entityCount) {
+					const ui count{arch->getEntityCount(chunkIndex)};
 
 					if constexpr (std::is_const_v<Self>)
 					{
@@ -1609,7 +1594,7 @@ namespace Dimensia::ECS
 
 						[&]<typename... Req>(TypeList<Req...>) {
 							processChunkEntitiesConst<Req...>(
-								entities, entityCount, chunkIndex, arch,
+								entities, count, chunkIndex, arch,
 								[&](Entity &entity, const auto &...comps) { processChunkFunction(entity, comps...); });
 						}(ReqList{});
 					}
@@ -1619,44 +1604,31 @@ namespace Dimensia::ECS
 
 						[&]<typename... Req>(TypeList<Req...>) {
 							processChunkEntities<Req...>(
-								entities, entityCount, chunkIndex, arch,
+								entities, count, chunkIndex, arch,
 								[&](Entity &entity, const auto &...comps) { processChunkFunction(entity, comps...); });
 						}(ReqList{});
 					}
 				};
 
-				// Helper to update the SystemVersion after processing a chunk
-				auto updateVersion = [&](const std::tuple<Archetype *, ui, const ChunkVersion *> &chunk) {
-					const Archetype *arch{std::get<0>(chunk)};
-					const ui chunkIndex{std::get<1>(chunk)};
-
-					const ChunkVersion *chunkVer{std::get<2>(chunk)};
-
-					forEachSetBit(requiredMask, [&](const ComponentTypeID &componentTypeID) {
-						version.setComponentVersion(componentTypeID, std::max(version.getComponentVersion(componentTypeID),
-																			  chunkVer->getComponentVersion(componentTypeID)));
-					});
-
-					version.setVersion(std::max(version.getVersion(), arch->getChunkVersion(chunkIndex).getVersion()));
-				};
-
 				switch (policy)
 				{
 					case ExecutionPolicy::Seq:
-						forEachSeqProcessChunkAndVersion(dirtyChunks, processChunk, updateVersion);
+						forEachSeqProcessChunkOnly(matchingArchetypes, processChunk);
 						break;
 					case ExecutionPolicy::Par:
-						forEachParProcessChunkAndVersion(dirtyChunks, self.mThreadPool, processChunk, updateVersion);
+						forEachParProcessChunkOnly(matchingArchetypes, self.mThreadPool, processChunk);
 						break;
 					case ExecutionPolicy::ParBatched:
-						forEachParBatchedProcessChunkAndVersion(dirtyChunks, self.mThreadPool, processChunk, updateVersion);
+						forEachParBatchedProcessChunkOnly(matchingArchetypes, self.mThreadPool, processChunk);
 						break;
 					case ExecutionPolicy::ParStealing:
-						forEachParStealingProcessChunkAndVersion(dirtyChunks, self.mWorkStealingPool, processChunk, updateVersion);
+						forEachParStealingProcessChunkOnly(matchingArchetypes, self.mWorkStealingPool, processChunk);
 						break;
 					default:
 						assert(false && "Invalid execution policy");
 				}
+
+				bulkMergeVersions(version, dirtyChunks, requiredMask);
 			}
 
 			/*! @brief Iterate over entities matching the provided clause lists but only process chunks that are dirty according to @p
@@ -1907,20 +1879,19 @@ namespace Dimensia::ECS
 
 			// MARK: forEachQueryCommandImpl
 
-			/*! @brief Dispatches processing with a `CommandBuffer` provided to callbacks.
+			/*! @brief Dispatches processing with a `CommandBuffer` available for capture.
 				@details Builds compile-time masks from the supplied type-lists, queries the archetype cache for matches, and then processes
-			   matching chunks using the selected `ExecutionPolicy`. This variant forwards a `CommandBuffer` reference into user callbacks
-			   so systems may record deferred ECS commands during processing.
+			   matching chunks using the selected `ExecutionPolicy`.
 				@tparam Self The `ECS` type (possibly const-qualified) used for dispatch and to access thread pools/caches.
 				@tparam ReqList `TypeList` of required component/tag types.
 				@tparam AnyList `TypeList` of types where any single match satisfies the clause.
 				@tparam NoneList `TypeList` of component/tag types that must be absent.
-				@tparam Func Callable invoked per-entity or per-chunk; must accept a `CommandBuffer&` parameter when used in per-entity
-			   form.
+				@tparam Func Callable invoked per-entity or per-chunk.
 				@param[in,out] self ECS instance providing archetypes, thread pools and caches.
 				@param[in] policy Execution policy controlling parallelism (Seq, Par, ParBatched, ParStealing).
-				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for recording deferred operations.
+				@param[in] cmds `CommandBuffer` available for the caller to capture by reference in the callable.
 				@param[in] func User callable forwarded into per-chunk processing; compatible with `processChunkEntities...` helpers.
+				@note The `cmds` parameter is not forwarded into the callback; callers should capture it by reference in their lambda.
 			*/
 			template <class Self, typename ReqList, typename AnyList, typename NoneList, typename Func>
 			static void forEachQueryCommandImpl(Self &self, ExecutionPolicy &policy, CommandBuffer & /*cmds*/, Func &&func)
@@ -2242,22 +2213,20 @@ namespace Dimensia::ECS
 
 			// MARK: forEachQueryVersionCommandImpl
 
-			/*! @brief Version-aware dispatch that forwards a `CommandBuffer` into callbacks.
+			/*! @brief Version-aware dispatch with a `CommandBuffer` available for capture.
 				@details Builds compile-time masks from the supplied type-lists, queries the archetype cache for matches, collects chunks
-			   that are dirty according to @p version, then processes those chunks while forwarding @p cmds into user callbacks. After
-			   processing the collected dirty chunks the helper updates @p version to reflect component/chunk versions observed during
-			   processing. The implementation selects const vs non-const processing helpers based on whether `Self` is const-qualified and
-			   supports sequential and parallel execution policies.
+			   that are dirty according to @p version, then processes those chunks and updates @p version afterwards.
 				@tparam Self The `ECS` type (possibly const-qualified) used for dispatch and to access pools/caches.
 				@tparam ReqList `TypeList` of required component/tag types.
 				@tparam AnyList `TypeList` of alternative types where any single match satisfies the clause.
 				@tparam NoneList `TypeList` of component/tag types that must be absent.
-				@tparam Func Callable invoked per-entity or per-chunk; when used per-entity the callable must accept a `CommandBuffer&`.
+				@tparam Func Callable invoked per-entity or per-chunk.
 				@param[in,out] self Reference to the `ECS` instance providing archetypes, thread pools and caches.
 				@param[in] policy Execution policy controlling parallelism (Seq, Par, ParBatched, ParStealing).
 				@param[in,out] version `SystemVersion` used to select dirty chunks and updated after processing.
-				@param[in,out] cmds `CommandBuffer` forwarded to user callbacks for recording deferred operations.
+				@param[in] cmds `CommandBuffer` available for the caller to capture by reference in the callable.
 				@param[in] func User callable forwarded into per-chunk processing; compatible with the per-chunk helpers.
+				@note The `cmds` parameter is not forwarded into the callback; callers should capture it by reference in their lambda.
 			*/
 			template <class Self, typename ReqList, typename AnyList, typename NoneList, typename Func>
 			static void forEachQueryVersionCommandImpl(Self &self, ExecutionPolicy &policy, SystemVersion &version,
@@ -2285,9 +2254,8 @@ namespace Dimensia::ECS
 				using FuncT = std::decay_t<Func>;
 				const FuncT processChunkFunction{std::forward<Func>(func)};
 
-				// Process each matching archetype (sequential; extend to parallel as needed)
-				auto processChunk = [&, processChunkFunction](Archetype *arch, const ui chunkIndex) {
-					ui entityCount{arch->getEntityCount(chunkIndex)};
+				auto processChunk = [&, processChunkFunction](Archetype *arch, const ui chunkIndex, ATTR_MAYBE_UNUSED const ui entityCount) {
+					const ui count{arch->getEntityCount(chunkIndex)};
 
 					if constexpr (std::is_const_v<Self>)
 					{
@@ -2295,7 +2263,7 @@ namespace Dimensia::ECS
 
 						[&]<typename... Req>(TypeList<Req...>) {
 							processChunkEntitiesConst<Req...>(
-								entities, entityCount, chunkIndex, arch,
+								entities, count, chunkIndex, arch,
 								[&](Entity &entity, const auto &...comps) { processChunkFunction(entity, comps...); });
 						}(ReqList{});
 					}
@@ -2305,45 +2273,31 @@ namespace Dimensia::ECS
 
 						[&]<typename... Req>(TypeList<Req...>) {
 							processChunkEntities<Req...>(
-								entities, entityCount, chunkIndex, arch,
+								entities, count, chunkIndex, arch,
 								[&](Entity &entity, const auto &...comps) { processChunkFunction(entity, comps...); });
 						}(ReqList{});
 					}
 				};
 
-				// Helper to update the SystemVersion after processing a chunk
-				auto updateVersion = [&](const std::tuple<Archetype *, ui, const ChunkVersion *> &chunk) {
-					const Archetype *arch{std::get<0>(chunk)};
-					const ui chunkIndex{std::get<1>(chunk)};
-
-					const ChunkVersion *chunkVer{std::get<2>(chunk)};
-
-					forEachSetBit(requiredMask, [&](const ComponentTypeID &componentTypeID) {
-						version.setComponentVersion(componentTypeID, std::max(version.getComponentVersion(componentTypeID),
-																			  chunkVer->getComponentVersion(componentTypeID)));
-					});
-
-					version.setVersion(std::max(version.getVersion(), arch->getChunkVersion(chunkIndex).getVersion()));
-				};
-
 				switch (policy)
 				{
 					case ExecutionPolicy::Seq:
-						forEachSeqProcessChunkAndVersion(dirtyChunks, processChunk, updateVersion);
+						forEachSeqProcessChunkOnly(matchingArchetypes, processChunk);
 						break;
 					case ExecutionPolicy::Par:
-
-						forEachParProcessChunkAndVersion(dirtyChunks, self.mThreadPool, processChunk, updateVersion);
+						forEachParProcessChunkOnly(matchingArchetypes, self.mThreadPool, processChunk);
 						break;
 					case ExecutionPolicy::ParBatched:
-						forEachParBatchedProcessChunkAndVersion(dirtyChunks, self.mThreadPool, processChunk, updateVersion);
+						forEachParBatchedProcessChunkOnly(matchingArchetypes, self.mThreadPool, processChunk);
 						break;
 					case ExecutionPolicy::ParStealing:
-						forEachParStealingProcessChunkAndVersion(dirtyChunks, self.mWorkStealingPool, processChunk, updateVersion);
+						forEachParStealingProcessChunkOnly(matchingArchetypes, self.mWorkStealingPool, processChunk);
 						break;
 					default:
 						assert(false && "Invalid execution policy");
 				}
+
+				bulkMergeVersions(version, dirtyChunks, requiredMask);
 			}
 
 			/*! @brief Version-aware command-style `forEach` that accepts clause wrappers and a `CommandBuffer`.
@@ -2837,46 +2791,33 @@ namespace Dimensia::ECS
 			*/
 			void destroyHierarchy(const Entity &entity);
 
-			/*! @brief Compute override masks based on provided copy/move arrays.
+			/*! @brief Compute override masks from provided copy/move arrays.
+				@details Scans only the entries that are actually set (non-null) rather than iterating all MAX_COMPONENTS slots.
 				@param[in] copyData Array of pointers to copy-source component values.
 				@param[in] moveData Array of pointers to move-source component values.
 				@param[out] moveOverrideMask Bitmask where move-specified components will be set.
 				@param[out] copyOverrideMask Bitmask where copy-specified components will be set.
+				@param[in] candidateMask Mask of component IDs that may have entries; only these are checked.
 			*/
 			static void acquireOverrideMasks(const std::array<const void *, MAX_COMPONENTS> &copyData,
 											 const std::array<void *, MAX_COMPONENTS> &moveData, ComponentMask &moveOverrideMask,
-											 ComponentMask &copyOverrideMask)
+											 ComponentMask &copyOverrideMask, const ComponentMask &candidateMask)
 			{
-				for (ComponentTypeID componentTypeID{0}; componentTypeID < MAX_COMPONENTS; ++componentTypeID)
-				{
+				forEachSetBit(candidateMask, [&](const ComponentTypeID componentTypeID) {
 					assert(componentTypeID < moveData.size());
 					assert(componentTypeID < copyData.size());
 
 					// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 					if (moveData[componentTypeID] != nullptr)
 					{
-						if (componentTypeID < LOWER_HALF_BIT_MASK)
-						{
-							moveOverrideMask.mLow |= (1U << componentTypeID);
-						}
-						else
-						{
-							moveOverrideMask.mHigh |= (1U << (componentTypeID - LOWER_HALF_BIT_MASK));
-						}
+						updateTagMask(componentTypeID, moveOverrideMask);
 					}
 					// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 					else if (copyData[componentTypeID] != nullptr)
 					{
-						if (componentTypeID < LOWER_HALF_BIT_MASK)
-						{
-							copyOverrideMask.mLow |= (1U << componentTypeID);
-						}
-						else
-						{
-							copyOverrideMask.mHigh |= (1U << (componentTypeID - LOWER_HALF_BIT_MASK));
-						}
+						updateTagMask(componentTypeID, copyOverrideMask);
 					}
-				}
+				});
 			}
 
 			/*! @brief Sets the bit for @p componentTypeID in @p mask (handles low/high bit partition).
@@ -2955,46 +2896,63 @@ namespace Dimensia::ECS
 			   clauses are empty.
 			*/
 			template <class Self, typename AnyList, typename NoneList>
-			static std::vector<Archetype *> &getMatchingArchetypesForQueryCalls(Self &self, const QueryKey &key,
+			static const std::vector<Archetype *> &getMatchingArchetypesForQueryCalls(Self &self, const QueryKey &key,
 																				const ComponentMask &requiredMask,
 																				const ComponentMask &anyMask, const ComponentMask &noneMask)
 			{
+				// Fast path: check under shared lock
+				{
+					const std::shared_lock readLock(self.mMultiQueryMutex);
+					auto iterator{self.mMultiQueryCache.find(key)};
+
+					if (iterator != self.mMultiQueryCache.end())
+					{
+						return iterator->second;
+					}
+				}
+
+				// Slow path: compute and insert under exclusive lock
+				const std::unique_lock writeLock(self.mMultiQueryMutex);
+
+				// Double-check after acquiring exclusive lock
 				auto iterator{self.mMultiQueryCache.find(key)};
 
-				if (iterator == self.mMultiQueryCache.end())
+				if (iterator != self.mMultiQueryCache.end())
 				{
-					// Not cached – compute matching archetypes
-					std::vector<Archetype *> matching;
-					for (const auto &archPtr : self.mArchetypePtrs)
-					{
-						const ComponentMask archMask{archPtr->getRegularMask()};
+					return iterator->second;
+				}
 
-						if ((archMask & requiredMask) != requiredMask)
+				// Not cached – compute matching archetypes
+				std::vector<Archetype *> matching;
+				for (const auto &archPtr : self.mArchetypePtrs)
+				{
+					const ComponentMask archMask{archPtr->getRegularMask()};
+
+					if ((archMask & requiredMask) != requiredMask)
+					{
+						continue;
+					}
+
+					if constexpr (TypeListSize<AnyList>::value != 0)
+					{
+						if (!(archMask & anyMask))
 						{
 							continue;
 						}
-
-						if constexpr (TypeListSize<AnyList>::value != 0)
-						{
-							if (!(archMask & anyMask))
-							{
-								continue;
-							}
-						}
-
-						if constexpr (TypeListSize<NoneList>::value != 0)
-						{
-							if (archMask & noneMask)
-							{
-								continue;
-							}
-						}
-
-						matching.push_back(archPtr.get());
 					}
 
-					iterator = self.mMultiQueryCache.emplace(key, std::move(matching)).first;
+					if constexpr (TypeListSize<NoneList>::value != 0)
+					{
+						if (archMask & noneMask)
+						{
+							continue;
+						}
+					}
+
+					matching.push_back(archPtr.get());
 				}
+
+				iterator = self.mMultiQueryCache.emplace(key, std::move(matching)).first;
 
 				return iterator->second;
 			}
@@ -3033,6 +2991,39 @@ namespace Dimensia::ECS
 				}
 			}
 
+			/*! @brief Bulk-merge version information from processed dirty chunks into a `SystemVersion`.
+				@details Performs a single pass over all dirty chunks to compute the maximum global and per-component versions,
+			   then applies the result to @p version. This replaces per-chunk `forEachSetBit` + lambda calls with a more
+			   cache-friendly linear scan.
+				@param[in,out] version SystemVersion to update with the maximum observed versions.
+				@param[in] dirtyChunks The chunks that were processed; their `ChunkVersion` pointers are read.
+				@param[in] requiredMask Mask of component IDs whose per-component versions should be merged.
+			*/
+			static void bulkMergeVersions(SystemVersion &version,
+										  const std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks,
+										  const ComponentMask &requiredMask)
+			{
+				VersionType maxGlobalVersion{version.getVersion()};
+
+				for (const auto &[arch, chunkIndex, chunkVer] : dirtyChunks)
+				{
+					maxGlobalVersion = std::max(maxGlobalVersion, arch->getChunkVersion(chunkIndex).getVersion());
+				}
+
+				version.setVersion(maxGlobalVersion);
+
+				forEachSetBit(requiredMask, [&](const ComponentTypeID compID) {
+					VersionType maxVer{version.getComponentVersion(compID)};
+
+					for (const auto &[arch, chunkIndex, chunkVer] : dirtyChunks)
+					{
+						maxVer = std::max(maxVer, chunkVer->getComponentVersion(compID));
+					}
+
+					version.setComponentVersion(compID, maxVer);
+				});
+			}
+
 			friend class CommandBuffer;
 
 		private:
@@ -3042,6 +3033,11 @@ namespace Dimensia::ECS
 			QueryCache mQueryCache{};
 
 			mutable std::unordered_map<QueryKey, std::vector<Archetype *>> mMultiQueryCache;
+
+			/*! @var mMultiQueryMutex
+				@brief Shared mutex protecting `mMultiQueryCache` for concurrent reads and exclusive writes.
+			*/
+			mutable std::shared_mutex mMultiQueryMutex;
 
 			/*! @var mThreadPool
 				@brief Mutable thread pool used for parallel `forEach`/system execution where threads are needed.

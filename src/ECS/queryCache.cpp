@@ -8,6 +8,8 @@
 
 #include "ECS/queryCache.h"
 
+#include <mutex>
+#include <shared_mutex>
 #include <utility>
 #include <vector>
 
@@ -20,20 +22,35 @@ namespace Dimensia::ECS
 
 	void QueryCache::addArchetype(const ComponentMask &regularMask, Archetype *arch)
 	{
+		const std::unique_lock lock(mMutex);
 		mArchetypes.emplace_back(regularMask, arch);
-
-		clearResults();
+		mResults.clear();
 	}
 
 	void QueryCache::removeArchetype(const Archetype *arch)
 	{
+		const std::unique_lock lock(mMutex);
 		std::erase_if(mArchetypes, [arch](const std::pair<ComponentMask, Archetype *> &pred) noexcept { return pred.second == arch; });
-
-		clearResults();
+		mResults.clear();
 	}
 
 	const std::vector<Archetype *> &QueryCache::get(const ComponentMask &requiredMask) const
 	{
+		// Fast path: check under shared lock
+		{
+			const std::shared_lock readLock(mMutex);
+			auto iterator{mResults.find(requiredMask)};
+
+			if (iterator != mResults.end())
+			{
+				return iterator->second;
+			}
+		}
+
+		// Slow path: compute and insert under exclusive lock
+		const std::unique_lock writeLock(mMutex);
+
+		// Double-check after acquiring exclusive lock
 		auto iterator{mResults.find(requiredMask)};
 
 		if (iterator != mResults.end())
@@ -51,13 +68,14 @@ namespace Dimensia::ECS
 				matching.push_back(arch);
 			}
 		}
-		auto emplaced{mResults.emplace(requiredMask, std::move(matching))};
 
+		auto emplaced{mResults.emplace(requiredMask, std::move(matching))};
 		return emplaced.first->second;
 	}
 
 	void QueryCache::clearResults() noexcept
 	{
+		const std::unique_lock lock(mMutex);
 		mResults.clear();
 	}
 } // namespace Dimensia::ECS

@@ -104,6 +104,14 @@ namespace Dimensia::ECS
 				return mArchetypeID;
 			}
 
+			/*! @brief Update the archetype identifier (used during compaction when archetypes are reordered).
+				@param[in] newID The new identifier to assign.
+			*/
+			constexpr void setId(const ui newID) noexcept
+			{
+				mArchetypeID = newID;
+			}
+
 			/*! @brief Number of chunks currently allocated for this archetype.
 				@return Chunk count.
 			*/

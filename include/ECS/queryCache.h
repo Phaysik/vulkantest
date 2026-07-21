@@ -15,6 +15,7 @@
 #ifndef INCLUDE_ECS_QUERYCACHE_H
 #define INCLUDE_ECS_QUERYCACHE_H
 
+#include <shared_mutex>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -82,6 +83,11 @@ namespace Dimensia::ECS
 			   vectors are stored inside the container; references returned by `get()` point into these vectors.
 			*/
 			mutable std::unordered_map<ComponentMask, std::vector<Archetype *>> mResults;
+
+			/*! @var mMutex
+				@brief Shared mutex protecting `mResults` for concurrent reads and exclusive writes.
+			*/
+			mutable std::shared_mutex mMutex;
 	};
 } // namespace Dimensia::ECS
 
