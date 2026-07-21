@@ -440,6 +440,33 @@ namespace Dimensia::ECS
 			mArchetypePtrs.pop_back();
 		}
 
+		// Shrink hierarchy vectors to the highest alive entity index + 1
+		{
+			const std::scoped_lock<std::mutex> lock(mHierarchyMutex);
+			ui maxAliveIndex{0};
+			bool hasAlive{false};
+
+			for (ui i{0}; i < static_cast<ui>(mRecords.size()); ++i)
+			{
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				if (mRecords[i].state == State::Active)
+				{
+					maxAliveIndex = i;
+					hasAlive = true;
+				}
+			}
+
+			const std::size_t newSize{hasAlive ? static_cast<std::size_t>(maxAliveIndex) + 1 : 0};
+
+			if (newSize < mParent.size())
+			{
+				mParent.resize(newSize);
+				mParent.shrink_to_fit();
+				mChildren.resize(newSize);
+				mChildren.shrink_to_fit();
+			}
+		}
+
 		invalidateQueries();
 	}
 
@@ -509,6 +536,8 @@ namespace Dimensia::ECS
 
 	Archetype *ECS::getOrCreateArchetype(ComponentMask regularMask)
 	{
+		assert(mActiveIterations.load(std::memory_order_acquire) == 0 && "Structural change during active forEach iteration; use CommandBuffer for deferred mutations");
+
 		auto iterator{mArchetypeMaskToID.find(regularMask)};
 
 		if (iterator != mArchetypeMaskToID.end())
@@ -527,7 +556,30 @@ namespace Dimensia::ECS
 		mArchetypeMaskToID[regularMask] = newID;
 		mQueryCache.addArchetype(regularMask, ptr);
 
-		invalidateQueries();
+		// Incrementally update mMultiQueryCache: add the new archetype to any
+		// cached multi-clause query whose masks it satisfies.
+		{
+			const std::unique_lock lock(mMultiQueryMutex);
+			for (auto &[key, results] : mMultiQueryCache)
+			{
+				if ((regularMask & key.required) != key.required)
+				{
+					continue;
+				}
+
+				if (key.any && !(regularMask & key.any))
+				{
+					continue;
+				}
+
+				if (key.none && (regularMask & key.none))
+				{
+					continue;
+				}
+
+				results.push_back(ptr);
+			}
+		}
 
 		return ptr;
 	}

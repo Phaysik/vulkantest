@@ -54,11 +54,25 @@ class QueryBuilder
 			return *this;
 		}
 
-		/*! @brief Attach a CommandBuffer for deferred command recording.
-			@param[in,out] c CommandBuffer available for capture by reference in the callable.
+		/*! @brief Specify component types for change-detection filtering.
+			@tparam Ts Component types that must have changed for a chunk to be processed.
+			@details Narrows the dirty-chunk filter so that only chunks where at least one of the
+			   specified component types has a newer version (relative to the attached `SystemVersion`)
+			   are processed. Has no effect if no `SystemVersion` is attached via `.version()`.
 			@return Reference to this builder for chaining.
 		*/
-		QueryBuilder &commands(CommandBuffer &cmdBuffer) noexcept
+		template <typename... Ts>
+		QueryBuilder &changed() noexcept
+		{
+			mChangedMask = buildRequiredMask<Ts...>();
+			return *this;
+		}
+
+		/*! @brief Attach a CommandBuffer for deferred command recording.
+			@param[in,out] c CommandBuffer that the caller should capture by reference in their callable. Stored for potential future use (e.g. thread-local command buffer distribution). Does not inject the buffer into the callback signature — capture it explicitly.
+			@return Reference to this builder for chaining.
+		*/
+		QueryBuilder &commands(ATTR_MAYBE_UNUSED CommandBuffer &cmdBuffer) noexcept
 		{
 			mCmds = &cmdBuffer;
 			return *this;
@@ -67,6 +81,8 @@ class QueryBuilder
 		/*! @brief Execute the query, invoking @p func for each matching entity.
 			@tparam Func Callable type compatible with the per-entity processing helpers.
 			@param[in] func User callable forwarded to the appropriate dispatch implementation.
+			@note If a `CommandBuffer` was attached via `.commands()`, the caller must capture it
+			   by reference in their lambda — it is not injected into the callback signature.
 		*/
 		template <typename Func>
 		void forEach(Func &&func)
@@ -77,7 +93,57 @@ class QueryBuilder
 			{
 				// Raw component query path: unpack TypeList into Components... parameter pack
 				[&]<typename... Comps>(TypeList<Comps...>) {
-					if (mVersion != nullptr)
+					if (mVersion != nullptr && mChangedMask)
+					{
+						// Changed<T> path: use custom dirty-chunk filter with the changed mask
+						constexpr ComponentMask requiredRegular{buildRequiredMask<Comps...>()};
+						const std::vector<Archetype *> &matchingArchetypes{mECS->mQueryCache.get(requiredRegular)};
+
+						std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> dirtyChunks;
+						setDirtyChunks(dirtyChunks, matchingArchetypes, *mVersion, requiredRegular, mChangedMask);
+
+						if (!dirtyChunks.empty())
+						{
+							const IterationGuard iterGuard{mECS->mActiveIterations};
+
+							auto processChunk = [&func](Archetype *arch, const ui chunkIndex) {
+								const ui count{arch->getEntityCount(chunkIndex)};
+								if constexpr (IsConst)
+								{
+									const Entity *entityArr{arch->getEntityArray(chunkIndex)};
+									processChunkEntitiesConst<Comps...>(entityArr, count, chunkIndex, arch, std::forward<Func>(func));
+								}
+								else
+								{
+									Entity *entityArr{arch->getEntityArray(chunkIndex)};
+									processChunkEntities<Comps...>(entityArr, count, chunkIndex, arch, std::forward<Func>(func));
+								}
+							};
+
+							auto noOp = [](const auto &) {};
+
+							switch (mPolicy)
+							{
+								case ExecutionPolicy::Seq:
+									forEachSeqProcessChunkAndVersion(dirtyChunks, processChunk, noOp);
+									break;
+								case ExecutionPolicy::Par:
+									forEachParProcessChunkAndVersion(dirtyChunks, mECS->mThreadPool, processChunk, noOp);
+									break;
+								case ExecutionPolicy::ParBatched:
+									forEachParBatchedProcessChunkAndVersion(dirtyChunks, mECS->mThreadPool, processChunk, noOp);
+									break;
+								case ExecutionPolicy::ParStealing:
+									forEachParStealingProcessChunkAndVersion(dirtyChunks, mECS->mWorkStealingPool, processChunk, noOp);
+									break;
+								default:
+									assert(false && "Invalid execution policy");
+							}
+
+							bulkMergeVersions(*mVersion, dirtyChunks, requiredRegular);
+						}
+					}
+					else if (mVersion != nullptr)
 					{
 						ECS::forEachPolicyVersionImpl<SelfType, Comps...>(*mECS, mPolicy, *mVersion, std::forward<Func>(func));
 					}
@@ -90,7 +156,66 @@ class QueryBuilder
 			else
 			{
 				// Query-filter path: pass TypeLists directly
-				if (mVersion != nullptr)
+				if (mVersion != nullptr && mChangedMask)
+				{
+					// Changed<T> + filter path
+					constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
+					constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
+					constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
+					QueryKey key{.required = requiredMask, .any = anyMask, .none = noneMask};
+
+					const std::vector<Archetype *> &matchingArchetypes{
+						getMatchingArchetypesForQueryCalls<SelfType, AnyList, NoneList>(*mECS, key, requiredMask, anyMask, noneMask)};
+
+					std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> dirtyChunks;
+					setDirtyChunks(dirtyChunks, matchingArchetypes, *mVersion, requiredMask, mChangedMask);
+
+					if (!dirtyChunks.empty())
+					{
+						const IterationGuard iterGuard{mECS->mActiveIterations};
+
+						auto processChunk = [&func](Archetype *arch, const ui chunkIndex) {
+							const ui count{arch->getEntityCount(chunkIndex)};
+							if constexpr (IsConst)
+							{
+								const Entity *entities{arch->getEntityArray(chunkIndex)};
+								[&]<typename... Req>(TypeList<Req...>) {
+									processChunkEntitiesConst<Req...>(entities, count, chunkIndex, arch, std::forward<Func>(func));
+								}(ReqList{});
+							}
+							else
+							{
+								Entity *entities{arch->getEntityArray(chunkIndex)};
+								[&]<typename... Req>(TypeList<Req...>) {
+									processChunkEntities<Req...>(entities, count, chunkIndex, arch, std::forward<Func>(func));
+								}(ReqList{});
+							}
+						};
+
+						auto noOp = [](const auto &) {};
+
+						switch (mPolicy)
+						{
+							case ExecutionPolicy::Seq:
+								forEachSeqProcessChunkAndVersion(dirtyChunks, processChunk, noOp);
+								break;
+							case ExecutionPolicy::Par:
+								forEachParProcessChunkAndVersion(dirtyChunks, mECS->mThreadPool, processChunk, noOp);
+								break;
+							case ExecutionPolicy::ParBatched:
+								forEachParBatchedProcessChunkAndVersion(dirtyChunks, mECS->mThreadPool, processChunk, noOp);
+								break;
+							case ExecutionPolicy::ParStealing:
+								forEachParStealingProcessChunkAndVersion(dirtyChunks, mECS->mWorkStealingPool, processChunk, noOp);
+								break;
+							default:
+								assert(false && "Invalid execution policy");
+						}
+
+						bulkMergeVersions(*mVersion, dirtyChunks, requiredMask);
+					}
+				}
+				else if (mVersion != nullptr)
 				{
 					ECS::forEachQueryVersionImpl<SelfType, ReqList, AnyList, NoneList>(*mECS, mPolicy, *mVersion, std::forward<Func>(func));
 				}
@@ -106,6 +231,7 @@ class QueryBuilder
 		ExecutionPolicy mPolicy{ExecutionPolicy::Seq};
 		SystemVersion *mVersion{nullptr};
 		CommandBuffer *mCmds{nullptr};
+		ComponentMask mChangedMask{0, 0};
 };
 
 // MARK: query<>() Factory Methods

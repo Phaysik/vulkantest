@@ -24,7 +24,16 @@ namespace Dimensia::ECS
 	{
 		const std::unique_lock lock(mMutex);
 		mArchetypes.emplace_back(regularMask, arch);
-		mResults.clear();
+
+		// Incrementally update existing cached results: add the new archetype
+		// to any cached query whose required mask is satisfied by the new archetype.
+		for (auto &[queryMask, results] : mResults)
+		{
+			if ((regularMask & queryMask) == queryMask)
+			{
+				results.push_back(arch);
+			}
+		}
 	}
 
 	void QueryCache::removeArchetype(const Archetype *arch)

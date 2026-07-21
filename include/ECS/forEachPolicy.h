@@ -83,32 +83,41 @@ template <typename Func>
 	requires InvocableWithArgs<Func, Archetype *, ui, ui>
 static void forEachParProcessChunkOnly(const std::vector<Archetype *> &matchingArchetypes, ThreadPool &threadPool, Func &&processChunk)
 {
-	std::vector<std::future<void>> futures;
-	futures.reserve(matchingArchetypes.size() * 2);
+	std::vector<std::pair<Archetype *, ui>> allChunks;
 
 	Func processChunkFunction{std::forward<Func>(processChunk)};
 
 	for (Archetype *arch : matchingArchetypes)
 	{
-		ui chunkCount{arch->getChunkCount()};
+		const ui chunkCount{arch->getChunkCount()};
 
 		for (ui chunkIndex{0}; chunkIndex < chunkCount; ++chunkIndex)
 		{
-			ui entityCount{arch->getEntityCount(chunkIndex)};
-
-			if (entityCount == 0)
+			if (arch->getEntityCount(chunkIndex) > 0)
 			{
-				continue;
+				allChunks.emplace_back(arch, chunkIndex);
 			}
-
-			futures.push_back(threadPool.submit(processChunkFunction, arch, chunkIndex, entityCount));
 		}
 	}
 
-	for (std::future<void> &fut : futures)
+	if (allChunks.empty())
 	{
-		fut.get();
+		return;
 	}
+
+	std::latch latch(static_cast<std::ptrdiff_t>(allChunks.size()));
+
+	for (const auto &[arch, chunkIndex] : allChunks)
+	{
+		threadPool.submitWithLatch(
+			[arch, chunkIndex, processChunkFunction]() {
+				const ui entityCount{arch->getEntityCount(chunkIndex)};
+				processChunkFunction(arch, chunkIndex, entityCount);
+			},
+			latch);
+	}
+
+	latch.wait();
 }
 
 /*! @brief Parallel batched processing: groups chunks into batches and schedules each batch.
@@ -231,6 +240,8 @@ static void forEachParStealingProcessChunkOnly(const std::vector<Archetype *> &m
 template <class Self, typename... Components, typename Func>
 static void forEachPolicyImpl(Self &self, const ExecutionPolicy &policy, Func &&func)
 {
+	const IterationGuard iterGuard{self.mActiveIterations};
+
 	constexpr ComponentMask requiredRegular{buildRequiredMask<Components...>()};
 	const std::vector<Archetype *> &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
 
@@ -313,6 +324,8 @@ void forEach(const ExecutionPolicy &policy, Func &&func) const
 template <class Self, typename... Components, typename Func>
 static void forEachPolicyCommandImpl(Self &self, const ExecutionPolicy &policy, CommandBuffer & /*cmds*/, Func &&func)
 {
+	const IterationGuard iterGuard{self.mActiveIterations};
+
 	constexpr ComponentMask requiredRegular{buildRequiredMask<Components...>()};
 	const std::vector<Archetype *> &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
 
@@ -414,24 +427,26 @@ template <typename Func, typename Ver>
 static void forEachParProcessChunkAndVersion(const std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks,
 											 ThreadPool &threadPool, Func &&processFunc, Ver &&updateVersion)
 {
-	std::vector<std::future<void>> futures;
-	futures.reserve(dirtyChunks.size());
+	if (dirtyChunks.empty())
+	{
+		return;
+	}
 
 	const Func processChunkFunction{std::forward<Func>(processFunc)};
 	const Ver updateVersionFunction{std::forward<Ver>(updateVersion)};
+
+	std::latch latch(static_cast<std::ptrdiff_t>(dirtyChunks.size()));
 
 	for (const auto &chunk : dirtyChunks)
 	{
 		Archetype *arch{std::get<0>(chunk)};
 		ui chunkIndex{std::get<1>(chunk)};
 
-		futures.push_back(threadPool.submit([arch, chunkIndex, processChunkFunction]() { processChunkFunction(arch, chunkIndex); }));
+		threadPool.submitWithLatch(
+			[arch, chunkIndex, processChunkFunction]() { processChunkFunction(arch, chunkIndex); }, latch);
 	}
 
-	for (std::future<void> &fut : futures)
-	{
-		fut.get();
-	}
+	latch.wait();
 
 	for (const auto &chunk : dirtyChunks)
 	{
@@ -540,6 +555,8 @@ static void forEachParStealingProcessChunkAndVersion(const std::vector<std::tupl
 template <class Self, typename... Components, typename Func>
 static void forEachPolicyVersionImpl(Self &self, const ExecutionPolicy &policy, SystemVersion &version, Func &&func)
 {
+	const IterationGuard iterGuard{self.mActiveIterations};
+
 	constexpr ComponentMask requiredRegular{buildRequiredMask<Components...>()};
 	const std::vector<Archetype *> &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
 
@@ -631,6 +648,8 @@ template <class Self, typename... Components, typename Func>
 static void forEachPolicyVersionCommandImpl(Self &self, const ExecutionPolicy &policy, SystemVersion &version, CommandBuffer &cmds,
 											Func &&func)
 {
+	const IterationGuard iterGuard{self.mActiveIterations};
+
 	constexpr ComponentMask requiredRegular{buildRequiredMask<Components...>()};
 	const std::vector<Archetype *> &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
 

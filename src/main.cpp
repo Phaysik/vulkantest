@@ -233,6 +233,57 @@ int main()
 	}
 
 	// ------------------------------------------------------------------------
+	//  Changed<T> filter example (via QueryBuilder)
+	// ------------------------------------------------------------------------
+	std::cout << "\n=== Changed<T> filter example ===\n";
+
+	// Create entities with Position + Health only (no Velocity, so we can isolate them)
+	Entity changedE1{ecs.createEntityWith(Position{.x = 1, .y = 2, .z = 3}, Health{100})};
+	Entity changedE2{ecs.createEntityWith(Position{.x = 4, .y = 5, .z = 6}, Health{200})};
+
+	SystemVersion changedVersion;
+
+	// Priming run: establish baseline versions for the isolated archetype.
+	// Uses None<Velocity> to exclude other archetypes (e.g. goblin) that might
+	// have higher component versions from earlier tests.
+	ecs.query<All<Position, Health>, None<Velocity>>().version(changedVersion).forEach(
+		[](Entity, Position &, Health &) { /* baseline pass */ });
+	std::cout << "Baseline established.\n";
+
+	// Modify only Position on changedE1 (does NOT bump Health's version)
+	{
+		Position pos{*ecs.getComponent<Position>(changedE1)};
+		pos.x += 10.0F;
+		ecs.addComponent(changedE1, pos);
+	}
+
+	// Changed<Health> should skip — only Position was modified, not Health.
+	{
+		std::size_t count{0};
+		ecs.query<All<Position, Health>, None<Velocity>>().version(changedVersion).changed<Health>().forEach(
+			[&](Entity, Position &, Health &) { ++count; });
+		std::cout << "After modifying Position only: processed " << count << " entities (expected 0).\n";
+	}
+
+	// Now modify Health on changedE2
+	{
+		Health hp{*ecs.getComponent<Health>(changedE2)};
+		hp.hp += 50.0F;
+		ecs.addComponent(changedE2, hp);
+	}
+
+	// Changed<Health> should fire — Health's version has advanced.
+	{
+		std::size_t count{0};
+		ecs.query<All<Position, Health>, None<Velocity>>().version(changedVersion).changed<Health>().forEach(
+			[&](Entity, Position &, Health &) { ++count; });
+		std::cout << "After modifying Health: processed " << count << " entities (expected > 0).\n";
+	}
+
+	ecs.destroyEntity(changedE1, false);
+	ecs.destroyEntity(changedE2, false);
+
+	// ------------------------------------------------------------------------
 	//  Stress test: forEach iteration speed (raw overhead)
 	// ------------------------------------------------------------------------
 	std::cout << "\n=== Stress test: forEach iteration speed ===\n";

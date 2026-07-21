@@ -13,6 +13,7 @@
 
 #include <compare>
 
+#include "Core/attributeMacros.h"
 #include "Core/typedefs.h"
 
 namespace Dimensia::ECS
@@ -35,6 +36,16 @@ namespace Dimensia::ECS
 				@return A `std::strong_ordering` reflecting lexicographic comparison of `index` then `generation`.
 			*/
 			std::strong_ordering operator<=>(const Entity &other) const noexcept = default;
+
+			// MARK: Member Functions
+
+			/*! @brief Test whether this entity handle is the null sentinel.
+				@return `true` if this entity equals `NULL_ENTITY`, `false` otherwise.
+			*/
+			ATTR_NODISCARD constexpr bool isNull() const noexcept
+			{
+				return index == UINT32_MAX && generation == 0;
+			}
 
 			// MARK: Member Variables
 

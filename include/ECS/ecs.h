@@ -12,6 +12,7 @@
 #define INCLUDE_ECS_ECS_H
 
 #include <algorithm>
+#include <atomic>
 #include <latch>
 #include <memory>
 #include <mutex>
@@ -731,7 +732,7 @@ namespace Dimensia::ECS
 			*/
 			static void setDirtyChunks(std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> &dirtyChunks,
 									   const std::vector<Archetype *> &matchingArchetypes, const SystemVersion &version,
-									   const ComponentMask &requiredRegular)
+									   const ComponentMask &requiredRegular, const ComponentMask &changedMask = ComponentMask(0, 0))
 			{
 				for (Archetype *arch : matchingArchetypes)
 				{
@@ -746,7 +747,33 @@ namespace Dimensia::ECS
 
 						const ChunkVersion &chunkVersion{arch->getChunkVersion(chunkIndex)};
 
-						if (version.needsUpdate(chunkVersion, requiredRegular))
+						if (changedMask)
+						{
+							// Changed<T> filter: include chunk if the global chunk version is newer
+							// (newly created/moved entities) OR if at least one of the specified
+							// Changed component versions has advanced since the system last ran.
+							bool hasChange{false};
+
+							if (chunkVersion.getVersion() > version.getVersion())
+							{
+								hasChange = true;
+							}
+							else
+							{
+								forEachSetBit(changedMask, [&](const ComponentTypeID compID) {
+									if (chunkVersion.getComponentVersion(compID) > version.getComponentVersion(compID))
+									{
+										hasChange = true;
+									}
+								});
+							}
+
+							if (hasChange)
+							{
+								dirtyChunks.emplace_back(arch, chunkIndex, &chunkVersion);
+							}
+						}
+						else if (version.needsUpdate(chunkVersion, requiredRegular))
 						{
 							dirtyChunks.emplace_back(arch, chunkIndex, &chunkVersion);
 						}
@@ -789,7 +816,44 @@ namespace Dimensia::ECS
 
 			friend class CommandBuffer;
 
+			/*! @struct IterationGuard include/ECS/ecs.h
+				@brief RAII guard that increments/decrements the active-iteration counter.
+				@details Used by `forEach` dispatch functions to track whether any iteration is in progress.
+			   Structural mutators (e.g. `getOrCreateArchetype`) assert the counter is zero to detect
+			   concurrent structural changes during iteration.
+			*/
+			class IterationGuard
+			{
+				public:
+					// Do not allow moves for this class
+					IterationGuard(IterationGuard &&) = delete ("IterationGuard is not movable");
+					IterationGuard &operator=(IterationGuard &&) = delete ("IterationGuard is not movable");
+
+					explicit IterationGuard(std::atomic<int32_t> &counter) noexcept : mCounter(counter)
+					{
+						mCounter.fetch_add(1, std::memory_order_acquire);
+					}
+
+					~IterationGuard() noexcept
+					{
+						mCounter.fetch_sub(1, std::memory_order_release);
+					}
+
+					IterationGuard(const IterationGuard &) = delete;
+					IterationGuard &operator=(const IterationGuard &) = delete;
+
+				private:
+					std::atomic<int32_t> &mCounter;
+			};
+
 		private:
+			/*! @var mActiveIterations
+				@brief Atomic counter tracking the number of active `forEach` iterations.
+				@details Incremented by `IterationGuard` when a `forEach` dispatch begins and decremented
+			   when it completes. Structural mutators assert this is zero to detect data races.
+			*/
+			mutable std::atomic<int32_t> mActiveIterations{0};
+
 			/*! @var mQueryCache
 				@brief Cache mapping required component masks to matching archetype lists for fast query resolution.
 			*/

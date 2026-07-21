@@ -80,6 +80,16 @@ namespace Dimensia::ECS
 	struct None
 	{};
 
+	/*! @brief Marker wrapper expressing a change-detection filter clause.
+		@tparam Types Component types whose per-component version must have advanced since the last system run.
+		@details Used with `SystemVersion` to narrow dirty-chunk filtering to only chunks where the specified
+	   component types have actually been modified, rather than any component in the query.
+		@note Requires a `SystemVersion` to be attached; without one, the filter has no effect.
+	*/
+	template <typename...>
+	struct Changed
+	{};
+
 	/*! @brief Type trait that identifies whether a type is an `All<...>` query clause.
 		@tparam T Type to inspect.
 	*/
@@ -131,6 +141,23 @@ namespace Dimensia::ECS
 	template <typename T>
 	concept NoneType = isNone<T>::value;
 
+	/*! @brief Type trait that identifies whether a type is a `Changed<...>` query clause.
+		@tparam T Type to inspect.
+	*/
+	template <typename>
+	struct isChanged : std::false_type
+	{};
+
+	template <typename... Ts>
+	struct isChanged<Changed<Ts...>> : std::true_type
+	{};
+
+	/*! @brief Concept satisfied when `T` is a `Changed<...>` clause wrapper.
+		@tparam T Type to evaluate.
+	*/
+	template <typename T>
+	concept ChangedType = isChanged<T>::value;
+
 	/*! @brief Extracts a `TypeList<...>` from a query clause wrapper.
 		@tparam Clause Clause wrapper (`All<...>`, `Any<...>`, or `None<...>`).
 		@note The extracted list is exposed as nested alias `type`.
@@ -154,6 +181,13 @@ namespace Dimensia::ECS
 
 	template <typename... Ts>
 	struct PackExtractor<None<Ts...>>
+	{
+		public:
+			using type = TypeList<Ts...>;
+	};
+
+	template <typename... Ts>
+	struct PackExtractor<Changed<Ts...>>
 	{
 		public:
 			using type = TypeList<Ts...>;

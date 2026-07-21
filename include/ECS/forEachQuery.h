@@ -31,6 +31,8 @@
 			template <class Self, typename ReqList, typename AnyList, typename NoneList, typename Func>
 			static void forEachQueryImpl(Self &self, ExecutionPolicy &policy, Func &&func)
 			{
+				const IterationGuard iterGuard{self.mActiveIterations};
+
 				constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
 				constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
 				constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
@@ -350,6 +352,8 @@
 			template <class Self, typename ReqList, typename AnyList, typename NoneList, typename Func>
 			static void forEachQueryVersionImpl(Self &self, const ExecutionPolicy &policy, SystemVersion &version, Func &&func)
 			{
+				const IterationGuard iterGuard{self.mActiveIterations};
+
 				constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
 				constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
 				constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
@@ -685,6 +689,8 @@
 			template <class Self, typename ReqList, typename AnyList, typename NoneList, typename Func>
 			static void forEachQueryCommandImpl(Self &self, ExecutionPolicy &policy, CommandBuffer & /*cmds*/, Func &&func)
 			{
+				const IterationGuard iterGuard{self.mActiveIterations};
+
 				constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
 				constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
 				constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
@@ -1021,6 +1027,8 @@
 			static void forEachQueryVersionCommandImpl(Self &self, ExecutionPolicy &policy, SystemVersion &version,
 													   CommandBuffer & /*cmds*/, Func &&func)
 			{
+				const IterationGuard iterGuard{self.mActiveIterations};
+
 				constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
 				constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
 				constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};

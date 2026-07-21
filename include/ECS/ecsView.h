@@ -155,6 +155,12 @@ class View
 			mMatchingArchetypes = &mECS->mQueryCache.get(requiredRegular);
 		}
 
+		/*! @brief Construct a view from a pre-resolved archetype list (used by filtered view factories).
+			@param[in] ecs ECS instance.
+			@param[in] archetypes Pointer to a stable vector of matching archetypes (e.g. from multi-query cache).
+		*/
+		explicit View(ECSType &ecs, const std::vector<Archetype *> *archetypes) noexcept : mECS(&ecs), mMatchingArchetypes(archetypes) {}
+
 		ATTR_NODISCARD iterator begin() const noexcept
 		{
 			return iterator(mMatchingArchetypes, 0);
@@ -188,4 +194,72 @@ template <typename... Components>
 View<true, Components...> view() const
 {
 	return View<true, Components...>(*this);
+}
+
+// MARK: Filtered View Factory Methods
+
+/*! @brief Create a filtered view with All + None clauses.
+	@tparam AllF `All<...>` clause listing required component types (also determines yielded components).
+	@tparam NoneF `None<...>` clause listing excluded component types.
+	@return A `View` supporting range-for with structured bindings over entities matching the filter.
+*/
+template <AllType AllF, NoneType NoneF>
+auto view()
+{
+	using ReqList = typename PackExtractor<AllF>::type;
+	using NoneList = typename PackExtractor<NoneF>::type;
+	constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
+	constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
+	constexpr ComponentMask anyMask{0, 0};
+	QueryKey key{.required = requiredMask, .any = anyMask, .none = noneMask};
+	const auto &archetypes = getMatchingArchetypesForQueryCalls<decltype(*this), TypeList<>, NoneList>(*this, key, requiredMask, anyMask, noneMask);
+	return [&]<typename... Comps>(TypeList<Comps...>) { return View<false, Comps...>(*this, &archetypes); }(ReqList{});
+}
+
+/*! @brief Const overload for All + None filtered view. */
+template <AllType AllF, NoneType NoneF>
+auto view() const
+{
+	using ReqList = typename PackExtractor<AllF>::type;
+	using NoneList = typename PackExtractor<NoneF>::type;
+	constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
+	constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
+	constexpr ComponentMask anyMask{0, 0};
+	QueryKey key{.required = requiredMask, .any = anyMask, .none = noneMask};
+	const auto &archetypes = getMatchingArchetypesForQueryCalls<decltype(*this), TypeList<>, NoneList>(*this, key, requiredMask, anyMask, noneMask);
+	return [&]<typename... Comps>(TypeList<Comps...>) { return View<true, Comps...>(*this, &archetypes); }(ReqList{});
+}
+
+/*! @brief Create a filtered view with All + Any + None clauses.
+	@tparam AllF `All<...>` clause listing required component types (also determines yielded components).
+	@tparam AnyF `Any<...>` clause listing alternative-match component types.
+	@tparam NoneF `None<...>` clause listing excluded component types.
+*/
+template <AllType AllF, AnyType AnyF, NoneType NoneF>
+auto view()
+{
+	using ReqList = typename PackExtractor<AllF>::type;
+	using AnyList = typename PackExtractor<AnyF>::type;
+	using NoneList = typename PackExtractor<NoneF>::type;
+	constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
+	constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
+	constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
+	QueryKey key{.required = requiredMask, .any = anyMask, .none = noneMask};
+	const auto &archetypes = getMatchingArchetypesForQueryCalls<decltype(*this), AnyList, NoneList>(*this, key, requiredMask, anyMask, noneMask);
+	return [&]<typename... Comps>(TypeList<Comps...>) { return View<false, Comps...>(*this, &archetypes); }(ReqList{});
+}
+
+/*! @brief Const overload for All + Any + None filtered view. */
+template <AllType AllF, AnyType AnyF, NoneType NoneF>
+auto view() const
+{
+	using ReqList = typename PackExtractor<AllF>::type;
+	using AnyList = typename PackExtractor<AnyF>::type;
+	using NoneList = typename PackExtractor<NoneF>::type;
+	constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
+	constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
+	constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
+	QueryKey key{.required = requiredMask, .any = anyMask, .none = noneMask};
+	const auto &archetypes = getMatchingArchetypesForQueryCalls<decltype(*this), AnyList, NoneList>(*this, key, requiredMask, anyMask, noneMask);
+	return [&]<typename... Comps>(TypeList<Comps...>) { return View<true, Comps...>(*this, &archetypes); }(ReqList{});
 }
