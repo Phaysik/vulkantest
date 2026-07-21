@@ -246,8 +246,9 @@ int main()
 	// Priming run: establish baseline versions for the isolated archetype.
 	// Uses None<Velocity> to exclude other archetypes (e.g. goblin) that might
 	// have higher component versions from earlier tests.
-	ecs.query<All<Position, Health>, None<Velocity>>().version(changedVersion).forEach(
-		[](Entity, Position &, Health &) { /* baseline pass */ });
+	ecs.query<All<Position, Health>, None<Velocity>>()
+		.version(changedVersion)
+		.forEach([](Entity, Position &, Health &) { /* baseline pass */ });
 	std::cout << "Baseline established.\n";
 
 	// Modify only Position on changedE1 (does NOT bump Health's version)
@@ -260,8 +261,10 @@ int main()
 	// Changed<Health> should skip — only Position was modified, not Health.
 	{
 		std::size_t count{0};
-		ecs.query<All<Position, Health>, None<Velocity>>().version(changedVersion).changed<Health>().forEach(
-			[&](Entity, Position &, Health &) { ++count; });
+		ecs.query<All<Position, Health>, None<Velocity>>()
+			.version(changedVersion)
+			.changed<Health>()
+			.forEach([&](Entity, Position &, Health &) { ++count; });
 		std::cout << "After modifying Position only: processed " << count << " entities (expected 0).\n";
 	}
 
@@ -275,8 +278,10 @@ int main()
 	// Changed<Health> should fire — Health's version has advanced.
 	{
 		std::size_t count{0};
-		ecs.query<All<Position, Health>, None<Velocity>>().version(changedVersion).changed<Health>().forEach(
-			[&](Entity, Position &, Health &) { ++count; });
+		ecs.query<All<Position, Health>, None<Velocity>>()
+			.version(changedVersion)
+			.changed<Health>()
+			.forEach([&](Entity, Position &, Health &) { ++count; });
 		std::cout << "After modifying Health: processed " << count << " entities (expected > 0).\n";
 	}
 
@@ -589,52 +594,57 @@ int main()
 
 	// 1. All<...> only
 	printMatches("All<Position, Velocity>", [&] {
-		ecs.forEach<All<Position, Velocity>>([](const Entity &entity, Position &, Velocity &) { std::cout << entity.index << " "; });
+		ecs.query<All<Position, Velocity>>().forEach(
+			[](const Entity &entity, Position &, Velocity &) { std::cout << entity.index << " "; });
 	});
 
 	// 2. Any<...> only
-	printMatches("Any<Health, Mana>",
-				 [&] { ecs.forEach<All<>, Any<Health, Mana>>([](const Entity &entity) { std::cout << entity.index << " "; }); });
+	printMatches("Any<Health, Mana>", [&] {
+		ecs.query<All<>, Any<Health, Mana>, None<>>().forEach([](const Entity &entity) { std::cout << entity.index << " "; });
+	});
 
 	// 3. None<...> only
-	printMatches("None<Buffs>", [&] { ecs.forEach<All<>, None<Buffs>>([](const Entity &entity) { std::cout << entity.index << " "; }); });
+	printMatches("None<Buffs>",
+				 [&] { ecs.query<All<>, None<Buffs>>().forEach([](const Entity &entity) { std::cout << entity.index << " "; }); });
 
 	// 4. All + Any
 	printMatches("All<Position> + Any<Health, Mana>", [&] {
-		ecs.forEach<All<Position>, Any<Health, Mana>>([](const Entity &entity, Position &) { std::cout << entity.index << " "; });
+		ecs.query<All<Position>, Any<Health, Mana>>().forEach([](const Entity &entity, Position &) { std::cout << entity.index << " "; });
 	});
 
 	// 5. All + None
 	printMatches("All<Position> + None<Buffs>", [&] {
-		ecs.forEach<All<Position>, None<Buffs>>([](const Entity &entity, Position &) { std::cout << entity.index << " "; });
+		ecs.query<All<Position>, None<Buffs>>().forEach([](const Entity &entity, Position &) { std::cout << entity.index << " "; });
 	});
 
 	// 6. Any + None
 	printMatches("Any<Health, Mana> + None<Buffs>", [&] {
-		ecs.forEach<All<>, Any<Health, Mana>, None<Buffs>>([](const Entity &entity) { std::cout << entity.index << " "; });
+		ecs.query<All<>, Any<Health, Mana>, None<Buffs>>().forEach([](const Entity &entity) { std::cout << entity.index << " "; });
 	});
 
 	// 7. All + Any + None
 	printMatches("All<Position> + Any<Health, Mana> + None<Buffs>", [&] {
-		ecs.forEach<All<Position>, Any<Health, Mana>, None<Buffs>>(
+		ecs.query<All<Position>, Any<Health, Mana>, None<Buffs>>().forEach(
 			[](const Entity &entity, Position &) { std::cout << entity.index << " "; });
 	});
 
 	// 8. All<Name> (equivalent to original raw component query, but using new syntax)
-	printMatches("All<Name>", [&] { ecs.forEach<All<Name>>([](const Entity &entity, Name &) { std::cout << entity.index << " "; }); });
+	printMatches("All<Name>",
+				 [&] { ecs.query<All<Name>>().forEach([](const Entity &entity, Name &) { std::cout << entity.index << " "; }); });
 
 	// 9. Any<Buffs> (entities that have Buffs)
-	printMatches("Any<Buffs>", [&] { ecs.forEach<All<>, Any<Buffs>>([](const Entity &entity) { std::cout << entity.index << " "; }); });
+	printMatches("Any<Buffs>",
+				 [&] { ecs.query<All<>, Any<Buffs>, None<>>().forEach([](const Entity &entity) { std::cout << entity.index << " "; }); });
 
 	// 10. None<Position> (entities without Position)
 	printMatches("None<Position>",
-				 [&] { ecs.forEach<All<>, None<Position>>([](const Entity &entity) { std::cout << entity.index << " "; }); });
+				 [&] { ecs.query<All<>, None<Position>>().forEach([](const Entity &entity) { std::cout << entity.index << " "; }); });
 
 	cmds.clear();
 
 	std::cout << "All<Position, Velocity> with command buffer: ";
 
-	ecs.forEach<All<Position, Velocity>>(ExecutionPolicy::Seq, cmds, [&](Entity &entity, const Position & /*p*/, const Velocity & /*v*/) {
+	ecs.query<All<Position, Velocity>>().commands(cmds).forEach([&](Entity &entity, const Position & /*p*/, const Velocity & /*v*/) {
 		// Do work and possibly record commands
 		cmds.addComponent(entity, Health{startingHealth});
 		std::cout << entity.index << ' ';
@@ -650,12 +660,14 @@ int main()
 
 	std::cout << "All<Position, Velocity> with system version and command buffer: ";
 
-	ecs.forEach<All<Position, Velocity>>(ExecutionPolicy::Seq, queryVersion, cmds,
-										 [&](Entity &entity, const Position & /*p*/, const Velocity & /*v*/) {
-											 // Do work and possibly record commands
-											 cmds.addComponent(entity, Health{startingHealth});
-											 std::cout << entity.index << ' ';
-										 });
+	ecs.query<All<Position, Velocity>>()
+		.version(queryVersion)
+		.commands(cmds)
+		.forEach([&](Entity &entity, const Position & /*p*/, const Velocity & /*v*/) {
+			// Do work and possibly record commands
+			cmds.addComponent(entity, Health{startingHealth});
+			std::cout << entity.index << ' ';
+		});
 
 	std::cout << "\n";
 

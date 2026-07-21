@@ -9,12 +9,13 @@
 #include "ECS/componentRegistry.h"
 
 #include <array>
-#include <tuple>
 
 #include "ECS/componentRegistryImpl.h"
 
 namespace Dimensia::Registry
 {
+	using ComponentTypesTuple = ToTuple<ComponentTypes>::type;
+
 	// NOLINTNEXTLINE(fuchsia-statically-constructed-objects)
-	constexpr std::array<ComponentInfo, std::tuple_size_v<ComponentTypes>> ComponentInfos{makeComponentInfos(ComponentTypes{})};
+	constexpr std::array<ComponentInfo, COMPONENT_COUNT> ComponentInfos{makeComponentInfos(ComponentTypesTuple{})};
 } // namespace Dimensia::Registry

@@ -15,8 +15,18 @@
 #include <tuple>
 #include <type_traits>
 
+#include "Components/Buff/buffComponent.h"
+#include "Components/Buffs/buffsComponent.h"
+#include "Components/Health/healthComponent.h"
+#include "Components/Mana/manaComponent.h"
+#include "Components/Name/nameComponent.h"
+#include "Components/Position/positionComponent.h"
+#include "Components/Velocity/velocityComponent.h"
 #include "ECS/componentRegistry.h"
 #include "ECS/ecs.h"
+#include "Tags/Alive/aliveTag.h"
+#include "Tags/Buffed/buffedTag.h"
+#include "Tags/Debug/debugTag.h"
 
 namespace Dimensia::Registry
 {

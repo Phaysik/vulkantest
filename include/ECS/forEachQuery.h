@@ -95,7 +95,7 @@
 			   `forEachQueryImpl` which performs archetype matching and dispatch.
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, Func &&func)
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -115,7 +115,7 @@
 			   so const-safe processing helpers are selected.
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -134,7 +134,7 @@
 				@note This overload sets the `Any` clause to empty (`TypeList<>`) and forwards to the core query implementation.
 			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, Func &&func)
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = TypeList<>; // empty – no "any" filter
@@ -150,7 +150,7 @@
 				@param[in] func User-provided callable forwarded to the core const implementation.
 			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = TypeList<>;
@@ -167,7 +167,7 @@
 				@note This overload sets the `None` clause to empty (`TypeList<>`).
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, Func &&func)
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -183,7 +183,7 @@
 				@param[in] func User-provided callable forwarded to the core const implementation.
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -200,7 +200,7 @@
 				@note This overload sets the `All` (required) clause to empty (`TypeList<>`).
 			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, Func &&func)
 			{
 				using ReqList = TypeList<>; // empty – no required components
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -216,7 +216,7 @@
 				@param[in] func User-provided callable forwarded to the core const implementation.
 			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, Func &&func) const
 			{
 				using ReqList = TypeList<>;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -236,7 +236,7 @@
 				with empty `Any` and `None` clauses.
 			*/
 			template <AllType AllFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, Func &&func)
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = TypeList<>;
@@ -253,7 +253,7 @@
 			   `Any`/`None` clauses.
 			*/
 			template <AllType AllFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = TypeList<>;
@@ -271,7 +271,7 @@
 			   `All` and `None` clauses.
 			*/
 			template <AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, Func &&func)
 			{
 				using ReqList = TypeList<>;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -287,7 +287,7 @@
 				@note This overload converts `AnyFilter` to a `TypeList` and uses empty `All`/`None` clauses.
 			*/
 			template <AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, Func &&func) const
 			{
 				using ReqList = TypeList<>;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -305,7 +305,7 @@
 				with empty `All` and `Any` clauses.
 			*/
 			template <NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, Func &&func)
 			{
 				using ReqList = TypeList<>;
 				using AnyList = TypeList<>;
@@ -321,7 +321,7 @@
 				@note This overload converts `NoneFilter` to a `TypeList` and uses empty `All`/`Any` clauses.
 			*/
 			template <NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, Func &&func) const
 			{
 				using ReqList = TypeList<>;
 				using AnyList = TypeList<>;
@@ -435,7 +435,7 @@
 				@param[in] func User callable forwarded to `forEachQueryVersionImpl`.
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -454,7 +454,7 @@
 				@note Use this overload for read-only systems that still require version-aware processing.
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -474,7 +474,7 @@
 				@note This overload sets the `Any` clause to empty and forwards to the core versioned implementation.
 			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = TypeList<>; // empty – no "any" filter
@@ -491,7 +491,7 @@
 				@param[in] func User-provided callable forwarded to the core const implementation.
 			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = TypeList<>;
@@ -509,7 +509,7 @@
 				@note This overload sets the `None` clause to empty and forwards to the core versioned implementation.
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -526,7 +526,7 @@
 				@param[in] func User-provided callable forwarded to the core const implementation.
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -544,7 +544,7 @@
 				@note This overload sets the `All` (required) clause to empty and forwards to the core versioned implementation.
 			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
 			{
 				using ReqList = TypeList<>;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -561,7 +561,7 @@
 				@param[in] func User-provided callable forwarded to the core const implementation.
 			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
 			{
 				using ReqList = TypeList<>;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -580,7 +580,7 @@
 				@note Use this overload for mutable systems that need version-aware (dirty-chunk) processing.
 			*/
 			template <AllType AllFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = TypeList<>;
@@ -596,7 +596,7 @@
 				@param[in] func User-provided callable forwarded to the const versioned implementation.
 			*/
 			template <AllType AllFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = TypeList<>;
@@ -613,7 +613,7 @@
 				@note Use this overload when a match requires at least one of the listed component types.
 			*/
 			template <AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
 			{
 				using ReqList = TypeList<>;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -629,7 +629,7 @@
 				@param[in] func User-provided callable forwarded to the const versioned implementation.
 			*/
 			template <AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
 			{
 				using ReqList = TypeList<>;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -646,7 +646,7 @@
 				@note This overload is useful for queries that only exclude specific components.
 			*/
 			template <NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func)
 			{
 				using ReqList = TypeList<>;
 				using AnyList = TypeList<>;
@@ -662,7 +662,7 @@
 				@param[in] func User-provided callable forwarded to the const versioned implementation.
 			*/
 			template <NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, Func &&func) const
 			{
 				using ReqList = TypeList<>;
 				using AnyList = TypeList<>;
@@ -758,7 +758,7 @@
 			   `forEachQueryCommandImpl`.
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -777,7 +777,7 @@
 				@param[in] func User-provided callable forwarded to the underlying const implementation.
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -797,7 +797,7 @@
 				@note This overload sets the `Any` clause to empty (`TypeList<>`) and forwards to `forEachQueryCommandImpl`.
 			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = TypeList<>; // empty – no "any" filter
@@ -816,7 +816,7 @@
 				@note This overload sets the `Any` clause to empty (`TypeList<>`) and forwards to the const `forEachQueryCommandImpl`.
 			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = TypeList<>;
@@ -834,7 +834,7 @@
 				@note This overload sets the `None` clause to empty (`TypeList<>`) and forwards to `forEachQueryCommandImpl`.
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -853,7 +853,7 @@
 				@note This overload sets the `None` clause to empty (`TypeList<>`) and forwards to the const `forEachQueryCommandImpl`.
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -871,7 +871,7 @@
 				@note This overload sets the `All` (required) clause to empty (`TypeList<>`) and forwards to `forEachQueryCommandImpl`.
 			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
 			{
 				using ReqList = TypeList<>; // empty – no required components
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -891,7 +891,7 @@
 			   `forEachQueryCommandImpl`.
 			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
 			{
 				using ReqList = TypeList<>;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -911,7 +911,7 @@
 			   empty `Any`/`None` clauses.
 			*/
 			template <AllType AllFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = TypeList<>;
@@ -928,7 +928,7 @@
 				@param[in] func User-provided callable forwarded to the const implementation.
 			*/
 			template <AllType AllFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = TypeList<>;
@@ -946,7 +946,7 @@
 			   empty `All`/`None` clauses.
 			*/
 			template <AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
 			{
 				using ReqList = TypeList<>;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -963,7 +963,7 @@
 				@param[in] func User-provided callable forwarded to the const implementation.
 			*/
 			template <AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
 			{
 				using ReqList = TypeList<>;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -981,7 +981,7 @@
 			   empty `All`/`Any` clauses.
 			*/
 			template <NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func)
 			{
 				using ReqList = TypeList<>;
 				using AnyList = TypeList<>;
@@ -998,7 +998,7 @@
 				@param[in] func User-provided callable forwarded to the const implementation.
 			*/
 			template <NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &&func) const
 			{
 				using ReqList = TypeList<>;
 				using AnyList = TypeList<>;
@@ -1112,7 +1112,7 @@
 			   `forEachQueryVersionCommandImpl` which performs dirty-chunk selection and processing.
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -1133,7 +1133,7 @@
 				@param[in] func User-provided callable forwarded to the underlying const versioned implementation.
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -1155,7 +1155,7 @@
 				@note This overload sets the `Any` clause to empty (`TypeList<>`) and forwards to `forEachQueryVersionCommandImpl`.
 			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = TypeList<>; // empty – no "any" filter
@@ -1175,7 +1175,7 @@
 				@param[in] func User-provided callable forwarded to the const versioned implementation.
 			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = TypeList<>;
@@ -1195,7 +1195,7 @@
 				@note This overload sets the `None` clause to empty (`TypeList<>`) and forwards to `forEachQueryVersionCommandImpl`.
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -1215,7 +1215,7 @@
 				@param[in] func User-provided callable forwarded to the underlying const versioned implementation.
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -1236,7 +1236,7 @@
 			   `forEachQueryVersionCommandImpl`.
 			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
 			{
 				using ReqList = TypeList<>; // empty – no required components
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -1256,7 +1256,7 @@
 				@param[in] func User-provided callable forwarded to the underlying const versioned implementation.
 			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
 				using ReqList = TypeList<>;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -1278,7 +1278,7 @@
 			   `forEachQueryVersionCommandImpl` with empty `Any`/`None` clauses.
 			*/
 			template <AllType AllFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = TypeList<>;
@@ -1297,7 +1297,7 @@
 				@param[in] func User-provided callable forwarded to the underlying const versioned implementation.
 			*/
 			template <AllType AllFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
 				using ReqList = PackExtractor<AllFilter>::type;
 				using AnyList = TypeList<>;
@@ -1317,7 +1317,7 @@
 			   `forEachQueryVersionCommandImpl` with empty `All`/`None` clauses.
 			*/
 			template <AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
 			{
 				using ReqList = TypeList<>;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -1336,7 +1336,7 @@
 				@param[in] func User-provided callable forwarded to the underlying const versioned implementation.
 			*/
 			template <AnyType AnyFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
 				using ReqList = TypeList<>;
 				using AnyList = PackExtractor<AnyFilter>::type;
@@ -1356,7 +1356,7 @@
 			   `forEachQueryVersionCommandImpl` with empty `All`/`Any` clauses.
 			*/
 			template <NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func)
 			{
 				using ReqList = TypeList<>;
 				using AnyList = TypeList<>;
@@ -1375,7 +1375,7 @@
 				@param[in] func User-provided callable forwarded to the underlying const versioned implementation.
 			*/
 			template <NoneType NoneFilter, typename Func>
-			void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
+			ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, CommandBuffer &cmds, Func &&func) const
 			{
 				using ReqList = TypeList<>;
 				using AnyList = TypeList<>;
@@ -1395,7 +1395,7 @@
 				@note This overload is a convenience wrapper that selects the sequential execution policy.
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(Func &&func)
+			ATTR_DEPRECATED void forEach(Func &&func)
 			{
 				forEach<AllFilter, AnyFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
@@ -1409,7 +1409,7 @@
 				@note This overload is a const convenience wrapper that selects the sequential execution policy.
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(Func &&func) const
+			ATTR_DEPRECATED void forEach(Func &&func) const
 			{
 				forEach<AllFilter, AnyFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
@@ -1424,7 +1424,7 @@
 				@note This is a convenience wrapper that selects the sequential execution policy.
 			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
-			void forEach(Func &&func)
+			ATTR_DEPRECATED void forEach(Func &&func)
 			{
 				forEach<AllFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
@@ -1436,7 +1436,7 @@
 				@param[in] func User-provided callable forwarded to the sequential const `forEach` implementation.
 			*/
 			template <AllType AllFilter, NoneType NoneFilter, typename Func>
-			void forEach(Func &&func) const
+			ATTR_DEPRECATED void forEach(Func &&func) const
 			{
 				forEach<AllFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
@@ -1448,7 +1448,7 @@
 				@param[in] func User-provided callable forwarded to the sequential `forEach` implementation.
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
-			void forEach(Func &&func)
+			ATTR_DEPRECATED void forEach(Func &&func)
 			{
 				forEach<AllFilter, AnyFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
@@ -1459,7 +1459,7 @@
 				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers.
 			*/
 			template <AllType AllFilter, AnyType AnyFilter, typename Func>
-			void forEach(Func &&func) const
+			ATTR_DEPRECATED void forEach(Func &&func) const
 			{
 				forEach<AllFilter, AnyFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
@@ -1470,7 +1470,7 @@
 				@tparam Func Callable invoked per-entity or per-chunk; forwarded to the underlying implementation.
 			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(Func &&func)
+			ATTR_DEPRECATED void forEach(Func &&func)
 			{
 				forEach<AnyFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
@@ -1481,7 +1481,7 @@
 				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers.
 			*/
 			template <AnyType AnyFilter, NoneType NoneFilter, typename Func>
-			void forEach(Func &&func) const
+			ATTR_DEPRECATED void forEach(Func &&func) const
 			{
 				forEach<AnyFilter, NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
@@ -1495,7 +1495,7 @@
 				@note This overload is a convenience wrapper that selects the sequential execution policy.
 			*/
 			template <AllType AllFilter, typename Func>
-			void forEach(Func &&func)
+			ATTR_DEPRECATED void forEach(Func &&func)
 			{
 				forEach<AllFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
@@ -1505,7 +1505,7 @@
 				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers.
 			*/
 			template <AllType AllFilter, typename Func>
-			void forEach(Func &&func) const
+			ATTR_DEPRECATED void forEach(Func &&func) const
 			{
 				forEach<AllFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
@@ -1515,7 +1515,7 @@
 				@tparam Func Callable invoked per-entity or per-chunk; forwarded to the underlying implementation.
 			*/
 			template <AnyType AnyFilter, typename Func>
-			void forEach(Func &&func)
+			ATTR_DEPRECATED void forEach(Func &&func)
 			{
 				forEach<AnyFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
@@ -1525,7 +1525,7 @@
 				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers.
 			*/
 			template <AnyType AnyFilter, typename Func>
-			void forEach(Func &&func) const
+			ATTR_DEPRECATED void forEach(Func &&func) const
 			{
 				forEach<AnyFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
@@ -1535,7 +1535,7 @@
 				@tparam Func Callable invoked per-entity or per-chunk; forwarded to the underlying implementation.
 			*/
 			template <NoneType NoneFilter, typename Func>
-			void forEach(Func &&func)
+			ATTR_DEPRECATED void forEach(Func &&func)
 			{
 				forEach<NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
@@ -1545,7 +1545,7 @@
 				@tparam Func Callable invoked per-entity or per-chunk; must be compatible with const processing helpers.
 			*/
 			template <NoneType NoneFilter, typename Func>
-			void forEach(Func &&func) const
+			ATTR_DEPRECATED void forEach(Func &&func) const
 			{
 				forEach<NoneFilter>(ExecutionPolicy::Seq, std::forward<Func>(func));
 			}
