@@ -233,6 +233,15 @@ namespace Dimensia::ECS
 
 			if (entity.index < mChildren.size())
 			{
+				// Clear stale parent handles on orphaned children to prevent dangling references
+				for (const Entity &child : mChildren[entity.index])
+				{
+					if (child.index < mParent.size())
+					{
+						mParent[child.index] = NULL_ENTITY;
+					}
+				}
+
 				mChildren[entity.index].clear();
 			}
 			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)

@@ -135,6 +135,26 @@ namespace Dimensia::ECS
 	template <bool IsConst>
 	using EntityPtr = std::conditional_t<IsConst, const Entity *, Entity *>;
 
+	/*! @brief Safely dereference a component pointer, returning a default-constructed value for tag types.
+		@tparam IsConst Whether the returned reference should be const-qualified.
+		@tparam T Component or tag type.
+		@param[in] ptr Byte pointer to the component data (may be nullptr for tags).
+		@return For tags: a default-constructed `T`. For components: a (const) reference to the stored value.
+	*/
+	template <bool IsConst, typename T>
+	decltype(auto) derefComponentPtr(std::conditional_t<IsConst, const std::byte *, std::byte *> ptr) noexcept
+	{
+		if constexpr (isTagV<T>)
+		{
+			return T{};
+		}
+		else
+		{
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+			return (*reinterpret_cast<std::conditional_t<IsConst, const T *, T *>>(ptr));
+		}
+	}
+
 	/*! @brief Process entities in a chunk when some `Components...` include tags.
 		@tparam IsConst Compile-time constness for pointers (true -> const pointers passed to @p func).
 		@tparam Components Component types to fetch and pass to @p func. Tag components are used for per-entity filtering.
@@ -179,17 +199,22 @@ namespace Dimensia::ECS
 				continue;
 			}
 
-			// Call user function with correctly typed pointers
+			// Call user function with correctly typed pointers (tags get default-constructed values)
 			std::apply(
 				[&](auto *...bytePtrs) noexcept {
-					forwardedFunction(
-						// NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-						entity, (*reinterpret_cast<std::conditional_t<IsConst, const Components *, Components *>>(bytePtrs))...);
+					forwardedFunction(entity, derefComponentPtr<IsConst, Components>(bytePtrs)...);
 				},
 				byteArrays);
 
+			// Advance byte pointers only for non-tag components (tags have nullptr)
 			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic,cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			((std::get<Is>(byteArrays) += ComponentInfos[componentID<Components>()].size), ...);
+			(([&] {
+				 if constexpr (!isTagV<Components>)
+				 {
+					 std::get<Is>(byteArrays) += ComponentInfos[componentID<Components>()].size;
+				 }
+			 }()),
+			 ...);
 		}
 	}
 

@@ -287,7 +287,10 @@ namespace std
 	{
 			std::size_t operator()(const Dimensia::ECS::ComponentMask &componentMask) const noexcept
 			{
-				return hash<Dimensia::Core::ul>{}(componentMask.low()) ^ (hash<Dimensia::Core::ul>{}(componentMask.high()) << 1U);
+				std::size_t seed{hash<Dimensia::Core::ul>{}(componentMask.low())};
+				seed ^= hash<Dimensia::Core::ul>{}(componentMask.high()) + Dimensia::ECS::HASH_MIX_CONSTANT
+					  + (seed << Dimensia::ECS::LEFT_SHIFT_VALUE) + (seed >> 2U);
+				return seed;
 			}
 	};
 } // namespace std

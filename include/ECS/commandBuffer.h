@@ -93,7 +93,8 @@ namespace Dimensia::ECS
 			{
 				ThreadBuffer *buf{getThreadBuffer()};
 
-				buf->commands.push_back(Command::makeAdd(entity, std::move(value)));
+				T copy{value};
+				buf->commands.push_back(Command::makeAdd(entity, std::move(copy)));
 			}
 
 			/*! @brief Enqueue an `AddComponent` command by forwarding a value.

@@ -59,7 +59,7 @@
 						Entity *entities{arch->getEntityArray(chunkIndex)};
 
 						[&]<typename... Req>(TypeList<Req...>) {
-							processChunkEntities<Req...>(entities, entityCount, chunkIndex, arch, std::forward<Func>(func));
+							processChunkEntities<Req...>(entities, entityCount, chunkIndex, arch, forwardedFunction);
 						}(ReqList{});
 					}
 				};

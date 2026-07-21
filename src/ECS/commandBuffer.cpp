@@ -95,7 +95,7 @@ namespace Dimensia::ECS
 			// ---- Process Destroy ----
 			for (auto it{removeEnd}; it != destroyEnd; ++it)
 			{
-				ecs.destroyEntity(it->getEntity());
+				ecs.destroyEntity(it->getEntity(), true);
 			}
 
 			// ---- 4️⃣ Remaining are SetParent ----

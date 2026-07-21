@@ -276,10 +276,13 @@ namespace Dimensia::ECS
 			{
 				info.moveConstruct(dest, moveData[componentTypeID]);
 			}
+			else if (copyData[componentTypeID] != nullptr)
+			{
+				info.copyConstruct(dest, copyData[componentTypeID]);
+			}
 			else
 			{
-				assert(copyData[componentTypeID] != nullptr);
-				info.copyConstruct(dest, copyData[componentTypeID]);
+				assert(false && "Component in archetype mask has no data source in addEntity");
 			}
 			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		}

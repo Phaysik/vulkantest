@@ -237,8 +237,7 @@ namespace Dimensia::ECS
 				Entity entity{allocateEntityID()};
 
 				// Place directly in the target archetype, bypassing the empty archetype
-				const ComponentMask targetMask{regularMask ? regularMask : ComponentMask(0)};
-				Archetype *targetArch{getOrCreateArchetype(targetMask)};
+				Archetype *targetArch{getOrCreateArchetype(regularMask)};
 
 				auto [chunk, slot]{targetArch->addEntity(entity, copyData, moveData, tagMask)};
 

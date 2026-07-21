@@ -47,6 +47,14 @@ namespace Dimensia::ECS
 	*/
 	constexpr std::size_t TAG_WORDS_PER_ENTITY{2};
 
+	/*! @brief Constant used in hash mixing for `ComponentMask` and other ECS types.
+		@details This value is derived from the golden ratio and is commonly used in hash combination functions to reduce collisions. It is
+	   used when combining the hashes of multiple values (e.g., lower and upper halves of a mask) into a single hash value.
+	*/
+	constexpr std::size_t HASH_MIX_CONSTANT{0x9e3779b9};
+
+	constexpr Core::ub LEFT_SHIFT_VALUE{6U};
+
 } // namespace Dimensia::ECS
 
 #endif
