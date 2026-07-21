@@ -14,7 +14,7 @@
 #include "Core/attributeMacros.h"
 #include "Core/cconcepts.h"
 
-/*! @namespace Utility::OverflowProtection
+/*! @namespace Dimensia::Utility::OverflowProtection
 	@brief Utilities for detecting and guarding against unsigned integer overflow.
 	@details Provides small, constexpr helpers to check for multiplication overflow and to perform
 	saturating multiplication when overflow would occur. These helpers are intended for use with
@@ -29,7 +29,7 @@ namespace Dimensia::Utility::OverflowProtection
 	/*! @brief Check if multiplication of two unsigned values will overflow.
 		@details Returns `true` if `num1 * num2` would be greater than
 		`std::numeric_limits<Number>::max()`; otherwise returns `false`.
-		@tparam Number Unsigned integral type for the operands. Must satisfy @ref Dimensia::Core::UnsignedIntegral.
+		@tparam Number Unsigned integral type for the operands. Must satisfy @ref Concepts::UnsignedIntegral.
 		@param[in] num1 The first multiplicand.
 		@param[in] num2 The second multiplicand.
 		@return `true` when multiplication would overflow, `false` otherwise.
@@ -51,7 +51,7 @@ namespace Dimensia::Utility::OverflowProtection
 		@details Performs multiplication of `num1` and `num2`. If the multiplication
 		would overflow the representable range of `Number`, the function returns
 		`std::numeric_limits<Number>::max()` as a conservative saturated result.
-		@tparam Number Unsigned integral type for the operands. Must satisfy @ref Dimensia::Core::UnsignedIntegral.
+		@tparam Number Unsigned integral type for the operands. Must satisfy @ref Concepts::UnsignedIntegral.
 		@param[in] num1 The first multiplicand.
 		@param[in] num2 The second multiplicand.
 		@return The product `num1 * num2` when no overflow occurs; otherwise

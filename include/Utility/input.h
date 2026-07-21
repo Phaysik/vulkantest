@@ -18,7 +18,7 @@
 
 #include "Core/cconcepts.h" // for Integral, String
 
-/*! @namespace Utility Holds any useful functionality that doesn't fit anywhere else
+/*! @namespace Dimensia::Utility Holds any useful functionality that doesn't fit anywhere else
 	@date 02/12/2026
 	@version 0.0.1
 	@since 0.0.1
@@ -26,9 +26,6 @@
 */
 namespace Dimensia::Utility
 {
-	using Dimensia::Core::Integral;
-	using Dimensia::Core::String;
-
 	/*! @class Input input.h "include/input.h"
 		@brief Will try and extract valid user input and clean up the input buffer as needed
 		@date 02/12/2026
@@ -108,7 +105,7 @@ namespace Dimensia::Utility
 				@since 0.0.1
 				@author Matthew Moore
 			*/
-			template <String T>
+			template <Dimensia::Core::String T>
 			static T getInput(std::string_view inputMessage = mInputMessage, std::string_view errorMessage = mErrorMessage,
 							  [[maybe_unused]] const bool ignoreExtraneous = true, std::istream &input = std::cin,
 							  const bool afterFailureOnly = false)
@@ -152,7 +149,7 @@ namespace Dimensia::Utility
 				@since 0.0.1
 				@author Matthew Moore
 			*/
-			template <Integral T>
+			template <Dimensia::Core::Integral T>
 			static T getInput(const T min, const T max, std::string_view inputMessage = mInputMessage,
 							  std::string_view errorMessage = mErrorMessage, const bool ignoreExtraneous = true,
 							  std::istream &input = std::cin, const bool afterFailureOnly = false)

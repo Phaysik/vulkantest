@@ -158,7 +158,7 @@ namespace Dimensia::ECS
 			mRecords[index].generation = gen;
 		}
 
-		Entity entity{.index = index, .generation = gen, .state = State::Initializing};
+		Entity entity{.index = index, .generation = gen};
 
 		Archetype *emptyArch{getOrCreateArchetype(ComponentMask(0))};
 		std::array<const void *, MAX_COMPONENTS> noCopy{};
@@ -172,7 +172,7 @@ namespace Dimensia::ECS
 		assert(index < mRecords.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-		mRecords[index] = {.generation = gen, .archetypeID = emptyArch->getId(), .chunkIndex = chunk, .slotIndex = slot};
+		mRecords[index] = {.generation = gen, .archetypeID = emptyArch->getId(), .chunkIndex = chunk, .slotIndex = slot, .state = State::Active};
 
 		const std::scoped_lock<std::mutex> lock(mHierarchyMutex);
 
@@ -181,8 +181,6 @@ namespace Dimensia::ECS
 			mParent.resize(index + 1, NULL_ENTITY);
 			mChildren.resize(index + 1);
 		}
-
-		entity.state = State::Active;
 
 		return entity;
 	}
@@ -194,7 +192,10 @@ namespace Dimensia::ECS
 			return;
 		}
 
-		entity.state = State::Destroying;
+		assert(entity.index < mRecords.size());
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		mRecords[entity.index].state = State::Destroying;
 
 		if (destroyChildren)
 		{
@@ -255,9 +256,8 @@ namespace Dimensia::ECS
 
 		rec.generation++;
 		rec.archetypeID = INVALID_ARCHETYPE_ID;
+		rec.state = State::Destroyed;
 		mFreeIndices.push_back(entity.index);
-
-		entity.state = State::Destroyed;
 	}
 
 	Entity ECS::cloneEntity(const Entity &src, bool cloneHierarchy)
@@ -281,7 +281,9 @@ namespace Dimensia::ECS
 		const ComponentMask srcTags{srcArch->getTags(srcRec.chunkIndex, srcRec.slotIndex)};
 
 		std::array<const void *, MAX_COMPONENTS> copyData{};
+		std::array<void *, MAX_COMPONENTS> ownedPtrs{};
 		copyData.fill(nullptr);
+		ownedPtrs.fill(nullptr);
 
 		srcArch->forEachComponent([&](ComponentTypeID compID) {
 			const void *srcPtr{getComponentPtr(src, compID)};
@@ -301,8 +303,10 @@ namespace Dimensia::ECS
 
 			assert(compID < copyData.size());
 
-			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			copyData[compID] = mem;
+			ownedPtrs[compID] = mem;
+			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		});
 
 		// Create a new entity (initially in the empty archetype)
@@ -310,6 +314,21 @@ namespace Dimensia::ECS
 
 		// Move the new entity to the target archetype, constructing components from the copies
 		moveEntity(dst, srcArch->getRegularMask(), copyData, {}, srcTags);
+
+		// Free the temporary component copies allocated above
+		srcArch->forEachComponent([&](ComponentTypeID compID) {
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			if (ownedPtrs[compID] != nullptr)
+			{
+				assert(compID < ComponentInfos.size());
+
+				// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				const ComponentInfo &info{ComponentInfos[compID]};
+				info.destructor(ownedPtrs[compID]);
+				operator delete(ownedPtrs[compID], std::align_val_t(info.alignment));
+				// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			}
+		});
 
 		// Recursively clone children if requested
 		if (cloneHierarchy)
@@ -342,7 +361,7 @@ namespace Dimensia::ECS
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		const EntityRecord &rec{mRecords[entity.index]};
 
-		return rec.generation == entity.generation && entity.state == State::Active && rec.archetypeID != INVALID_ARCHETYPE_ID;
+		return rec.generation == entity.generation && rec.state == State::Active && rec.archetypeID != INVALID_ARCHETYPE_ID;
 	}
 
 	void ECS::compact()

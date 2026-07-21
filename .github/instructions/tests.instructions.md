@@ -4,18 +4,21 @@ applyTo: '**/*.{h,hpp,cpp}'
 
 ## Goal
 
-When I ask you to generate tests for a **file, class, or function**, always generate **Google Test (gtest)**–based test code targeting the file under test.
+When I ask you to generate tests for a **file, class, or function**, always generate **Catch2**–based test code using BDD syntax targeting the file under test.
 
 The test file MUST be located at: /tests/(unit|mocks|integrations)/<relative path to file under test>.test.cpp
 
-The tests must be **correct, isolated, readable, deterministic**, and follow modern C++ (C++23–26) and Google Test best practices.
+The tests must be **correct, isolated, readable, deterministic**, and follow modern C++ (C++23–26) and Catch2 best practices.
 
 ## General Rules
 
-1. **Always use Google Test**
-   - Use `<gtest/gtest.h>`
-   - Prefer `TEST_F` or `TEST_P` over `TEST` when state or reuse is involved
-   - Do NOT use deprecated gtest APIs
+1. **Always use Catch2 with BDD syntax**
+   - Use `<catch2/catch_test_macros.hpp>`
+   - Use `SCENARIO` for grouping related tests
+   - Use `GIVEN` to set up preconditions
+   - Use `WHEN` for actions (when possible; optional if obvious)
+   - Use `THEN` for assertions
+   - Do NOT use deprecated Catch2 APIs
 
 2. **One Unit Under Test (UUT) per file**
    - Tests in a file must focus on:
@@ -45,7 +48,7 @@ The tests must be **correct, isolated, readable, deterministic**, and follow mod
 Every test file MUST follow this structure:
 
 ```cpp
-#include <gtest/gtest.h>
+#include <catch2/catch_test_macros.hpp>
 
 #include "path/to/header/under/test.h"
 
@@ -65,36 +68,56 @@ Use forward declarations where appropriate
 
 - Test files: `<original_filename>.test.cpp`
 
-### Test Suite Naming
+### Scenario Naming (SCENARIO)
 
 - Use the name of the class or function under test
-- Append _Test_ for test fixtures
-- **DO NOT** add underscores in the test suite name
+- **DO NOT** add underscores in the scenario name
 
 Examples:
 
-- **ParserTest**
-- **HashFunctionTest**
-- **FileReaderIntegrationTest**
+- **Parser**
+- **HashFunction**
+- **FileReaderIntegration**
 
-### Test Case Naming
+### BDD Clause Naming (GIVEN/WHEN/THEN)
 
-- Use **GivenWhenThen** or **BehaviorConditionResult** style:
-  - TEST_F(ParserTest, GivenValidInputWhenParsingThenSucceeds)
-- **DO NOT** add underscores in the test case name
+- Use descriptive text that reads as English prose
+- **GIVEN** describes the precondition or setup
+- **WHEN** describes the action (optional if action is obvious)
+- **THEN** describes the expected outcome
+- Use lowercase for readability
+
+Example:
+
+```cpp
+SCENARIO("Parser")
+{
+  GIVEN("valid input")
+  {
+    WHEN("parsing")
+    {
+      THEN("parsing succeeds")
+      {
+        // assertions
+      }
+    }
+  }
+}
+```
 
 ### Variable Naming
 
 - **Do NOT** use variable names less than 3 characters long
 - Variable names should be descriptive of their purpose
 
-## Test Fixtures
+## Test Setup & Teardown
 
-Use test fixtures when:
+For setup/teardown, use:
 
-- Shared setup/teardown is required
-- Common test data exists
-- Dependency injection or mocks are involved
+- Inline code at the beginning of `SCENARIO` block for setup
+- Capture variables by reference in nested scopes when needed
+- Use RAII for resource cleanup (e.g., temporary files)
+- When complex setup/teardown is required, consider a helper function or class
 
 ## Unit vs Integration vs Mock Tests
 
@@ -117,55 +140,60 @@ Use test fixtures when:
 ### Mock Tests (/mocks/)
 
 - Focus on mock behavior and expectations
-- Use Google Mock (<gmock/gmock.h>) when applicable
-- Verify interactions (**EXPECT_CALL**, **Times**, etc.)
+- Use Catch2 matchers and custom comparators when applicable
+- Verify interactions through return values and side effects
 - Prefer interface-based mocking (pure virtual base classes)
 - Mocks must live in the test file or a dedicated test-only header
 - Avoid mocking concrete classes unless unavoidable
-- Use **NiceMock** or **StrictMock** explicitly when intent matters
-
-```cpp
-using ::testing::NiceMock;
-using ::testing::StrictMock;
-```
+- Use structured assertions with meaningful error messages
 
 ## Assertions & Expectations
 
-1. **ASSERT\_\*** vs **EXPECT\_\*** rule of thumb:
+1. **REQUIRE** vs **CHECK** rule of thumb:
 
-- Use **ASSERT\_\*** for preconditions required for the rest of the test
-- Use **EXPECT\_\*** for independent verifications
+- Use **REQUIRE** for preconditions required for the rest of the test to be valid
+- Use **CHECK** for independent verifications that should not stop the test
+- Use **REQUIRE_THAT** with matchers for complex conditions or when failure should abort the test
+- Use **CHECK_THAT** with matchers for complex conditions or better error messages
 
-2. Prefer **EXPECT_THAT** with matchers for complex assertions
+2. Prefer specific assertions
 
-- Use matchers such as:
-  - **ElementsAre**
-  - **Contains**
-  - **HasSubstr**
-  - **Optional**
-  - **VariantWith**
+- Prefer **CHECK** for true conditions
+- Prefer **CHECK_FALSE** for false conditions
+
+3. How to use matchers
+
+- Include `<catch2/matchers/catch_matchers_all.hpp>`
+- Use matchers for complex conditions, better error messages, or when comparing against a specific value
 
 ```cpp
-EXPECT_THAT(result, testing::ElementsAre(1, 2, 3));
+CHECK_THAT(result, Catch::Matchers::Equals(expected));
 ```
-
-3. Prefer specific assertions
-
-- Prefer **EXPECT_EQ**, **EXPECT_TRUE**, **EXPECT_FALSE**
-- Avoid generic **EXPECT_TRUE(condition)**
 
 4. Floating-point comparisons
 
-- Use **EXPECT_NEAR** with explicit tolerance
+- Use **CHECK_THAT(val, Catch::Matchers::WithinAbs(expected, tolerance))**
 
 5. Containers
    - Compare sizes first, then contents
    - Prefer element-wise assertions if order matters
 
-6. Exceptions Use:
+6. String comparisons
+   - Use **CHECK_THAT(str, Catch::Matchers::ContainsSubstring(substr))**
 
-- **EXPECT_THROW(fn(), ExceptionType);**
-- **EXPECT_NO_THROW(fn());**
+7. Exceptions Use:
+
+- **CHECK_THROWS_AS(fn(), ExceptionType);**
+- **CHECK_NOTHROW(fn());**
+
+8. Comparison Operators (<, <=, >, >=, ==, !=)
+
+- When using **CHECK** or **CHECK_FALSE** with these operators
+  - Wrap the entire expression in parentheses to ensure correct evaluation
+
+```cpp
+CHECK((value > threshold));
+```
 
 ## Modern C++ Guidelines
 
@@ -183,25 +211,33 @@ Use parameterized tests when:
 - Parameter names must describe the scenario, not the value
 - Avoid numeric-only test names
 
-Example:
+Example using Catch2 test cases:
 
 ```cpp
-class ParserParamTest
-    : public ::testing::TestWithParam<TestCase> {};
+namespace {
+  struct TestCase {
+    std::string input;
+    std::string expected;
+  };
+} // namespace
 
-TEST_P(ParserParamTest, ParsesCorrectly) {
-    const auto& tc = GetParam();
-    EXPECT_EQ(parse(tc.input), tc.expected);
+SCENARIO("Parser", "[param]")
+{
+    auto testCases = std::vector<TestCase>{
+        {"valid_input", "expected_output"},
+        {"another_input", "another_output"}
+    };
+
+    for (const auto& tc : testCases) {
+        GIVEN(tc.input)
+        {
+            THEN("parses to expected output")
+            {
+                CHECK_EQ(parse(tc.input), tc.expected);
+            }
+        }
+    }
 }
-
-INSTANTIATE_TEST_SUITE_P(
-    ValidInputs,
-    ParserParamTest,
-    ::testing::Values(
-        TestCase{...},
-        TestCase{...}
-    )
-);
 ```
 
 ## Edge Cases & Error Conditions
@@ -219,7 +255,7 @@ INSTANTIATE_TEST_SUITE_P(
 - Clearly document concurrency assumptions
 - Avoid timing-based assertions
 - Prefer deterministic synchronization primitives
-- Use **ASSERT\_\*** when failure should abort the test
+- Use **REQUIRE** when failure should abort the test
 
 ## Documentation in Tests
 
@@ -227,16 +263,15 @@ INSTANTIATE_TEST_SUITE_P(
 - Do NOT restate what the code already expresses
 - Each test name should be self-documenting
 
-## Contract & Death Tests
+## Contract & Termination Tests
 
-- Use **EXPECT_DEATH** or **ASSERT_DEATH** when behavior is defined as:
-  - Program termination
-  - Contract violation
-
-- Death tests must be deterministic and platform-safe
+- Use **CHECK_THROWS_AS** when behavior is defined to throw
+- Document contract violations and error conditions
+- Termination tests should be deterministic and platform-safe
+- Prefer exceptions over process termination for testability
 
 ```cpp
-EXPECT_DEATH(fn(invalid_input), ".*");
+CHECK_THROWS_AS(fn(invalid_input), std::invalid_argument);
 ```
 
 ## Coverage-Aware Mode
@@ -276,9 +311,9 @@ EXPECT_DEATH(fn(invalid_input), ".*");
   - Terminate the program
   - Violate documented contracts
 - Include explicit tests that exercise those paths using:
-  - **EXPECT_THROW**
-  - **EXPECT_NO_THROW**
-  - **EXPECT_DEATH / ASSERT_DEATH (when termination is specified)**
+  - **CHECK_THROWS_AS** for expected exceptions
+  - **CHECK_NOTHROW** for success paths
+  - Document and test termination paths when part of the contract
 
 ### Test Design Guidance
 
@@ -295,22 +330,28 @@ EXPECT_DEATH(fn(invalid_input), ".*");
 ### Clang-Tidy Suppression
 
 - I wish to ignore the most common sources of warnings issued by clang-tidy
-- Follow the below example to wrap all test cases within NOLINTBEGIN/NOLINTEND comments
+- Follow the below example to wrap all test scenarios within NOLINTBEGIN/NOLINTEND comments
 
 ```cpp
 #include <vector>
 #include ...
 
-// NOLINTBEGIN(misc-const-correctness,cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+// NOLINTBEGIN(misc-const-correctness,cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
 
-TEST(FizzBuzzTest, GivenZeroReturnsEmpty)
+SCENARIO("FizzBuzz")
 {
-	const auto result = fizzBuzz<ui>(0U);
-	EXPECT_TRUE(result.empty());
+	GIVEN("zero")
+	{
+		THEN("returns empty")
+		{
+			const auto result = fizzBuzz<ui>(0U);
+			CHECK(result.empty());
+		}
+	}
 }
 ...
 
-// NOLINTEND(misc-const-correctness,cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
+// NOLINTEND(misc-const-correctness,cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
 
 ```
 
@@ -319,8 +360,8 @@ TEST(FizzBuzzTest, GivenZeroReturnsEmpty)
 When I ask you to:
 
 - “Generate unit tests for this class”
-- “Write Google Tests for this function”
-- “Create integration tests for this module”
+- "Write tests for this function"
+- "Create integration tests for this module"
   You must:
 
 1. Determine whether the test belongs in:
@@ -331,7 +372,7 @@ When I ask you to:
 
 2. Create the test file at: /tests/(unit|mocks|integrations)/<relative path to file under test>.test.cpp
 
-3. Generate complete, compilable Google Test code
+3. Generate complete, compilable Catch2 code using BDD syntax
 
 4. Follow naming, structure, and best practices above
 
@@ -344,3 +385,4 @@ When I ask you to:
 - Exercises more runtime code paths
 - Produces clearer coverage results
 - Remains deterministic and behavior-focused
+- Uses BDD syntax to enhance readability

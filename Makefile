@@ -1,10 +1,11 @@
 COMPILER = g++
 COMPILER_STANDARD = 15
-COMPILER_VERSION = -std=c++2c
+COMPILER_VERSION = -std=c++26
 COMPILE_FLAGS_COMMON = -DVULKAN_HPP_NO_STRUCT_CONSTRUCTORS -DVULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS -DGLFW_INCLUDE_VULKAN -DGLM_FORCE_RADIANS -DGLM_FORCE_DEPTH_ZERO_TO_ONE -DGLM_ENABLE_EXPERIMENTAL -DSTB_IMAGE_IMPLEMENTATION -DTINYOBJLOADER_IMPLEMENTATION
+TEST_STANDARD = catch2
 COMPILER_FLAGS_RELEASE = ${COMPILER_VERSION} -O3 -DNDEBUG ${COMPILE_FLAGS_COMMON}
 COMPILER_FLAGS_DEV = ${COMPILER_VERSION} -O0 -g -pg ${COMPILE_FLAGS_COMMON}
-COMPILER_FLAGS_TEST = ${COMPILER_VERSION} --coverage -fPIC -O0 -g -fprofile-arcs -ftest-coverage
+COMPILER_FLAGS_TEST = ${COMPILER_VERSION} --coverage -fPIC -O0 -g -fprofile-arcs -ftest-coverage -D${TEST_STANDARD}
 COMPILER_FLAGS_VALGRIND = ${COMPILER_VERSION} -O0 -g ${COMPILE_FLAGS_COMMON}
 COMPILER_FLAGS_BENCHMARK = ${COMPILER_VERSION} -O3 -pg ${COMPILE_FLAGS_COMMON}
 
@@ -93,11 +94,15 @@ TEST_UNITS_SOURCES = $(shell find ${TEST_UNITS_FOLDER} ${SOURCE_FOLDER} -type f 
 TEST_MAIN_FOLDER = ${TEST_FOLDER}/main
 TEST_MAIN_INCLUDE_ARUGMENT = ${TEST_INCLUDE_ARGUMENT}
 TEST_MAIN_SOURCES = $(shell find ${TEST_MAIN_FOLDER} ${SOURCE_FOLDER} -type f ${TESTS_EXCLUDE_FILE_PATHS} ${TESTS_EXCLUDE_FOLDER_PATHS} -name '*.cpp')
-TEST_LIBRARIES = ${LIBRARIES} -lgcov -lgtest -lgmock -lpthread
+GOOGLE_TEST_LIBRARIES = $(if $(findstring googletest,$(TEST_STANDARD)), ${LIBRARIES} -lgcov -lgtest -lgmock -lpthread)
+CATCH2_LIBRARIES = $(if $(findstring catch2,$(TEST_STANDARD)), ${LIBRARIES} -lCatch2)
+TEST_LIBRARIES = ${GOOGLE_TEST_LIBRARIES} ${CATCH2_LIBRARIES}
 TEST_RESOURCES = ${RESOURCES_FOLDER}
 TEST_REPEAT_COUNT = 1
 TEST_BREAK =
-TEST_EXECUTION_FLAGS = --gtest_repeat=${TEST_REPEAT_COUNT} --gtest_brief=1 $(if $(TEST_BREAK),--gtest_break_on_failure)
+GOOGLE_TEST_EXECUTION_FLAGS = $(if $(findstring googletest,$(TEST_STANDARD)), --gtest_repeat=${TEST_REPEAT_COUNT} --gtest_brief=1 $(if $(TEST_BREAK),--gtest_break_on_failure))
+CATCH2_EXECUTION_FLAGS = $(if $(findstring catch2,$(TEST_STANDARD)), -r compact $(if $(TEST_BREAK),--break))
+TEST_EXECUTION_FLAGS = ${GOOGLE_TEST_EXECUTION_FLAGS} ${CATCH2_EXECUTION_FLAGS}
 OUTPUT_FOLDER_TEST = ${BUILD_FOLDER}/${TEST_FOLDER}
 OUTPUT_FILE_TEST = test
 
@@ -115,23 +120,25 @@ OBJECTS_BENCHMARK_ALL = $(OBJECTS_BENCHMARK_FULL) $(OBJECTS_BENCHMARK_SRC)
 DEPS_BENCHMARK_ALL = $(OBJECTS_BENCHMARK_ALL:.o=.d)
 
 BRANCH_COVERAGE = --rc branch_coverage=true
+LCOV_EXCLUDE_ASSERT = --rc 'lcov_excl_br_line=assert|LCOV_EXCL_BR'
 
 LCOV_FILES = $(shell find . -name '*.gcno' -o -name '*.gcda' -o -name '*.info')
-LCOV_FLAGS = --no-external -c ${BRANCH_COVERAGE} -d . --ignore-errors mismatch,mismatch
+LCOV_FLAGS = --no-external -c ${BRANCH_COVERAGE} ${LCOV_EXCLUDE_ASSERT} -d . --ignore-errors mismatch,mismatch
 OUTPUT_FOLDER_LCOV = ${OUTPUT_FOLDER_TEST}
 OUTPUT_FILE_LCOV = coverage.info
 LCOV_REMOVE_FILES = '*/${TEST_FOLDER}/*'
 
-GENHTML_OUTPUT_FOLDER = .\/coverage
+GENHTML_OUTPUT_FOLDER = coverage
 
 CLANG_SOURCES = ${SOURCES} ${TEST_SOURCES}
 TIDY_COMPILE_FLAGS = --config-file=.clang-tidy
+RUN_TIDY_COMPILE_FLAGS = -config-file=.clang-tidy -j 4 -p=.vscode -use-color=true -extra-arg-before=-Wno-unknown-warning-option
 FORMAT_COMPILE_FLAGS = -i -style=file:.clang-format
 
 CPPCHECK_FOLDER = cppcheck
 CPPCHECK_COMPILE_FLAGS = --cppcheck-build-dir=${CPPCHECK_FOLDER} --check-level=exhaustive
 
-PROFILE_FOLDER = .\/profiling
+PROFILE_FOLDER = profiling
 PROFILE_ANNOTATIONS_FOLDER = ${PROFILE_FOLDER}/annotations
 
 ANNOTATION_FILES = $(shell find . -maxdepth 1 -type f -name '*-ann')
@@ -190,8 +197,7 @@ $(SHADER_DIR)/%.spv: $(SHADER_DIR)/%.slang
 shaders: $(SPV_FILES)
 
 ${OUTPUT_FOLDER_RELEASE}/%.o: ${SOURCE_FOLDER}/%.cpp
-	@dir=$(dir $@); \
-	mkdir -p $$dir;
+	@mkdir -p $(dir $@)
 	${COMPILER} ${COMPILER_FLAGS_RELEASE} ${WARNINGS} ${RELEASE_WARNINGS} ${INCLUDE_ARGUMENT} -MMD -MP -c $< -o $@
 
 -include $(DEPS_RELEASE)
@@ -206,8 +212,7 @@ release: compile
 	${OUTPUT_FOLDER_RELEASE}/${OUTPUT_FILE_RELEASE}
 
 ${OUTPUT_FOLDER_DEV}/%.o: ${SOURCE_FOLDER}/%.cpp
-	@dir=$(dir $@); \
-	mkdir -p $$dir;
+	@mkdir -p $(dir $@)
 	${COMPILER} ${COMPILER_FLAGS_DEV} ${WARNINGS} ${DEBUG_WARNINGS} ${INCLUDE_ARGUMENT} -MMD -MP -c $< -o $@
 
 -include $(DEPS_DEV)
@@ -223,8 +228,7 @@ dev: debug
 	rm -rf gmon.out
 
 ${OUTPUT_FOLDER_VALGRIND}/%.o: ${SOURCE_FOLDER}/%.cpp
-	@dir=$(dir $@); \
-	mkdir -p $$dir;
+	@mkdir -p $(dir $@)
 	${COMPILER} ${COMPILER_FLAGS_VALGRIND} ${WARNINGS} ${INCLUDE_ARGUMENT} -MMD -MP -c $< -o $@
 
 -include $(DEPS_VALGRIND)
@@ -239,13 +243,11 @@ valgrind: val
 	valgrind ${VALGRIND_FLAGS} ${OUTPUT_FOLDER_VALGRIND}/${OUTPUT_FILE_VALGRIND}
 
 ${OUTPUT_FOLDER_BENCHMARK}/%.o: ${BENCHMARK_FOLDER}/%.cpp
-	@dir=$(dir $@); \
-	mkdir -p $$dir;
+	@mkdir -p $(dir $@)
 	${COMPILER} ${COMPILER_FLAGS_BENCHMARK} ${WARNINGS} ${INCLUDE_ARGUMENT} ${BENCHMARK_INCLUDE_ARGUMENT} -MMD -MP -c $< -o $@
 
 ${OUTPUT_FOLDER_BENCHMARK}/%.o: ${SOURCE_FOLDER}/%.cpp
-	@dir=$(dir $@); \
-	mkdir -p $$dir;
+	@mkdir -p $(dir $@)
 	${COMPILER} ${COMPILER_FLAGS_BENCHMARK} ${WARNINGS} ${INCLUDE_ARGUMENT} ${BENCHMARK_INCLUDE_ARGUMENT} -MMD -MP -c $< -o $@
 
 -include $(DEPS_BENCHMARK_ALL)
@@ -255,33 +257,27 @@ benchmarks: $(OBJECTS_BENCHMARK_ALL)
 	${OUTPUT_FOLDER_BENCHMARK}/${OUTPUT_FILE_BENCHMARK}
 
 ${OUTPUT_FOLDER_TEST}/%.o: ${TEST_FOLDER}/%.cpp
-	@dir=$(dir $@); \
-	mkdir -p $$dir;
+	@mkdir -p $(dir $@)
 	${COMPILER} ${COMPILER_FLAGS_TEST} ${WARNINGS} ${INCLUDE_ARGUMENT} ${TEST_INCLUDE_ARGUMENT} -MMD -MP -c $< -o $@
 
 ${OUTPUT_FOLDER_TEST}/%.o: ${TEST_INTEGRATIONS_FOLDER}/%.cpp
-	@dir=$(dir $@); \
-	mkdir -p $$dir;
+	@mkdir -p $(dir $@)
 	${COMPILER} ${COMPILER_FLAGS_TEST} ${WARNINGS} ${INCLUDE_ARGUMENT} ${TEST_INTEGRATIONS_INCLUDE_ARUGMENT} -MMD -MP -c $< -o $@
 
 ${OUTPUT_FOLDER_TEST}/%.o: ${TEST_MOCKS_FOLDER}/%.cpp
-	@dir=$(dir $@); \
-	mkdir -p $$dir;
+	@mkdir -p $(dir $@)
 	${COMPILER} ${COMPILER_FLAGS_TEST} ${WARNINGS} ${INCLUDE_ARGUMENT} ${TEST_MOCKS_INCLUDE_ARUGMENT} -MMD -MP -c $< -o $@
 
 ${OUTPUT_FOLDER_TEST}/%.o: ${TEST_UNITS_FOLDER}/%.cpp
-	@dir=$(dir $@); \
-	mkdir -p $$dir;
+	@mkdir -p $(dir $@)
 	${COMPILER} ${COMPILER_FLAGS_TEST} ${WARNINGS} ${INCLUDE_ARGUMENT} ${TEST_UNITS_INCLUDE_ARUGMENT} -MMD -MP -c $< -o $@
 
 ${OUTPUT_FOLDER_TEST}/%.o: ${TEST_MAIN_FOLDER}/%.cpp
-	@dir=$(dir $@); \
-	mkdir -p $$dir;
+	@mkdir -p $(dir $@)
 	${COMPILER} ${COMPILER_FLAGS_TEST} ${WARNINGS} ${INCLUDE_ARGUMENT} ${TEST_MAIN_INCLUDE_ARUGMENT} -MMD -MP -c $< -o $@
 
 ${OUTPUT_FOLDER_TEST}/%.o: ${SOURCE_FOLDER}/%.cpp
-	@dir=$(dir $@); \
-	mkdir -p $$dir;
+	@mkdir -p $(dir $@)
 	${COMPILER} ${COMPILER_FLAGS_TEST} ${WARNINGS} ${INCLUDE_ARGUMENT} ${TEST_INCLUDE_ARGUMENT} -MMD -MP -c $< -o $@
 
 copy_and_run_tests:
@@ -303,18 +299,24 @@ build_tests: $(OBJECTS_TEST_USING)
 lcov: build_tests
 	mkdir -p ${OUTPUT_FOLDER_LCOV}
 	lcov ${LCOV_FLAGS} -o ${OUTPUT_FOLDER_LCOV}/${OUTPUT_FILE_LCOV}
-	lcov --remove ${OUTPUT_FOLDER_LCOV}/${OUTPUT_FILE_LCOV} ${LCOV_REMOVE_FILES} ${BRANCH_COVERAGE} -o ${OUTPUT_FOLDER_LCOV}/${OUTPUT_FILE_LCOV}
+	lcov --remove ${OUTPUT_FOLDER_LCOV}/${OUTPUT_FILE_LCOV} ${LCOV_REMOVE_FILES} ${BRANCH_COVERAGE} ${LCOV_EXCLUDE_ASSERT} -o ${OUTPUT_FOLDER_LCOV}/${OUTPUT_FILE_LCOV}
 
 genhtml: lcov
 	rm -rf ${GENHTML_OUTPUT_FOLDER}
 	mkdir -p ${GENHTML_OUTPUT_FOLDER}
-	genhtml ${OUTPUT_FOLDER_LCOV}/${OUTPUT_FILE_LCOV} ${BRANCH_COVERAGE} --output-directory ${GENHTML_OUTPUT_FOLDER}
+	genhtml ${OUTPUT_FOLDER_LCOV}/${OUTPUT_FILE_LCOV} ${BRANCH_COVERAGE} ${LCOV_EXCLUDE_ASSERT} --output-directory ${GENHTML_OUTPUT_FOLDER}
 
-coverage: genhtml
+clean_coverage:
+	find ${OUTPUT_FOLDER_TEST} -name '*.gcda' -delete
+
+coverage: genhtml clean_coverage
 	cp ${OUTPUT_FOLDER_TEST}/coverage.info ${GENHTML_OUTPUT_FOLDER}/lcov.info
 
 tidy: ${CLANG_SOURCES}
-	clang-tidy ${TIDY_COMPILE_FLAGS} $^ -- ${INCLUDE_ARGUMENT} ${TEST_INCLUDE_ARGUMENT}
+	clang-tidy ${TIDY_COMPILE_FLAGS} $^ -- -D${TEST_STANDARD} ${INCLUDE_ARGUMENT} ${TEST_INCLUDE_ARGUMENT}
+
+run_tidy: ${CLANG_SOURCES}
+	run-clang-tidy ${RUN_TIDY_COMPILE_FLAGS} $^ -- -D${TEST_STANDARD} ${INCLUDE_ARGUMENT} ${TEST_INCLUDE_ARGUMENT}
 
 check: ${CLANG_SOURCES}
 	mkdir -p ${CPPCHECK_FOLDER}
@@ -336,8 +338,7 @@ docs: run_doxygen
 	sphinx-autobuild -b html -Dbreathe_projects.documentation=docs/xml . docs/sphinx/
 
 ${OUTPUT_FOLDER_TRACY}/%.o: ${SOURCE_FOLDER}/%.cpp
-	@dir=$(dir $@); \
-	mkdir -p $$dir;
+	@mkdir -p $(dir $@)
 	${COMPILER} ${TRACY_FLAGS} ${COMPILER_FLAGS_RELEASE} ${INCLUDE_ARGUMENT} -MMD -MP -c $< -o $@
 
 -include $(DEPS_TRACY)
@@ -368,4 +369,4 @@ initialize_repo:
 	chmod +x .git/hooks/pre-commit
 	chmod +x .git/hooks/commit-msg
 
-.PHONY: tidy run_doxygen initialize_repo copy_and_run_test
+.PHONY: tidy run_doxygen initialize_repo copy_and_run_test clean_coverage

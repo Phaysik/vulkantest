@@ -15,7 +15,7 @@
 #include "Core/attributeMacros.h"
 #include "Core/cconcepts.h" // for Integral
 
-/*! @namespace Utility Holds any useful functionality that doesn't fit anywhere else
+/*! @namespace Dimensia::Utility Holds any useful functionality that doesn't fit anywhere else
 	@date 02/12/2026
 	@version 0.0.1
 	@since 0.0.1
@@ -23,8 +23,6 @@
 */
 namespace Dimensia::Utility
 {
-	using Dimensia::Core::Integral;
-
 	/*! @class Random random.h "include/random.h"
 		@brief Class for creating a random number generator
 		@date 02/12/2026
@@ -46,7 +44,7 @@ namespace Dimensia::Utility
 				@since 0.0.1
 				@author Matthew Moore
 			*/
-			template <Integral T>
+			template <Dimensia::Core::Integral T>
 			ATTR_NODISCARD static T get(const T min, const T max) noexcept
 			{
 				return std::uniform_int_distribution<T>{min, max}(mTwister);
@@ -85,7 +83,8 @@ namespace Dimensia::Utility
 					randomDevice(),
 					randomDevice(),
 					randomDevice(),
-					randomDevice()};
+					randomDevice(),
+				};
 
 				return std::mt19937{seedSequence};
 			}

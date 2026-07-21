@@ -12,10 +12,10 @@
 #define INCLUDE_ECS_SYSTEMVERSION_H
 
 #include <array>
+#include <bit>
 #include <cassert>
 
 #include "Core/attributeMacros.h"
-#include "ECS/processChunkHelpers.h"
 
 #include "chunkVersion.h"
 #include "componentMask.h"
@@ -113,7 +113,7 @@ namespace Dimensia::ECS
 			   `requiredComponents` has a component version in the chunk that is newer than the stored per-component version.
 				@param[in] chunk The `ChunkVersion` to compare against the stored versions.
 				@param[in] requiredComponents A `ComponentMask` specifying which component versions to check.
-				@note The callable `forEachSetBit` is used to iterate `requiredComponents`.
+				@note Uses manual bit iteration with short-circuit evaluation for early exit.
 				@return `true` if processing is required; otherwise `false`.
 			*/
 			ATTR_NODISCARD constexpr bool needsUpdate(const ChunkVersion &chunk, const ComponentMask &requiredComponents) const
@@ -123,19 +123,27 @@ namespace Dimensia::ECS
 					return true;
 				}
 
-				bool needs{false};
-
-				forEachSetBit(requiredComponents, [&](const ComponentTypeID componentTypeID) {
-					assert(componentTypeID < MAX_COMPONENTS);
-
-					// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-					if (chunk.getComponentVersion(componentTypeID) > mComponentVersions[componentTypeID])
+				auto checkHalf = [&](ul bits, ComponentTypeID offset) -> bool {
+					while (bits)
 					{
-						needs = true;
-					}
-				});
+						const ul temp{bits & -bits};
+						const auto compID{static_cast<ComponentTypeID>(std::countr_zero(bits)) + offset};
 
-				return needs;
+						assert(compID < MAX_COMPONENTS);
+
+						// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+						if (chunk.getComponentVersion(compID) > mComponentVersions[compID])
+						{
+							return true;
+						}
+
+						bits ^= temp;
+					}
+					return false;
+				};
+
+				return checkHalf(requiredComponents.mLow, 0)
+					|| checkHalf(requiredComponents.mHigh, static_cast<ComponentTypeID>(LOWER_HALF_BIT_MASK));
 			}
 
 			/*! @brief Update the stored system version from a processed chunk.

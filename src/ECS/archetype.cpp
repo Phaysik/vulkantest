@@ -138,7 +138,7 @@ namespace Dimensia::ECS
 		const ul *tagBits{getTagBitset(mChunks[chunkIndex].get())};
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-		return {tagBits[slotIndex], 0};
+		return {tagBits[slotIndex * TAG_WORDS_PER_ENTITY], tagBits[(slotIndex * TAG_WORDS_PER_ENTITY) + 1]};
 	}
 
 	ATTR_NODISCARD const ul *Archetype::getTagBitset(const ui chunkIndex) const
@@ -161,8 +161,16 @@ namespace Dimensia::ECS
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		ul *tagBits{getTagBitset(mChunks[chunkIndex].get())};
 
-		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-		tagBits[slotIndex] |= (1U << tagID);
+		// NOLINTBEGIN(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+		if (tagID < LOWER_HALF_BIT_MASK)
+		{
+			tagBits[slotIndex * TAG_WORDS_PER_ENTITY] |= (1ULL << tagID);
+		}
+		else
+		{
+			tagBits[(slotIndex * TAG_WORDS_PER_ENTITY) + 1] |= (1ULL << (tagID - LOWER_HALF_BIT_MASK));
+		}
+		// NOLINTEND(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 
 		assert(chunkIndex < mChunkVersions.size());
 
@@ -179,8 +187,14 @@ namespace Dimensia::ECS
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		const ul *tagBits{getTagBitset(mChunks[chunkIndex].get())};
 
-		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-		return (tagBits[slotIndex] & (1U << tagID)) != 0;
+		// NOLINTBEGIN(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+		if (tagID < LOWER_HALF_BIT_MASK)
+		{
+			return (tagBits[slotIndex * TAG_WORDS_PER_ENTITY] & (1ULL << tagID)) != 0;
+		}
+
+		return (tagBits[(slotIndex * TAG_WORDS_PER_ENTITY) + 1] & (1ULL << (tagID - LOWER_HALF_BIT_MASK))) != 0;
+		// NOLINTEND(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 	}
 
 	void Archetype::clearTag(const ui chunkIndex, const ui slotIndex, const ComponentTypeID tagID)
@@ -190,8 +204,16 @@ namespace Dimensia::ECS
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		ul *tagBits{getTagBitset(mChunks[chunkIndex].get())};
 
-		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-		tagBits[slotIndex] &= ~(1U << tagID);
+		// NOLINTBEGIN(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+		if (tagID < LOWER_HALF_BIT_MASK)
+		{
+			tagBits[slotIndex * TAG_WORDS_PER_ENTITY] &= ~(1ULL << tagID);
+		}
+		else
+		{
+			tagBits[(slotIndex * TAG_WORDS_PER_ENTITY) + 1] &= ~(1ULL << (tagID - LOWER_HALF_BIT_MASK));
+		}
+		// NOLINTEND(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 
 		assert(chunkIndex < mChunkVersions.size());
 
@@ -265,7 +287,9 @@ namespace Dimensia::ECS
 		ul *tagBits{getTagBitset(chunk)};
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-		tagBits[slot] = tags.mLow;
+		tagBits[slot * TAG_WORDS_PER_ENTITY] = tags.mLow;
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+		tagBits[(slot * TAG_WORDS_PER_ENTITY) + 1] = tags.mHigh;
 
 		assert(chunkIndex < mChunkVersions.size());
 
@@ -306,7 +330,7 @@ namespace Dimensia::ECS
 			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		}
 
-		Entity movedEntity{.index = 0, .generation = 0, .state = State::Active};
+		Entity movedEntity{.index = 0, .generation = 0};
 
 		releaseChunk(chunk, movedEntity, slotIndex, lastSlot);
 
@@ -389,7 +413,7 @@ namespace Dimensia::ECS
 			perEntity += ComponentInfos[componentTypeID].size;
 		}
 
-		perEntity += sizeof(ul); // tag bitset
+		perEntity += sizeof(ul) * TAG_WORDS_PER_ENTITY; // tag bitset (2 words for 128-bit mask)
 		ui cap{static_cast<ui>(CHUNK_SIZE / perEntity) + 1};
 
 		while (true)
@@ -397,7 +421,7 @@ namespace Dimensia::ECS
 			std::size_t offset{0};
 			offset += cap * sizeof(Entity);
 			offset = (offset + alignof(ul) - 1) & ~(alignof(ul) - 1);
-			offset += cap * sizeof(ul);
+			offset += cap * sizeof(ul) * TAG_WORDS_PER_ENTITY;
 
 			for (const ComponentTypeID componentTypeID : mSortedRegular)
 			{
@@ -430,7 +454,7 @@ namespace Dimensia::ECS
 
 		offset = (offset + alignof(ul) - 1) & ~(alignof(ul) - 1);
 		mTagBitsetOffset = offset;
-		offset += capacity * sizeof(ul);
+		offset += capacity * sizeof(ul) * TAG_WORDS_PER_ENTITY;
 
 		for (const ComponentTypeID componentTypeID : mSortedRegular)
 		{
@@ -523,7 +547,9 @@ namespace Dimensia::ECS
 			entityArr[slotIndex] = movedEntity;
 
 			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-			tagBits[slotIndex] = tagBits[lastSlot];
+			tagBits[slotIndex * TAG_WORDS_PER_ENTITY] = tagBits[lastSlot * TAG_WORDS_PER_ENTITY];
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+			tagBits[(slotIndex * TAG_WORDS_PER_ENTITY) + 1] = tagBits[(lastSlot * TAG_WORDS_PER_ENTITY) + 1];
 
 			moveConstructChunk(chunk, slotIndex, lastSlot);
 

@@ -30,7 +30,6 @@
 namespace Dimensia::Utility::Clock
 {
 	using Dimensia::Core::ub;
-	using Dimensia::Core::ui;
 
 	template <typename T>
 	concept Ratio = std::is_same_v<T, std::ratio<T::num, T::den>>; /*!< A concept to check if a type is a std::ratio */
@@ -41,12 +40,12 @@ namespace Dimensia::Utility::Clock
 		@since 0.0.1
 		@author Matthew Moore
 	*/
-	enum class TimeUnit : ui
+	enum class TimeUnit : Dimensia::Core::ui
 	{
 		Seconds = 1,
 		Milliseconds = 1'000,
 		Microseconds = 1'000'000,
-		Nanoseconds = 1'000'000'000
+		Nanoseconds = 1'000'000'000,
 	};
 
 	/*! @class Timer timer.h "include/timer.h"
@@ -61,29 +60,14 @@ namespace Dimensia::Utility::Clock
 		public:
 			// MARK: Constructors & Destructor
 
-			/*! @brief Closes the log file if it is open
-				@post The log file is closed if it is open
-				@date 02/12/2026
-				@version 0.0.1
-				@since 0.0.1
-				@author Matthew Moore
-			*/
-			~Timer() noexcept
-			{
-				std::ofstream &logFile = getLogFile();
-
-				if (logFile.is_open())
-				{
-					logFile.close();
-				}
-			}
-
 			// Do not allow copies or moves for this class
 
-			Timer(const Timer &) = delete;
-			Timer(Timer &&) = delete;
-			Timer &operator=(const Timer &) = delete;
-			Timer &operator=(Timer &&) = delete;
+			Timer() = default;
+			Timer(const Timer &) = delete ("Timer is not copyable");
+			Timer(Timer &&) = delete ("Timer is not movable");
+			Timer &operator=(const Timer &) = delete ("Timer is not copyable");
+			Timer &operator=(Timer &&) = delete ("Timer is not movable");
+			~Timer() = default;
 
 			// MARK: Getters
 
@@ -135,6 +119,8 @@ namespace Dimensia::Utility::Clock
 			*/
 			static void createLogFile(const std::string &filename = "timer.log") noexcept
 			{
+				getFileName() = filename;
+
 				getLogFile(&filename);
 			}
 
@@ -152,7 +138,7 @@ namespace Dimensia::Utility::Clock
 					logFile.close();
 				}
 
-				mFileName = "null";
+				getFileName() = "null";
 			}
 
 			/*! @brief Sets #mStart to the current time
@@ -206,7 +192,9 @@ namespace Dimensia::Utility::Clock
 
 				std::ostream &output = logFile.is_open() ? logFile : std::cout;
 
+				// LCOV_EXCL_BR_START — uncovered branches are compiler-generated throw edges from std::format / operator<< (std::bad_alloc)
 				output << std::format("Timing function: {}\n", identifier);
+				// LCOV_EXCL_BR_STOP
 
 				double average{0.0};
 
@@ -223,12 +211,18 @@ namespace Dimensia::Utility::Clock
 
 					average += duration;
 
+					// LCOV_EXCL_BR_START — uncovered branches are compiler-generated throw edges from std::format / operator<<
+					// (std::bad_alloc)
 					output << std::format("\tIteration {}: {}{}\n", i + 1, duration, unit);
+					// LCOV_EXCL_BR_STOP
 				}
 
 				if (iterations > 1)
 				{
+					// LCOV_EXCL_BR_START — uncovered branches are compiler-generated throw edges from std::format / operator<<
+					// (std::bad_alloc)
 					output << std::format("\tAverage: {}{}\n", average / static_cast<double>(iterations), unit);
+					// LCOV_EXCL_BR_STOP
 				}
 			}
 
@@ -274,14 +268,18 @@ namespace Dimensia::Utility::Clock
 			*/
 			static std::ofstream &getLogFile(const std::string *filename = nullptr) noexcept
 			{
-				static std::ofstream mLogFile;
+
+				static std::ofstream mLogFile; // LCOV_EXCL_BR_LINE — fourth branch is the __cxa_atexit destructor-registration failure
+											   // path, only reachable on OOM
 				static std::mutex logMutex;
-				if (filename != nullptr || mFileName != "null")
+				if (filename != nullptr || getFileName() != "null")
 				{
 					const std::scoped_lock lock(logMutex);
+
 					if (!mLogFile.is_open())
 					{
-						mLogFile.open((filename != nullptr) ? *filename : std::string(mFileName));
+
+						mLogFile.open((filename != nullptr) ? *filename : getFileName());
 					}
 				}
 
@@ -294,7 +292,16 @@ namespace Dimensia::Utility::Clock
 			static inline std::chrono::time_point<Clock> mStart{Clock::now()}; /*!< The starting time for the classes internal timer */
 			static inline std::chrono::time_point<Clock> mFunctionStart{Clock::now()}; /*!< The starting time for timing a function */
 			static inline std::string_view mUnit{"s"};								   /*!< The unit of time for what is being timed */
-			static inline std::string_view mFileName{"null"};						   /*!< The unit of time for what is being timed */
+
+			/*! @brief Provides access to the function-local static file name string.
+				@return A reference to the stored file name. The reference remains valid for the lifetime of the program.
+			*/
+			static std::string &getFileName() noexcept
+			{
+				static std::string fileName{"null"}; // LCOV_EXCL_BR_LINE — fourth branch is the __cxa_atexit destructor-registration
+													 // failure path, only reachable on OOM
+				return fileName;
+			}
 	};
 } // namespace Dimensia::Utility::Clock
 

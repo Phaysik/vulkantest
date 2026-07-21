@@ -88,6 +88,13 @@ namespace Dimensia::Core
 	*/
 	template <class Func, class... Args>
 	concept InvocableWithArgs = std::invocable<Func, Args...>;
+
+	/*! @concept IsEnum
+		@brief Tests whether a type is an enumeration type.
+		@tparam T The type to test. Typical examples: scoped enums (`enum class`) and unscoped enums (`enum`).
+	*/
+	template <typename T>
+	concept IsEnum = std::is_enum_v<T>;
 } // namespace Dimensia::Core
 
 #endif

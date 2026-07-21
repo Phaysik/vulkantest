@@ -39,8 +39,8 @@ namespace Dimensia::Utility::Containers::ContiguousSequence
 		Computes the sum of `length` contiguous elements beginning at
 		`startIndex` within @p sequence. The function performs direct index
 		access using `std::span` (bounds-checked by the caller if required).
-		@tparam Dimensia::Core::Integral Integral The integer type used for indices
-			   and arithmetic. Must satisfy @ref Dimensia::Core::Integral.
+		@tparam Concepts::Integral Integral The integer type used for indices
+			   and arithmetic. Must satisfy @ref Concepts::Integral.
 		@param[in] sequence A read-only span containing the elements to sum.
 		@param[in] startIndex The starting index within @p sequence (0-based).
 		@param[in] length The number of elements to include in the sum. The
@@ -74,8 +74,8 @@ namespace Dimensia::Utility::Containers::ContiguousSequence
 		Convenience overload that forwards to the three-argument overload
 		(@ref computeContiguousSequenceSum(const std::span<const Integral>&, Integral, Integral)).
 		See that overload for full preconditions and complexity guarantees.
-		@tparam Dimensia::Core::Integral Integral The integral type used for indices
-			   and arithmetic. Must satisfy @ref Dimensia::Core::Integral.
+		@tparam Concepts::Integral Integral The integral type used for indices
+			   and arithmetic. Must satisfy @ref Concepts::Integral.
 		@param[in] sequence Read-only span of elements to sum.
 		@param[in] startIndex Zero-based index at which summation begins. Defaults to 0.
 		@return The sum of elements from `startIndex` to the end as an

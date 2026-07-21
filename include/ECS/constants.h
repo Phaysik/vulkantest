@@ -42,6 +42,11 @@ namespace Dimensia::ECS
 	*/
 	constexpr ul CHUNK_ALIGNMENT{64};
 
+	/*! @brief Number of `ul` words used per entity to store tag bits in chunk tag bitsets.
+		@details Two words (2 * 64 = 128 bits) match the full width of `ComponentMask`.
+	*/
+	constexpr std::size_t TAG_WORDS_PER_ENTITY{2};
+
 } // namespace Dimensia::ECS
 
 #endif

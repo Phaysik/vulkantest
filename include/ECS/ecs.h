@@ -1303,7 +1303,6 @@ namespace Dimensia::ECS
 					case ExecutionPolicy::ParStealing:
 						forEachParStealingProcessChunkOnly(matchingArchetypes, self.mWorkStealingPool, processChunk);
 						break;
-						break;
 					default:
 						assert(false && "Invalid execution policy");
 				}
@@ -1575,7 +1574,7 @@ namespace Dimensia::ECS
 				@note Expensive setup (collecting dirty chunks) is performed before dispatch; processing measures and updates component
 			   versions via `forEachSetBit` to ensure version state is consistent after completion.
 			*/
-			template <class Self, AllType ReqList, AnyType AnyList, NoneType NoneList, typename Func>
+			template <class Self, typename ReqList, typename AnyList, typename NoneList, typename Func>
 			static void forEachQueryVersionImpl(Self &self, const ExecutionPolicy &policy, SystemVersion &version, Func &&func)
 			{
 				constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
@@ -1619,7 +1618,7 @@ namespace Dimensia::ECS
 						Entity *entities{arch->getEntityArray(chunkIndex)};
 
 						[&]<typename... Req>(TypeList<Req...>) {
-							processChunkEntitiesConst<Req...>(
+							processChunkEntities<Req...>(
 								entities, entityCount, chunkIndex, arch,
 								[&](Entity &entity, const auto &...comps) { processChunkFunction(entity, comps...); });
 						}(ReqList{});
@@ -1955,7 +1954,7 @@ namespace Dimensia::ECS
 						Entity *entities{arch->getEntityArray(chunkIndex)};
 
 						[&]<typename... Req>(TypeList<Req...>) {
-							processChunkEntitiesConst<Req...>(
+							processChunkEntities<Req...>(
 								entities, entityCount, chunkIndex, arch,
 								[&](Entity &entity, const auto &...comps) { processChunkFunction(entity, comps...); });
 						}(ReqList{});
@@ -2305,7 +2304,7 @@ namespace Dimensia::ECS
 						Entity *entities{arch->getEntityArray(chunkIndex)};
 
 						[&]<typename... Req>(TypeList<Req...>) {
-							processChunkEntitiesConst<Req...>(
+							processChunkEntities<Req...>(
 								entities, entityCount, chunkIndex, arch,
 								[&](Entity &entity, const auto &...comps) { processChunkFunction(entity, comps...); });
 						}(ReqList{});

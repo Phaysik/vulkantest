@@ -12,6 +12,7 @@
 #define INCLUDE_ECS_ENTITYRECORD_H
 
 #include "Core/typedefs.h"
+#include "ECS/entity.h"
 
 namespace Dimensia::ECS
 {
@@ -24,13 +25,25 @@ namespace Dimensia::ECS
 	*/
 	static constexpr ui INVALID_ARCHETYPE_ID{UINT32_MAX};
 
+	/*! @enum State
+		@brief Lifecycle state of an entity, stored in `EntityRecord`.
+	*/
+	enum class State : Dimensia::Core::ub
+	{
+		Uninitialized,
+		Active,
+		Destroying,
+		Destroyed
+	};
+
 	/*! @struct EntityRecord
-		@brief Lightweight record storing an entity's generation and storage location.
+		@brief Lightweight record storing an entity's generation, storage location, and lifecycle state.
 		@details Fields are POD and default-initialized to zero. The record contains:
 		- `generation`: incarnation counter used to detect stale handles
 		- `archetypeID`: index of the archetype containing the entity or @ref INVALID_ARCHETYPE_ID
 		- `chunkIndex`: index of the chunk within the archetype
 		- `slotIndex`: slot index within the chunk
+		- `state`: lifecycle state of the entity
 		@note Thread-safety and synchronization are the responsibility of the caller.
 	*/
 	struct EntityRecord
@@ -56,6 +69,12 @@ namespace Dimensia::ECS
 				@brief Slot index within the chunk corresponding to the entity.
 			*/
 			ui slotIndex{};
+
+			/*! @var state
+				@brief Lifecycle state of the entity.
+				@details Tracks whether the entity is active, being destroyed, etc.
+			*/
+			State state{State::Uninitialized};
 	};
 } // namespace Dimensia::ECS
 

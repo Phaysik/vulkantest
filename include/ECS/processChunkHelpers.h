@@ -184,7 +184,7 @@ namespace Dimensia::ECS
 			// NOLINTBEGIN(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 
 			Entity entity{entityArr[slot]};
-			const ComponentMask entityTags{tagBits[slot], 0};
+			const ComponentMask entityTags{tagBits[slot * TAG_WORDS_PER_ENTITY], tagBits[(slot * TAG_WORDS_PER_ENTITY) + 1]};
 
 			// NOLINTEND(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 
