@@ -56,9 +56,10 @@ namespace Dimensia::ECS
 
 	/*! @var NULL_ENTITY
 		@brief Sentinel value representing a null/invalid entity.
-		@details Both `index` and `generation` are zero. Use this value to represent an empty handle where appropriate.
+		@details Uses `UINT32_MAX` for `index` and zero for `generation` so it cannot collide with any valid entity handle
+	   (valid entities start at index 0 with generation >= 1). Use this value to represent an empty handle where appropriate.
 	*/
-	constexpr Entity NULL_ENTITY{.index = 0, .generation = 0};
+	constexpr Entity NULL_ENTITY{.index = UINT32_MAX, .generation = 0};
 } // namespace Dimensia::ECS
 
 #endif

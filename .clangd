@@ -5,3 +5,11 @@ CompileFlags:
 Diagnostics:
   ClangTidy:
     FastCheckFilter: None
+  UnusedIncludes: Strict
+
+---
+
+If:
+  PathMatch: [include/ECS/queryBuilder\.h, include/ECS/ecsView\.h, include/ECS/forEachPolicy\.h, include/ECS/forEachQuery\.h]
+Diagnostics:
+  Suppress: '*'

@@ -14,6 +14,7 @@
 #include <compare>
 #include <functional>
 
+#include "Core/attributeMacros.h"
 #include "Core/typedefs.h"
 
 #include "constants.h"
@@ -193,8 +194,71 @@ namespace Dimensia::ECS
 				return mLow != 0 || mHigh != 0;
 			}
 
-			// NOLINTBEGIN(misc-non-private-member-variables-in-classes)
+			// MARK: Bit Manipulation
 
+			/*! @brief Set the bit corresponding to @p id in the appropriate half of the mask.
+				@param[in] typeID Component type identifier whose bit to set.
+			*/
+			constexpr void setBit(const ul typeID) noexcept
+			{
+				if (typeID < LOWER_HALF_BIT_MASK)
+				{
+					mLow |= (1ULL << typeID);
+				}
+				else
+				{
+					mHigh |= (1ULL << (typeID - LOWER_HALF_BIT_MASK));
+				}
+			}
+
+			/*! @brief Clear the bit corresponding to @p id in the appropriate half of the mask.
+				@param[in] typeID Component type identifier whose bit to clear.
+			*/
+			constexpr void clearBit(const ul typeID) noexcept
+			{
+				if (typeID < LOWER_HALF_BIT_MASK)
+				{
+					mLow &= ~(1ULL << typeID);
+				}
+				else
+				{
+					mHigh &= ~(1ULL << (typeID - LOWER_HALF_BIT_MASK));
+				}
+			}
+
+			/*! @brief Test whether the bit corresponding to @p typeID is set.
+				@param[in] typeID Component type identifier whose bit to test.
+				@return `true` if the bit is set, `false` otherwise.
+			*/
+			ATTR_NODISCARD constexpr bool testBit(const ul typeID) const noexcept
+			{
+				if (typeID < LOWER_HALF_BIT_MASK)
+				{
+					return (mLow & (1ULL << typeID)) != 0;
+				}
+
+				return (mHigh & (1ULL << (typeID - LOWER_HALF_BIT_MASK))) != 0;
+			}
+
+			// MARK: Accessors
+
+			/*! @brief Return the lower half of the mask.
+				@return Value of the lower-order half.
+			*/
+			ATTR_NODISCARD constexpr ul low() const noexcept
+			{
+				return mLow;
+			}
+
+			/*! @brief Return the upper half of the mask.
+				@return Value of the upper-order half.
+			*/
+			ATTR_NODISCARD constexpr ul high() const noexcept
+			{
+				return mHigh;
+			}
+
+		private:
 			/*! @var mLow
 				@brief Lower-order half of the component bitmask.
 				@details Contains the least-significant `LOWER_HALF_BIT_MASK` bits of the combined mask.
@@ -206,8 +270,6 @@ namespace Dimensia::ECS
 				@details Contains the most-significant `LOWER_HALF_BIT_MASK` bits of the combined mask.
 			*/
 			ul mHigh{};
-
-			// NOLINTEND(misc-non-private-member-variables-in-classes)
 	};
 } // namespace Dimensia::ECS
 
@@ -225,7 +287,7 @@ namespace std
 	{
 			std::size_t operator()(const Dimensia::ECS::ComponentMask &componentMask) const noexcept
 			{
-				return hash<Dimensia::Core::ul>{}(componentMask.mLow) ^ (hash<Dimensia::Core::ul>{}(componentMask.mHigh) << 1U);
+				return hash<Dimensia::Core::ul>{}(componentMask.low()) ^ (hash<Dimensia::Core::ul>{}(componentMask.high()) << 1U);
 			}
 	};
 } // namespace std

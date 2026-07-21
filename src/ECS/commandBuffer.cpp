@@ -122,11 +122,13 @@ namespace Dimensia::ECS
 
 	ThreadBuffer *CommandBuffer::getThreadBuffer()
 	{
-		// Fast path: thread_local caches the buffer pointer to avoid locking on every call
+		// Fast path: thread_local caches the buffer pointer to avoid locking on every call.
+		// Uses a unique instance ID instead of a raw pointer to prevent ABA problems
+		// when a CommandBuffer is destroyed and a new one is allocated at the same address.
 		thread_local ThreadBuffer *cachedBuffer{nullptr};
-		const thread_local CommandBuffer *cachedOwner{nullptr};
+		thread_local uint32_t cachedInstanceID{0};
 
-		if (cachedOwner == this && cachedBuffer != nullptr)
+		if (cachedInstanceID == mInstanceID && cachedBuffer != nullptr)
 		{
 			return cachedBuffer;
 		}
@@ -141,7 +143,7 @@ namespace Dimensia::ECS
 			if (iterator != mBuffers.end())
 			{
 				cachedBuffer = iterator->second.get();
-				cachedOwner = this;
+				cachedInstanceID = mInstanceID;
 				return cachedBuffer;
 			}
 		}
@@ -156,7 +158,7 @@ namespace Dimensia::ECS
 		}
 
 		cachedBuffer = slot.get();
-		cachedOwner = this;
+		cachedInstanceID = mInstanceID;
 		return cachedBuffer;
 	}
 

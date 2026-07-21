@@ -287,9 +287,9 @@ namespace Dimensia::ECS
 		ul *tagBits{getTagBitset(chunk)};
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-		tagBits[slot * TAG_WORDS_PER_ENTITY] = tags.mLow;
+		tagBits[slot * TAG_WORDS_PER_ENTITY] = tags.low();
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-		tagBits[(slot * TAG_WORDS_PER_ENTITY) + 1] = tags.mHigh;
+		tagBits[(slot * TAG_WORDS_PER_ENTITY) + 1] = tags.high();
 
 		assert(chunkIndex < mChunkVersions.size());
 
@@ -330,7 +330,7 @@ namespace Dimensia::ECS
 			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		}
 
-		Entity movedEntity{.index = 0, .generation = 0};
+		Entity movedEntity{NULL_ENTITY};
 
 		releaseChunk(chunk, movedEntity, slotIndex, lastSlot);
 
@@ -509,18 +509,9 @@ namespace Dimensia::ECS
 			chunkIndex = mFreeChunks.back();
 			mFreeChunks.pop_back();
 
-			if (chunkIndex >= mChunks.size())
-			{
-				chunkIndex = mChunks.size();
-				auto newChunk{std::make_unique<Chunk>()};
-
-				newChunk->mCapacity = mChunkCapacity;
-				chunk = newChunk.get();
-
-				mChunks.push_back(std::move(newChunk));
-				mChunkVersions.emplace_back();
-			}
-			else
+			// Validate the free-list entry; discard stale indices that point
+			// beyond the current chunk vector (can happen after compaction).
+			if (chunkIndex < mChunks.size())
 			{
 				assert(chunkIndex < mChunks.size());
 
@@ -528,6 +519,7 @@ namespace Dimensia::ECS
 				chunk = mChunks[chunkIndex].get();
 				chunk->mCount = 0;
 			}
+			// else: stale entry, discard and fall through to allocation below
 		}
 
 		if (chunk == nullptr)

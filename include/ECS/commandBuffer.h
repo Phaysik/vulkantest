@@ -14,6 +14,7 @@
 #ifndef INCLUDE_ECS_COMMANDBUFFER_H
 #define INCLUDE_ECS_COMMANDBUFFER_H
 
+#include <atomic>
 #include <memory>
 #include <shared_mutex>
 #include <thread>
@@ -153,6 +154,18 @@ namespace Dimensia::ECS
 				@brief Mutex protecting `mBuffers` for registration of new threads and `apply()`/`clear()` operations.
 			*/
 			std::shared_mutex mMapMutex;
+
+			/*! @var sNextInstanceID
+				@brief Monotonically increasing counter used to assign unique IDs to `CommandBuffer` instances.
+				@details Prevents ABA problems in the thread-local cache when a `CommandBuffer` is destroyed
+			   and a new one is allocated at the same address.
+			*/
+			static inline std::atomic<uint32_t> sNextInstanceID{1};
+
+			/*! @var mInstanceID
+				@brief Unique identifier for this `CommandBuffer` instance, used by the thread-local cache in `getThreadBuffer()`.
+			*/
+			uint32_t mInstanceID{sNextInstanceID.fetch_add(1, std::memory_order_relaxed)};
 	};
 } // namespace Dimensia::ECS
 

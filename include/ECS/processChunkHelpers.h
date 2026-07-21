@@ -62,14 +62,7 @@ namespace Dimensia::ECS
 			 if constexpr (!isTagV<Components>)
 			 {
 				 ComponentTypeID componentTypeID{componentID<Components>()};
-				 if (componentTypeID < LOWER_HALF_BIT_MASK)
-				 {
-					 mask.mLow |= (1U << componentTypeID);
-				 }
-				 else
-				 {
-					 mask.mHigh |= (1U << (componentTypeID - LOWER_HALF_BIT_MASK));
-				 }
+				 mask.setBit(componentTypeID);
 			 }
 		 }()),
 		 ...);
@@ -89,14 +82,7 @@ namespace Dimensia::ECS
 			 if constexpr (isTagV<Components>)
 			 {
 				 ComponentTypeID componentTypeID{componentID<Components>()};
-				 if (componentTypeID < LOWER_HALF_BIT_MASK)
-				 {
-					 mask.mLow |= (1U << componentTypeID);
-				 }
-				 else
-				 {
-					 mask.mHigh |= (1U << (componentTypeID - LOWER_HALF_BIT_MASK));
-				 }
+				 mask.setBit(componentTypeID);
 			 }
 		 }()),
 		 ...);
@@ -114,7 +100,7 @@ namespace Dimensia::ECS
 		requires Dimensia::Core::InvocableWithArgs<Func, ComponentTypeID>
 	constexpr void forEachSetBit(const ComponentMask &mask, Func &&func) noexcept
 	{
-		ul bits{mask.mLow};
+		ul bits{mask.low()};
 		const Func forwardedFunction{std::forward<Func>(func)};
 
 		while (bits)
@@ -126,7 +112,7 @@ namespace Dimensia::ECS
 			bits ^= temp;
 		}
 
-		bits = mask.mHigh;
+		bits = mask.high();
 		while (bits)
 		{
 			const ul temp{bits & -bits};

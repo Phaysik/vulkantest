@@ -459,7 +459,7 @@ int main()
 			++aliveCount;
 		}
 
-		if (ecs.getParent(entity).index != 0)
+		if (ecs.getParent(entity) != Dimensia::ECS::NULL_ENTITY)
 		{
 			++parentCount;
 		}
@@ -609,6 +609,55 @@ int main()
 	std::cout << "\n";
 
 	cmds.apply(ecs);
+
+	// --- QueryBuilder API equivalents ---
+	std::cout << "\n=== QueryBuilder API ===\n";
+
+	std::cout << "query<Pos, Vel>().forEach: ";
+	ecs.query<Position, Velocity>().forEach([](Entity &entity, Position &, Velocity &) { std::cout << entity.index << " "; });
+	std::cout << "\n";
+
+	std::cout << "query<All<Pos>, None<Buffs>>().policy(Par): ";
+	ecs.query<All<Position>, None<Buffs>>().policy(ExecutionPolicy::Par).forEach([](const Entity &entity, Position &) {
+		std::cout << entity.index << " ";
+	});
+	std::cout << "\n";
+
+	cmds.clear();
+	std::cout << "query<All<Pos, Vel>>().commands(cmds): ";
+	ecs.query<All<Position, Velocity>>().commands(cmds).forEach([&](Entity &entity, const Position &, const Velocity &) {
+		cmds.addComponent(entity, Health{startingHealth});
+		std::cout << entity.index << " ";
+	});
+	std::cout << "\n";
+	cmds.apply(ecs);
+
+	SystemVersion builderVersion;
+	std::cout << "query<Health>().version(v).policy(ParBatched): ";
+	ecs.query<Health>().policy(ExecutionPolicy::ParBatched).version(builderVersion).forEach([](ATTR_MAYBE_UNUSED Entity entity, Health &) {
+		std::cout << entity.index << " ";
+	});
+	std::cout << "\n";
+
+	// --- View API ---
+	std::cout << "\n=== View API ===\n";
+
+	std::cout << "view<Pos, Vel>: ";
+	for (auto [entity, pos, vel] : ecs.view<Position, Velocity>())
+	{
+		std::cout << entity.index << " ";
+		(void) pos;
+		(void) vel;
+	}
+	std::cout << "\n";
+
+	std::cout << "view<Name> (const): ";
+	const ECS &constEcs = ecs;
+	for (auto [entity, name] : constEcs.view<Name>())
+	{
+		std::cout << entity.index << "(" << name.name << ") ";
+	}
+	std::cout << "\n";
 
 	for (Entity entity : {queryFilterE1, queryFilterE2, queryFilterE3, queryFilterE4, queryFilterE5, queryFilterE6, queryFilterE7})
 	{

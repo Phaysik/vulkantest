@@ -142,8 +142,8 @@ namespace Dimensia::ECS
 					return false;
 				};
 
-				return checkHalf(requiredComponents.mLow, 0)
-					|| checkHalf(requiredComponents.mHigh, static_cast<ComponentTypeID>(LOWER_HALF_BIT_MASK));
+				return checkHalf(requiredComponents.low(), 0)
+					|| checkHalf(requiredComponents.high(), static_cast<ComponentTypeID>(LOWER_HALF_BIT_MASK));
 			}
 
 			/*! @brief Update the stored system version from a processed chunk.
