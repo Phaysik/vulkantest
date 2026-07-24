@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <iostream>
 #include <ratio>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "Components/Buff/buffComponent.h"
@@ -13,6 +15,7 @@
 #include "Components/Position/positionComponent.h"
 #include "Components/Velocity/velocityComponent.h"
 #include "Core/attributeMacros.h"
+#include "ECS/archetype.h"
 #include "ECS/commandBuffer.h"
 #include "ECS/ecs.h"
 #include "ECS/entity.h"
@@ -23,6 +26,7 @@
 #include "Tags/Debug/debugTag.h"
 #include "Utility/Clock/timer.h"
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity,bugprone-exception-escape)
 int main()
 {
 	using Dimensia::ECS::ECS;
@@ -229,17 +233,26 @@ int main()
 		ecs.forEach<Health>(ExecutionPolicy::ParBatched, healthVersion, commands,
 							[&](Entity, Health &, CommandBuffer &) { processedCount.fetch_add(1, std::memory_order_relaxed); });
 
-		std::cout << "Third run processed " << processedCount.load(std::memory_order_relaxed) << " entity/entities in the modified chunk.\n";
+		std::cout << "Third run processed " << processedCount.load(std::memory_order_relaxed)
+				  << " entity/entities in the modified chunk.\n";
 	}
 
 	// ------------------------------------------------------------------------
 	//  Changed<T> filter example (via QueryBuilder)
 	// ------------------------------------------------------------------------
 	std::cout << "\n=== Changed<T> filter example ===\n";
+	constexpr float changedEntityOneHealth{100.0F};
+	constexpr float changedEntityTwoY{5.0F};
+	constexpr float changedEntityTwoZ{6.0F};
+	constexpr float changedEntityTwoHealth{200.0F};
+	constexpr float positionDelta{10.0F};
+	constexpr float healthDelta{50.0F};
 
 	// Create entities with Position + Health only (no Velocity, so we can isolate them)
-	Entity changedE1{ecs.createEntityWith(Position{.x = 1, .y = 2, .z = 3}, Health{100})};
-	Entity changedE2{ecs.createEntityWith(Position{.x = 4, .y = 5, .z = 6}, Health{200})};
+	Entity changedE1{ecs.createEntityWith(Position{.x = 1, .y = 2, .z = 3}, Health{changedEntityOneHealth})};
+	Entity changedE2{
+		ecs.createEntityWith(Position{.x = 4, .y = changedEntityTwoY, .z = changedEntityTwoZ}, Health{changedEntityTwoHealth}),
+	};
 
 	SystemVersion changedVersion;
 
@@ -254,7 +267,7 @@ int main()
 	// Modify only Position on changedE1 (does NOT bump Health's version)
 	{
 		Position pos{*ecs.getComponent<Position>(changedE1)};
-		pos.x += 10.0F;
+		pos.x += positionDelta;
 		ecs.addComponent(changedE1, pos);
 	}
 
@@ -270,9 +283,9 @@ int main()
 
 	// Now modify Health on changedE2
 	{
-		Health hp{*ecs.getComponent<Health>(changedE2)};
-		hp.hp += 50.0F;
-		ecs.addComponent(changedE2, hp);
+		Health health{*ecs.getComponent<Health>(changedE2)};
+		health.hp += healthDelta;
+		ecs.addComponent(changedE2, health);
 	}
 
 	// Changed<Health> should fire — Health's version has advanced.
@@ -565,12 +578,17 @@ int main()
 	std::cout << "\n=== Query filter examples (All / Any / None) ===\n";
 
 	// Create a few entities with different component combinations for testing
-	Entity queryFilterE1{ecs.createEntityWith(Name{"Entity1"}, Position{.x = 0, .y = 0, .z = 0}, Velocity{.dx = 1, .dy = 0, .dz = 0},
-											  Health{startingHealth})};
+	Entity queryFilterE1{
+		ecs.createEntityWith(Name{"Entity1"}, Position{.x = 0, .y = 0, .z = 0}, Velocity{.dx = 1, .dy = 0, .dz = 0},
+							 Health{startingHealth}),
+	};
 	Entity queryFilterE2{
-		ecs.createEntityWith(Name{"Entity2"}, Position{.x = 1, .y = 1, .z = 1}, Velocity{.dx = 0, .dy = 1, .dz = 0}, Mana{startingMana})};
-	Entity queryFilterE3{ecs.createEntityWith(Name{"Entity3"}, Position{.x = 2, .y = 2, .z = 2}, Velocity{.dx = 0, .dy = 0, .dz = 1},
-											  Health{startingHealth}, Mana{startingMana})};
+		ecs.createEntityWith(Name{"Entity2"}, Position{.x = 1, .y = 1, .z = 1}, Velocity{.dx = 0, .dy = 1, .dz = 0}, Mana{startingMana}),
+	};
+	Entity queryFilterE3{
+		ecs.createEntityWith(Name{"Entity3"}, Position{.x = 2, .y = 2, .z = 2}, Velocity{.dx = 0, .dy = 0, .dz = 1}, Health{startingHealth},
+							 Mana{startingMana}),
+	};
 	Entity queryFilterE4{ecs.createEntityWith(Name{"Entity4"}, Position{.x = 3, .y = 3, .z = 3}, Health{startingHealth})};
 	Entity queryFilterE5{ecs.createEntityWith(Name{"Entity5"}, Velocity{.dx = 1, .dy = 2, .dz = 3}, Mana{startingMana})};
 	Entity queryFilterE6{ecs.createEntityWith(Name{"Entity6"}, Health{startingHealth}, Mana{startingMana}, Buffs{})};

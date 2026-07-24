@@ -68,7 +68,7 @@ namespace Dimensia::Registry
 					  Ts &value = *std::launder(reinterpret_cast<Ts *>(buffer));
 					  ecs->addComponent(entity, std::move(value));
 				  },
-				  sizeof(Ts), alignof(Ts), is_tag_component<Ts>::value}...}};
+				  sizeof(Ts), alignof(Ts), is_tag_component<Ts>::value,}...},};
 	}
 
 } // namespace Dimensia::Registry

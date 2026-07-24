@@ -109,7 +109,7 @@ SCENARIO("QueryBuilder explicit component access tracking")
 	GIVEN("one writable query for each execution policy")
 	{
 		std::array<ExecutionPolicy, 4> policies{ExecutionPolicy::Seq, ExecutionPolicy::Par, ExecutionPolicy::ParBatched,
-											ExecutionPolicy::ParStealing};
+											ExecutionPolicy::ParStealing,};
 
 		WHEN("each policy executes a writable query")
 		{

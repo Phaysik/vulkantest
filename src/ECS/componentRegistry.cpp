@@ -10,6 +10,7 @@
 
 #include <array>
 
+#include "ECS/componentList.h"
 #include "ECS/componentRegistryImpl.h"
 
 namespace Dimensia::Registry

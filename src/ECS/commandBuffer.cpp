@@ -9,8 +9,11 @@
 #include "ECS/commandBuffer.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -18,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "Core/typedefs.h"
 #include "ECS/command.h"
 #include "ECS/componentRegistry.h"
 #include "ECS/ecs.h"
@@ -39,7 +43,7 @@ namespace Dimensia::ECS
 
 	void CommandBuffer::apply(ECS &ecs)
 	{
-		auto commandPhase = [](const CmdType type) constexpr noexcept -> Dimensia::Core::ub {
+		const auto commandPhase = [](const CmdType type) constexpr noexcept -> Dimensia::Core::ub {
 			switch (type)
 			{
 				case CmdType::AddComponent:
@@ -128,7 +132,7 @@ namespace Dimensia::ECS
 
 		{
 			const std::shared_lock readLock(mMapMutex);
-			auto iterator{mBuffers.find(threadId)};
+			const auto iterator{mBuffers.find(threadId)};
 
 			if (iterator != mBuffers.end())
 			{
@@ -154,7 +158,7 @@ namespace Dimensia::ECS
 
 	void CommandBuffer::record(Command command)
 	{
-		ThreadBuffer *buf{getThreadBuffer()};
+		ThreadBuffer *const buf{getThreadBuffer()};
 		const std::scoped_lock lock(buf->mutex);
 		command.setSequence(mNextSequence.fetch_add(1, std::memory_order_relaxed));
 		buf->commands.push_back(std::move(command));

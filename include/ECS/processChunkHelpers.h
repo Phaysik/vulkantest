@@ -58,13 +58,13 @@ namespace Dimensia::ECS
 	constexpr ComponentMask buildRequiredMask() noexcept
 	{
 		ComponentMask mask{0, 0};
-		(([&] {
+		([&] {
 			 if constexpr (!isTagV<Components>)
 			 {
 				 ComponentTypeID componentTypeID{componentID<Components>()};
 				 mask.setBit(componentTypeID);
 			 }
-		 }()),
+		 }(),
 		 ...);
 		return mask;
 	}
@@ -78,13 +78,13 @@ namespace Dimensia::ECS
 	constexpr ComponentMask buildTagMask() noexcept
 	{
 		ComponentMask mask{0, 0};
-		(([&] {
+		([&] {
 			 if constexpr (isTagV<Components>)
 			 {
 				 ComponentTypeID componentTypeID{componentID<Components>()};
 				 mask.setBit(componentTypeID);
 			 }
-		 }()),
+		 }(),
 		 ...);
 		return mask;
 	}
@@ -98,7 +98,7 @@ namespace Dimensia::ECS
 	*/
 	template <typename Func>
 		requires Dimensia::Core::InvocableWithArgs<Func, ComponentTypeID>
-	constexpr void forEachSetBit(const ComponentMask &mask, Func &&func) noexcept
+	constexpr void forEachSetBit(const ComponentMask &mask, Func &&func) noexcept(std::is_nothrow_invocable_v<Func &, ComponentTypeID>)
 	{
 		ul bits{mask.low()};
 		const Func forwardedFunction{std::forward<Func>(func)};
@@ -195,6 +195,7 @@ namespace Dimensia::ECS
 
 			// NOLINTEND(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 
+			// NOLINTNEXTLINE(readability-redundant-parentheses)
 			const bool requiredMatch{(entityTags & requiredTags) == requiredTags};
 			const bool anyMatch{!hasAnyClause || anyRegularMatched || static_cast<bool>(entityTags & anyTags)};
 			const bool noneMatch{!static_cast<bool>(entityTags & noneTags)};
@@ -206,14 +207,16 @@ namespace Dimensia::ECS
 			}
 
 			// Advance regular component columns for every row, including rows rejected by the tag filter.
-			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic,cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			(([&] {
+			// Component IDs are registry-validated compile-time indices; byte-pointer advancement walks dense component columns.
+			// NOLINTBEGIN(cppcoreguidelines-pro-bounds-pointer-arithmetic,cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			([&] {
 				 if constexpr (!isTagV<Components>)
 				 {
 					 std::get<Is>(byteArrays) += ComponentInfos[componentID<Components>()].size;
 				 }
-			 }()),
+			 }(),
 			 ...);
+			// NOLINTEND(cppcoreguidelines-pro-bounds-pointer-arithmetic,cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		}
 	}
 

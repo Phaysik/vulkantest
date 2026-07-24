@@ -1,5 +1,6 @@
 #include "ECS/ecs.h"
 
+#include <cstddef>
 #include <latch>
 #include <stdexcept>
 #include <thread>

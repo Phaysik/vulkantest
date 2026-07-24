@@ -34,7 +34,7 @@ namespace Dimensia::ECS
 		AddComponent,
 		RemoveComponent,
 		Destroy,
-		SetParent
+		SetParent,
 	};
 
 	/*! @struct AddData include/ECS/command.h

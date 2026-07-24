@@ -29,6 +29,7 @@ namespace Dimensia::ECS
 		// to any cached query whose required mask is satisfied by the new archetype.
 		for (auto &[queryMask, results] : mResults)
 		{
+			// NOLINTNEXTLINE(readability-redundant-parentheses)
 			if ((regularMask & queryMask) == queryMask)
 			{
 				results.push_back(arch);
@@ -72,6 +73,7 @@ namespace Dimensia::ECS
 
 		for (const auto &[mask, arch] : mArchetypes)
 		{
+			// NOLINTNEXTLINE(readability-redundant-parentheses)
 			if ((mask & requiredMask) == requiredMask)
 			{
 				matching.push_back(arch);

@@ -104,7 +104,8 @@ namespace Dimensia::Threading
 				{
 					const std::scoped_lock<std::mutex> lock(mQueueMutex);
 
-					mTasks.emplace([packagedTask, &latch]() mutable {
+					mTasks.emplace([packagedTask, &latch] mutable {
+						// NOLINTNEXTLINE(readability-redundant-parentheses)
 						(*packagedTask)();
 						latch.count_down();
 					});
@@ -134,7 +135,7 @@ namespace Dimensia::Threading
 				std::future<return_type> result = task->get_future();
 				{
 					const std::scoped_lock<std::mutex> lock(mQueueMutex);
-					mTasks.emplace([task]() mutable { (*task)(); });
+					mTasks.emplace([task] mutable { (*task)(); });
 				}
 
 				mCondition.notify_one();
@@ -170,14 +171,14 @@ namespace Dimensia::Threading
 
 				// Create a packaged_task that will invoke the function with the stored arguments
 				auto task = std::make_shared<std::packaged_task<return_type()>>(
-					[function = std::forward<Func>(func), args = std::move(args_tuple)]() mutable noexcept -> return_type {
+					[function = std::forward<Func>(func), args = std::move(args_tuple)] mutable noexcept -> return_type {
 						return std::apply(std::move(function), std::move(args));
 					});
 
 				std::future<return_type> result = task->get_future();
 				{
 					const std::scoped_lock<std::mutex> lock(mQueueMutex);
-					mTasks.emplace([task]() mutable { (*task)(); });
+					mTasks.emplace([task] mutable { (*task)(); });
 				}
 
 				mCondition.notify_one();

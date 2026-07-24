@@ -33,7 +33,7 @@ namespace Dimensia::ECS
 		Uninitialized,
 		Active,
 		Destroying,
-		Destroyed
+		Destroyed,
 	};
 
 	/*! @struct EntityRecord

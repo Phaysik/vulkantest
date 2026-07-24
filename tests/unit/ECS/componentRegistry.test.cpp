@@ -25,7 +25,9 @@ namespace
 			PotentiallyThrowingMoveComponent() = default;
 			PotentiallyThrowingMoveComponent(const PotentiallyThrowingMoveComponent &) = default;
 
-			PotentiallyThrowingMoveComponent(PotentiallyThrowingMoveComponent &&) noexcept(false) {}
+			// This deliberately models a component rejected by has_safe_chunk_lifecycle_v.
+			// NOLINTNEXTLINE(bugprone-unsafe-to-allow-exceptions)
+			PotentiallyThrowingMoveComponent(PotentiallyThrowingMoveComponent && /*unused*/) noexcept(false) {}
 
 			PotentiallyThrowingMoveComponent &operator=(const PotentiallyThrowingMoveComponent &) = default;
 			PotentiallyThrowingMoveComponent &operator=(PotentiallyThrowingMoveComponent &&) = default;

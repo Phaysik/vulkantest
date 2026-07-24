@@ -140,7 +140,7 @@ namespace Dimensia::ECS
 											 tptr->~T();
 											 operator delete(ptr, std::align_val_t(alignof(T)));
 										 },
-										 componentID<T>()};
+										 componentID<T>(),};
 
 				owner.release(); // storage now owns the object
 				return storage;

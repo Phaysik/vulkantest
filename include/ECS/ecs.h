@@ -60,7 +60,7 @@ namespace Dimensia::ECS
 		Seq,
 		Par,
 		ParBatched,
-		ParStealing
+		ParStealing,
 	};
 
 	namespace Detail
@@ -109,7 +109,7 @@ namespace Dimensia::ECS
 									  .readDepth = 1,
 									  .writeDepth = 0,
 									  .readLock = std::shared_lock<std::shared_mutex>(mutex),
-									  .writeLock = {}});
+									  .writeLock = {},});
 					mActive = true;
 				}
 
@@ -175,7 +175,7 @@ namespace Dimensia::ECS
 									  .readDepth = 0,
 									  .writeDepth = 1,
 									  .readLock = {},
-									  .writeLock = std::unique_lock<std::shared_mutex>(mutex)});
+									  .writeLock = std::unique_lock<std::shared_mutex>(mutex),});
 					mActive = true;
 				}
 
@@ -275,13 +275,13 @@ namespace Dimensia::ECS
 				@param[in] parent The parent entity.
 				@return Vector of child entities; empty if none or if @p parent is not alive.
 			*/
-			std::vector<Entity> getChildren(const Entity &parent) const;
+			ATTR_NODISCARD std::vector<Entity> getChildren(const Entity &parent) const;
 
 			/*! @brief Returns the parent of @p child.
 				@param[in] child The child entity.
 				@return The parent `Entity` handle, or an invalid/default entity if no parent exists.
 			*/
-			Entity getParent(const Entity &child) const;
+			ATTR_NODISCARD Entity getParent(const Entity &child) const;
 
 			/*! @brief Computes an adaptive batch size for parallel processing.
 				@param[in] allChunkSize Number of chunks to process.
@@ -330,7 +330,7 @@ namespace Dimensia::ECS
 				@param[in] entity The entity handle to test.
 				@return True if alive, false otherwise.
 			*/
-			bool alive(const Entity &entity) const noexcept;
+			ATTR_NODISCARD bool alive(const Entity &entity) const noexcept;
 
 			/*! @brief Performs internal compaction to reclaim storage and defragment data structures.
 			 */
@@ -373,7 +373,7 @@ namespace Dimensia::ECS
 				std::tuple<std::decay_t<Ts>...> storage{std::forward<Ts>(components)...};
 
 				[&]<std::size_t... I>(std::index_sequence<I...>) {
-					(([&] {
+					([&] {
 						 assert(I < compIds.size());
 
 						 // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
@@ -383,7 +383,7 @@ namespace Dimensia::ECS
 
 						 processCreateComponent<decltype(components)>(componentTypeID, copyData, moveData, regularMask, tagMask,
 																	  std::get<I>(storage));
-					 }()),
+					 }(),
 					 ...);
 				}(std::index_sequence_for<Ts...>{});
 
@@ -402,7 +402,7 @@ namespace Dimensia::ECS
 										  .archetypeID = targetArch->getId(),
 										  .chunkIndex = chunk,
 										  .slotIndex = slot,
-										  .state = State::Active};
+										  .state = State::Active,};
 
 				return entity;
 			}
@@ -620,7 +620,7 @@ namespace Dimensia::ECS
 				@return True if the tag is present, false otherwise.
 			*/
 			template <typename Tag>
-			bool hasTag(Entity entity) const
+			ATTR_NODISCARD bool hasTag(Entity entity) const
 			{
 				if (!alive(entity))
 				{
@@ -703,6 +703,28 @@ namespace Dimensia::ECS
 			   the caller must place it and populate `mRecords[entity.index]`.
 			*/
 			Entity allocateEntityID();
+
+			/*! @brief Tests whether an archetype has no live rows in any chunk.
+				@param[in] archetype Archetype to inspect.
+				@return `true` when every chunk is empty.
+			*/
+			static bool archetypeIsEmpty(const Archetype &archetype) noexcept;
+
+			/*! @brief Updates entity locations after an archetype changes index.
+				@param[in] archetype Moved archetype whose rows are inspected.
+				@param[in] archetypeID New archetype index stored in every resident entity record.
+			*/
+			void updateArchetypeEntityRecords(const Archetype &archetype, ui archetypeID);
+
+			/*! @brief Removes empty archetypes and repairs IDs after swap removal.
+				@pre The structural mutation guard is held by the caller.
+			*/
+			void pruneEmptyArchetypes();
+
+			/*! @brief Shrinks hierarchy storage to the highest active entity index.
+				@pre The structural mutation guard is held by the caller.
+			*/
+			void compactHierarchyStorage();
 
 			/*! @brief Allocates the next strictly increasing world change epoch.
 				@return Nonzero epoch newer than every epoch previously issued by this ECS.
@@ -898,6 +920,7 @@ namespace Dimensia::ECS
 				{
 					const ComponentMask archMask{archPtr->getRegularMask()};
 
+					// NOLINTNEXTLINE(readability-redundant-parentheses)
 					if ((archMask & requiredMask) != requiredMask)
 					{
 						continue;
@@ -905,6 +928,7 @@ namespace Dimensia::ECS
 
 					if constexpr (TypeListSize<AnyList>::value != 0 && !static_cast<bool>(anyTags))
 					{
+						// NOLINTNEXTLINE(readability-redundant-parentheses)
 						if (!(archMask & anyMask))
 						{
 							continue;

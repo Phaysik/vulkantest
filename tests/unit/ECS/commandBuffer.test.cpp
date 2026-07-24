@@ -10,6 +10,7 @@
 #include "Components/Position/positionComponent.h"
 #include "ECS/ecs.h"
 #include "ECS/entity.h"
+#include "ECS/queryFilter.h"
 #include "ECS/systemVersion.h"
 #include "Tags/Alive/aliveTag.h"
 
@@ -89,7 +90,7 @@ SCENARIO("CommandBuffer concurrent recording and playback")
 				for (std::size_t entityIndex{0}; entityIndex < entities.size(); ++entityIndex)
 				{
 					const Health *health{ecs.getComponent<Health>(entities.at(entityIndex))};
-					REQUIRE(health != nullptr);
+					REQUIRE((health != nullptr));
 					CHECK((static_cast<std::size_t>(health->hp) == entityIndex));
 				}
 			}
@@ -155,7 +156,7 @@ SCENARIO("CommandBuffer concurrent recording and clearing")
 			THEN("the buffer remains usable for commands recorded after clearing")
 			{
 				const Health *health{ecs.getComponent<Health>(markerEntity)};
-				REQUIRE(health != nullptr);
+				REQUIRE((health != nullptr));
 				CHECK((static_cast<int>(health->hp) == 999));
 			}
 		}
@@ -184,7 +185,7 @@ SCENARIO("CommandBuffer deterministic playback ordering")
 			THEN("adds execute in recording order and the latest value wins")
 			{
 				const Health *health{ecs.getComponent<Health>(entity)};
-				REQUIRE(health != nullptr);
+				REQUIRE((health != nullptr));
 				CHECK((static_cast<int>(health->hp) == 20));
 			}
 		}
@@ -233,7 +234,7 @@ SCENARIO("CommandBuffer deterministic playback ordering")
 			THEN("the global recording sequence determines the result")
 			{
 				const Health *health{ecs.getComponent<Health>(entity)};
-				REQUIRE(health != nullptr);
+				REQUIRE((health != nullptr));
 				CHECK((static_cast<int>(health->hp) == 50));
 			}
 		}

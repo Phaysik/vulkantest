@@ -116,9 +116,10 @@ namespace Dimensia::Threading
 						{
 							forwardedFunc(arch, index);
 						}
-					})};
+					}),};
 					futures.push_back(packagedTask->get_future());
 					submitTask([packagedTask, &latch] {
+						// NOLINTNEXTLINE(readability-redundant-parentheses)
 						(*packagedTask)();
 						latch.count_down();
 					});

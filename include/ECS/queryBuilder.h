@@ -66,6 +66,7 @@ class QueryBuilder
 		{
 			const ComponentMask requested{buildRequiredMask<Ts...>()};
 			const ComponentMask required{buildMaskFromList<ReqList>()};
+			// NOLINTNEXTLINE(readability-redundant-parentheses)
 			if ((requested & required) != requested)
 			{
 				throw std::invalid_argument("Changed components must be required regular components");
@@ -94,6 +95,7 @@ class QueryBuilder
 		{
 			const ComponentMask requested{buildRequiredMask<Ts...>()};
 			const ComponentMask required{buildMaskFromList<ReqList>()};
+			// NOLINTNEXTLINE(readability-redundant-parentheses)
 			if ((requested & required) != requested)
 			{
 				throw std::invalid_argument("Query read access must name required regular components");
@@ -112,6 +114,7 @@ class QueryBuilder
 		{
 			const ComponentMask requested{buildRequiredMask<Ts...>()};
 			const ComponentMask required{buildMaskFromList<ReqList>()};
+			// NOLINTNEXTLINE(readability-redundant-parentheses)
 			if ((requested & required) != requested)
 			{
 				throw std::invalid_argument("Query write access must name required regular components");
@@ -130,203 +133,216 @@ class QueryBuilder
 		void forEach(Func &&func)
 		{
 			const IterationGuard iterGuard{mECS->mStructuralMutex};
-			constexpr bool isFilterQuery = (TypeListSize<AnyList>::value > 0) || (TypeListSize<NoneList>::value > 0);
+			constexpr bool isFilterQuery{(TypeListSize<AnyList>::value > 0) || (TypeListSize<NoneList>::value > 0)};
 
 			if constexpr (!isFilterQuery)
 			{
-				// Raw component query path: unpack TypeList into Components... parameter pack
-				[&]<typename... Comps>(TypeList<Comps...>) {
-					if (mVersion != nullptr && mChangedMask)
-					{
-						// Changed<T> path: use custom dirty-chunk filter with the changed mask
-						constexpr ComponentMask requiredRegular{buildRequiredMask<Comps...>()};
-						const std::vector<Archetype *> &matchingArchetypes{mECS->mQueryCache.get(requiredRegular)};
-
-						std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> dirtyChunks;
-						setDirtyChunks(dirtyChunks, matchingArchetypes, *mVersion, requiredRegular, mChangedMask);
-
-						if (!dirtyChunks.empty())
-						{
-							auto processChunk = [&func, this](Archetype *arch, const ui chunkIndex) {
-								const IterationGuard workerGuard{mECS->mStructuralMutex};
-								const ui count{arch->getEntityCount(chunkIndex)};
-								bool processedAny{false};
-								auto trackedFunction = [&](auto &&...args) {
-									processedAny = true;
-									func(std::forward<decltype(args)>(args)...);
-								};
-								auto stampWrites = [&] {
-									if constexpr (!IsConst)
-									{
-										if (processedAny)
-										{
-											mECS->markComponentsChanged(arch, chunkIndex, mWriteMask);
-										}
-									}
-								};
-								try
-								{
-								if constexpr (IsConst)
-								{
-									const Entity *entityArr{arch->getEntityArray(chunkIndex)};
-									processChunkEntitiesConst<Comps...>(entityArr, count, chunkIndex, arch, trackedFunction);
-								}
-								else
-								{
-									Entity *entityArr{arch->getEntityArray(chunkIndex)};
-									processChunkEntities<Comps...>(entityArr, count, chunkIndex, arch, trackedFunction);
-								}
-								}
-								catch (...)
-								{
-									stampWrites();
-									throw;
-								}
-								stampWrites();
-							};
-
-							auto noOp = [](const auto &) {};
-
-							switch (mPolicy)
-							{
-								case ExecutionPolicy::Seq:
-									forEachSeqProcessChunkAndVersion(dirtyChunks, processChunk, noOp);
-									break;
-								case ExecutionPolicy::Par:
-									forEachParProcessChunkAndVersion(dirtyChunks, mECS->mThreadPool, processChunk, noOp);
-									break;
-								case ExecutionPolicy::ParBatched:
-									forEachParBatchedProcessChunkAndVersion(dirtyChunks, mECS->mThreadPool, processChunk, noOp);
-									break;
-								case ExecutionPolicy::ParStealing:
-									forEachParStealingProcessChunkAndVersion(dirtyChunks, mECS->mWorkStealingPool, processChunk, noOp);
-									break;
-								default:
-									assert(false && "Invalid execution policy");
-							}
-
-							bulkMergeVersions(*mVersion, dirtyChunks, requiredRegular);
-						}
-					}
-					else if (mVersion != nullptr)
-					{
-						ECS::forEachPolicyVersionImpl<SelfType, Comps...>(*mECS, mPolicy, *mVersion, std::forward<Func>(func), mWriteMask);
-					}
-					else
-					{
-						ECS::forEachPolicyImpl<SelfType, Comps...>(*mECS, mPolicy, std::forward<Func>(func), mWriteMask);
-					}
-				}(ReqList{});
+				[&]<typename... Comps>(TypeList<Comps...>) { dispatchRaw<Comps...>(std::forward<Func>(func)); }(ReqList{});
 			}
 			else
 			{
-				// Query-filter path: pass TypeLists directly
-				if (mVersion != nullptr && mChangedMask)
-				{
-					// Changed<T> + filter path
-					constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
-					constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
-					constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
-					constexpr ComponentMask requiredTags{buildTagMaskFromList<ReqList>()};
-					constexpr ComponentMask anyTags{buildTagMaskFromList<AnyList>()};
-					constexpr ComponentMask noneTags{buildTagMaskFromList<NoneList>()};
-					constexpr bool hasAnyClause{TypeListSize<AnyList>::value != 0};
-					QueryKey key{.required = requiredMask,
-								 .any = anyMask,
-								 .none = noneMask,
-								 .requiredTags = requiredTags,
-								 .anyTags = anyTags,
-								 .noneTags = noneTags};
-
-					const std::vector<Archetype *> &matchingArchetypes{
-						getMatchingArchetypesForQueryCalls<SelfType, AnyList, NoneList>(*mECS, key, requiredMask, anyMask, noneMask)};
-
-					std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> dirtyChunks;
-					setDirtyChunks(dirtyChunks, matchingArchetypes, *mVersion, requiredMask, mChangedMask);
-
-					if (!dirtyChunks.empty())
-					{
-						auto processChunk = [&func, this, requiredTags, anyTags, noneTags, anyMask](Archetype *arch, const ui chunkIndex) {
-							const IterationGuard workerGuard{mECS->mStructuralMutex};
-							const ui count{arch->getEntityCount(chunkIndex)};
-							const bool anyRegularMatched{static_cast<bool>(arch->getRegularMask() & anyMask)};
-							bool processedAny{false};
-							auto trackedFunction = [&](auto &&...args) {
-								processedAny = true;
-								func(std::forward<decltype(args)>(args)...);
-							};
-							auto stampWrites = [&] {
-								if constexpr (!IsConst)
-								{
-									if (processedAny)
-									{
-										mECS->markComponentsChanged(arch, chunkIndex, mWriteMask);
-									}
-								}
-							};
-							try
-							{
-							if constexpr (IsConst)
-							{
-								const Entity *entities{arch->getEntityArray(chunkIndex)};
-								[&]<typename... Req>(TypeList<Req...>) {
-									processChunkEntitiesFilteredConst<Req...>(entities, count, chunkIndex, arch, trackedFunction,
-																			  requiredTags, anyTags, noneTags, hasAnyClause,
-																			  anyRegularMatched);
-								}(ReqList{});
-							}
-							else
-							{
-								Entity *entities{arch->getEntityArray(chunkIndex)};
-								[&]<typename... Req>(TypeList<Req...>) {
-									processChunkEntitiesFiltered<Req...>(entities, count, chunkIndex, arch, trackedFunction,
-																		 requiredTags, anyTags, noneTags, hasAnyClause, anyRegularMatched);
-								}(ReqList{});
-							}
-							}
-							catch (...)
-							{
-								stampWrites();
-								throw;
-							}
-							stampWrites();
-						};
-
-						auto noOp = [](const auto &) {};
-
-						switch (mPolicy)
-						{
-							case ExecutionPolicy::Seq:
-								forEachSeqProcessChunkAndVersion(dirtyChunks, processChunk, noOp);
-								break;
-							case ExecutionPolicy::Par:
-								forEachParProcessChunkAndVersion(dirtyChunks, mECS->mThreadPool, processChunk, noOp);
-								break;
-							case ExecutionPolicy::ParBatched:
-								forEachParBatchedProcessChunkAndVersion(dirtyChunks, mECS->mThreadPool, processChunk, noOp);
-								break;
-							case ExecutionPolicy::ParStealing:
-								forEachParStealingProcessChunkAndVersion(dirtyChunks, mECS->mWorkStealingPool, processChunk, noOp);
-								break;
-							default:
-								assert(false && "Invalid execution policy");
-						}
-
-						bulkMergeVersions(*mVersion, dirtyChunks, requiredMask);
-					}
-				}
-				else if (mVersion != nullptr)
-				{
-					ECS::forEachQueryVersionImpl<SelfType, ReqList, AnyList, NoneList>(*mECS, mPolicy, *mVersion, std::forward<Func>(func), mWriteMask);
-				}
-				else
-				{
-					ECS::forEachQueryImpl<SelfType, ReqList, AnyList, NoneList>(*mECS, mPolicy, std::forward<Func>(func), mWriteMask);
-				}
+				dispatchFiltered(std::forward<Func>(func));
 			}
 		}
 
 	private:
+		using DirtyChunks = std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>>;
+
+		template <typename... Components, typename Func>
+		void dispatchRaw(Func &&func)
+		{
+			if (mVersion == nullptr)
+			{
+				ECS::forEachPolicyImpl<SelfType, Components...>(*mECS, mPolicy, std::forward<Func>(func), mWriteMask);
+				return;
+			}
+
+			if (!mChangedMask)
+			{
+				ECS::forEachPolicyVersionImpl<SelfType, Components...>(*mECS, mPolicy, *mVersion, std::forward<Func>(func), mWriteMask);
+				return;
+			}
+
+			processChangedRaw<Components...>(func);
+		}
+
+		template <typename Func>
+		void dispatchFiltered(Func &&func)
+		{
+			if (mVersion == nullptr)
+			{
+				ECS::forEachQueryImpl<SelfType, ReqList, AnyList, NoneList>(*mECS, mPolicy, std::forward<Func>(func), mWriteMask);
+				return;
+			}
+
+			if (!mChangedMask)
+			{
+				ECS::forEachQueryVersionImpl<SelfType, ReqList, AnyList, NoneList>(*mECS, mPolicy, *mVersion, std::forward<Func>(func),
+																				   mWriteMask);
+				return;
+			}
+
+			processChangedFiltered(func);
+		}
+
+		void markProcessedWrites(Archetype *archetype, const ui chunkIndex, const bool processedAny)
+		{
+			if constexpr (!IsConst)
+			{
+				if (processedAny)
+				{
+					mECS->markComponentsChanged(archetype, chunkIndex, mWriteMask);
+				}
+			}
+		}
+
+		template <typename Func, typename Process>
+		void processTrackedChunk(Archetype *archetype, const ui chunkIndex, Func &func, Process &&process)
+		{
+			bool processedAny{false};
+			auto trackedFunction = [&](auto &&...args) {
+				processedAny = true;
+				func(std::forward<decltype(args)>(args)...);
+			};
+
+			try
+			{
+				process(trackedFunction);
+			}
+			catch (...)
+			{
+				markProcessedWrites(archetype, chunkIndex, processedAny);
+				throw;
+			}
+
+			markProcessedWrites(archetype, chunkIndex, processedAny);
+		}
+
+		template <typename ProcessChunk>
+		void executeDirtyChunks(const DirtyChunks &dirtyChunks, ProcessChunk &processChunk, const ComponentMask requiredMask)
+		{
+			auto noOp = [](const auto &) {};
+
+			switch (mPolicy)
+			{
+				case ExecutionPolicy::Seq:
+					forEachSeqProcessChunkAndVersion(dirtyChunks, processChunk, noOp);
+					break;
+				case ExecutionPolicy::Par:
+					forEachParProcessChunkAndVersion(dirtyChunks, mECS->mThreadPool, processChunk, noOp);
+					break;
+				case ExecutionPolicy::ParBatched:
+					forEachParBatchedProcessChunkAndVersion(dirtyChunks, mECS->mThreadPool, processChunk, noOp);
+					break;
+				case ExecutionPolicy::ParStealing:
+					forEachParStealingProcessChunkAndVersion(dirtyChunks, mECS->mWorkStealingPool, processChunk, noOp);
+					break;
+				default:
+					assert(false && "Invalid execution policy");
+			}
+
+			bulkMergeVersions(*mVersion, dirtyChunks, requiredMask);
+		}
+
+		template <typename... Components, typename Func>
+		void processRawChunk(Archetype *archetype, const ui chunkIndex, Func &func)
+		{
+			const IterationGuard workerGuard{mECS->mStructuralMutex};
+			const ui entityCount{archetype->getEntityCount(chunkIndex)};
+			processTrackedChunk(archetype, chunkIndex, func, [&](auto &trackedFunction) {
+				if constexpr (IsConst)
+				{
+					const Entity *entities{archetype->getEntityArray(chunkIndex)};
+					processChunkEntitiesConst<Components...>(entities, entityCount, chunkIndex, archetype, trackedFunction);
+				}
+				else
+				{
+					Entity *entities{archetype->getEntityArray(chunkIndex)};
+					processChunkEntities<Components...>(entities, entityCount, chunkIndex, archetype, trackedFunction);
+				}
+			});
+		}
+
+		template <typename... Components, typename Func>
+		void processChangedRaw(Func &func)
+		{
+			constexpr ComponentMask requiredMask{buildRequiredMask<Components...>()};
+			const std::vector<Archetype *> &matchingArchetypes{mECS->mQueryCache.get(requiredMask)};
+			DirtyChunks dirtyChunks;
+			setDirtyChunks(dirtyChunks, matchingArchetypes, *mVersion, requiredMask, mChangedMask);
+			if (dirtyChunks.empty())
+			{
+				return;
+			}
+
+			auto processChunk
+				= [&func, this](Archetype *archetype, const ui chunkIndex) { processRawChunk<Components...>(archetype, chunkIndex, func); };
+			executeDirtyChunks(dirtyChunks, processChunk, requiredMask);
+		}
+
+		template <typename Func>
+		void processFilteredChunk(Archetype *archetype, const ui chunkIndex, Func &func, const ComponentMask requiredTags,
+								  const ComponentMask anyTags, const ComponentMask noneTags, const ComponentMask anyMask)
+		{
+			const IterationGuard workerGuard{mECS->mStructuralMutex};
+			const ui entityCount{archetype->getEntityCount(chunkIndex)};
+			const bool anyRegularMatched{static_cast<bool>(archetype->getRegularMask() & anyMask)};
+			constexpr bool hasAnyClause{TypeListSize<AnyList>::value != 0};
+
+			processTrackedChunk(archetype, chunkIndex, func, [&](auto &trackedFunction) {
+				if constexpr (IsConst)
+				{
+					const Entity *entities{archetype->getEntityArray(chunkIndex)};
+					[&]<typename... Required>(TypeList<Required...>) {
+						processChunkEntitiesFilteredConst<Required...>(entities, entityCount, chunkIndex, archetype, trackedFunction,
+																	   requiredTags, anyTags, noneTags, hasAnyClause, anyRegularMatched);
+					}(ReqList{});
+				}
+				else
+				{
+					Entity *entities{archetype->getEntityArray(chunkIndex)};
+					[&]<typename... Required>(TypeList<Required...>) {
+						processChunkEntitiesFiltered<Required...>(entities, entityCount, chunkIndex, archetype, trackedFunction,
+																  requiredTags, anyTags, noneTags, hasAnyClause, anyRegularMatched);
+					}(ReqList{});
+				}
+			});
+		}
+
+		template <typename Func>
+		void processChangedFiltered(Func &func)
+		{
+			constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
+			constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
+			constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
+			constexpr ComponentMask requiredTags{buildTagMaskFromList<ReqList>()};
+			constexpr ComponentMask anyTags{buildTagMaskFromList<AnyList>()};
+			constexpr ComponentMask noneTags{buildTagMaskFromList<NoneList>()};
+			const QueryKey key{
+				.required = requiredMask,
+				.any = anyMask,
+				.none = noneMask,
+				.requiredTags = requiredTags,
+				.anyTags = anyTags,
+				.noneTags = noneTags,
+			};
+			const std::vector<Archetype *> &matchingArchetypes{
+				getMatchingArchetypesForQueryCalls<SelfType, AnyList, NoneList>(*mECS, key, requiredMask, anyMask, noneMask),
+			};
+
+			DirtyChunks dirtyChunks;
+			setDirtyChunks(dirtyChunks, matchingArchetypes, *mVersion, requiredMask, mChangedMask);
+			if (dirtyChunks.empty())
+			{
+				return;
+			}
+
+			auto processChunk = [this, &func, requiredTags, anyTags, noneTags, anyMask](Archetype *archetype, const ui chunkIndex) {
+				processFilteredChunk(archetype, chunkIndex, func, requiredTags, anyTags, noneTags, anyMask);
+			};
+			executeDirtyChunks(dirtyChunks, processChunk, requiredMask);
+		}
+
 		SelfType *mECS;
 		ExecutionPolicy mPolicy{ExecutionPolicy::Seq};
 		SystemVersion *mVersion{nullptr};

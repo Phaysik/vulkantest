@@ -112,7 +112,7 @@ static void forEachParProcessChunkOnly(const std::vector<Archetype *> &matchingA
 	for (const auto &[arch, chunkIndex] : allChunks)
 	{
 		futures.push_back(threadPool.submitWithLatch(
-			[arch, chunkIndex, processChunkFunction]() {
+			[arch, chunkIndex, processChunkFunction] {
 				const ui entityCount{arch->getEntityCount(chunkIndex)};
 				processChunkFunction(arch, chunkIndex, entityCount);
 			},
@@ -174,7 +174,7 @@ static void forEachParBatchedProcessChunkOnly(const std::vector<Archetype *> &ma
 															allChunks.begin() + static_cast<std::ptrdiff_t>(end));
 
 		futures.push_back(threadPool.submitWithLatch(
-			[batch, processChunkFunction]() mutable {
+			[batch, processChunkFunction] mutable {
 				for (const auto &[arch, chunkIndex] : batch)
 				{
 					const ui entityCount{arch->getEntityCount(chunkIndex)};
@@ -236,7 +236,7 @@ static void forEachParStealingProcessChunkOnly(const std::vector<Archetype *> &m
 
 			processChunkFunction(arch, chunkIndex, entityCount);
 		},
-		latch, batchSize)};
+		latch, batchSize),};
 
 	latch.wait();
 	for (auto &future : futures)
@@ -515,7 +515,7 @@ static void forEachParProcessChunkAndVersion(const std::vector<std::tuple<Archet
 		ui chunkIndex{std::get<1>(chunk)};
 
 		futures.push_back(
-			threadPool.submitWithLatch([arch, chunkIndex, processChunkFunction]() { processChunkFunction(arch, chunkIndex); }, latch));
+			threadPool.submitWithLatch([arch, chunkIndex, processChunkFunction] { processChunkFunction(arch, chunkIndex); }, latch));
 	}
 
 	latch.wait();
@@ -567,7 +567,7 @@ static void forEachParBatchedProcessChunkAndVersion(const std::vector<std::tuple
 															chunks.begin() + static_cast<std::ptrdiff_t>(end));
 
 		futures.push_back(threadPool.submitWithLatch(
-			[batch, processChunkFunction]() {
+			[batch, processChunkFunction] {
 				for (const auto &[arch, chunkIndex] : batch)
 				{
 					processChunkFunction(arch, chunkIndex);
@@ -615,7 +615,7 @@ static void forEachParStealingProcessChunkAndVersion(const std::vector<std::tupl
 	std::latch latch(static_cast<std::ptrdiff_t>((chunks.size() + batchSize - 1) / batchSize));
 
 	auto futures{workStealingPool.submitChunks(
-		chunks, [processChunkFunction](Archetype *arch, ui chunkIndex) { processChunkFunction(arch, chunkIndex); }, latch, batchSize)};
+		chunks, [processChunkFunction](Archetype *arch, ui chunkIndex) { processChunkFunction(arch, chunkIndex); }, latch, batchSize),};
 
 	// Work-stealing tasks always count down the latch, including when a callback throws.
 

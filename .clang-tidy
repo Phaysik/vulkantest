@@ -145,7 +145,7 @@ CheckOptions:
   cppcoreguidelines-explicit-virtual-functions.OverrideSpelling: override
   cppcoreguidelines-init-variables.IncludeStyle: llvm
   cppcoreguidelines-init-variables.MathHeader: '<math.h>'
-  cppcoreguidelines-macro-usage.AllowedRegexp: '^DEBUG_*'
+  cppcoreguidelines-macro-usage.AllowedRegexp: '^(ATTR_|DEBUG_).*'
   cppcoreguidelines-macro-usage.CheckCapsOnly: 'false'
   cppcoreguidelines-macro-usage.IgnoreCommandLineMacros: 'true'
   cppcoreguidelines-narrowing-conversions.IgnoreConversionFromTypes: ''

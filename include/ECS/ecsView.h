@@ -96,6 +96,7 @@ class ViewIterator
 
 		bool operator!=(const ViewIterator &other) const noexcept
 		{
+			// NOLINTNEXTLINE(readability-redundant-parentheses)
 			return !(*this == other);
 		}
 
@@ -103,9 +104,10 @@ class ViewIterator
 		bool currentRowMatches(const Archetype *arch) const noexcept
 		{
 			const ComponentMask entityTags{arch->getTags(mChunkIdx, mSlot)};
+			// NOLINTNEXTLINE(readability-redundant-parentheses)
 			const bool requiredMatch{(entityTags & mRequiredTags) == mRequiredTags};
 			const bool anyMatch{!mHasAnyClause || static_cast<bool>(arch->getRegularMask() & mAnyRegular)
-								|| static_cast<bool>(entityTags & mAnyTags)};
+								|| static_cast<bool>(entityTags & mAnyTags),};
 			const bool noneMatch{!static_cast<bool>(entityTags & mNoneTags)};
 			return requiredMatch && anyMatch && noneMatch;
 		}
@@ -147,6 +149,8 @@ class ViewIterator
 
 		void loadCompPtrs(Archetype *arch) noexcept
 		{
+			// Component IDs are registry-validated compile-time indices into this fixed-size array.
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			((mCompPtrs[componentID<Components>()] = static_cast<BytePtr>(arch->getComponentArray(mChunkIdx, componentID<Components>()))),
 			 ...);
 		}
@@ -198,21 +202,21 @@ class View
 		View &operator=(const View &) = delete;
 		View(View &&) noexcept = default;
 		View &operator=(View &&) = delete;
+		~View() = default;
 
 		/*! @brief Construct a view from a pre-resolved archetype list (used by filtered view factories).
 			@param[in] ecs ECS instance.
 			@param[in] archetypes Vector of matching archetypes copied for safe lifetime management.
 		*/
 		template <typename AnyFilterList, typename NoneFilterList>
-		explicit View(ECSType &ecs, AnyFilterList, NoneFilterList, const QueryKey &key, const ComponentMask &requiredMask,
+		explicit View(ECSType &ecs, AnyFilterList /*unused*/, NoneFilterList /*unused*/, const QueryKey &key, const ComponentMask &requiredMask,
 					  const ComponentMask &anyMask, const ComponentMask &noneMask, const ComponentMask requiredTags,
 					  const ComponentMask anyTags, const ComponentMask noneTags,
 					  const ComponentMask writeMask = IsConst ? ComponentMask(0) : buildRequiredMask<Components...>())
-			: mECS(&ecs), mIterationGuard(ecs.mStructuralMutex), mRequiredTags(requiredTags), mAnyTags(anyTags), mNoneTags(noneTags),
+			: mECS(&ecs), mIterationGuard(ecs.mStructuralMutex), mMatchingArchetypes(getMatchingArchetypesForQueryCalls<ECSType, AnyFilterList, NoneFilterList>(ecs, key, requiredMask, anyMask, noneMask)), mRequiredTags(requiredTags), mAnyTags(anyTags), mNoneTags(noneTags),
 			  mAnyRegular(anyMask), mWriteMask(writeMask), mHasAnyClause(TypeListSize<AnyFilterList>::value != 0)
 		{
-			mMatchingArchetypes
-				= getMatchingArchetypesForQueryCalls<ECSType, AnyFilterList, NoneFilterList>(ecs, key, requiredMask, anyMask, noneMask);
+			
 		}
 
 		ATTR_NODISCARD iterator begin() const noexcept
@@ -289,9 +293,9 @@ View<false, Components...> writeView()
 template <AllType AllF, NoneType NoneF>
 auto view()
 {
-	using ReqList = typename PackExtractor<AllF>::type;
-	using YieldList = typename RegularTypeList<ReqList>::type;
-	using NoneList = typename PackExtractor<NoneF>::type;
+	using ReqList = PackExtractor<AllF>::type;
+	using YieldList = RegularTypeList<ReqList>::type;
+	using NoneList = PackExtractor<NoneF>::type;
 	constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
 	constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
 	constexpr ComponentMask anyMask{0, 0};
@@ -303,7 +307,7 @@ auto view()
 				 .none = noneMask,
 				 .requiredTags = requiredTags,
 				 .anyTags = anyTags,
-				 .noneTags = noneTags};
+				 .noneTags = noneTags,};
 	return [&]<typename... Comps>(TypeList<Comps...>) {
 		return View<false, Comps...>(*this, TypeList<>{}, NoneList{}, key, requiredMask, anyMask, noneMask, requiredTags, anyTags, noneTags);
 	}(YieldList{});
@@ -313,9 +317,9 @@ auto view()
 template <AllType AllF, NoneType NoneF>
 auto view() const
 {
-	using ReqList = typename PackExtractor<AllF>::type;
-	using YieldList = typename RegularTypeList<ReqList>::type;
-	using NoneList = typename PackExtractor<NoneF>::type;
+	using ReqList = PackExtractor<AllF>::type;
+	using YieldList = RegularTypeList<ReqList>::type;
+	using NoneList = PackExtractor<NoneF>::type;
 	constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
 	constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
 	constexpr ComponentMask anyMask{0, 0};
@@ -327,7 +331,7 @@ auto view() const
 				 .none = noneMask,
 				 .requiredTags = requiredTags,
 				 .anyTags = anyTags,
-				 .noneTags = noneTags};
+				 .noneTags = noneTags,};
 	return [&]<typename... Comps>(TypeList<Comps...>) {
 		return View<true, Comps...>(*this, TypeList<>{}, NoneList{}, key, requiredMask, anyMask, noneMask, requiredTags, anyTags, noneTags);
 	}(YieldList{});
@@ -341,10 +345,10 @@ auto view() const
 template <AllType AllF, AnyType AnyF, NoneType NoneF>
 auto view()
 {
-	using ReqList = typename PackExtractor<AllF>::type;
-	using YieldList = typename RegularTypeList<ReqList>::type;
-	using AnyList = typename PackExtractor<AnyF>::type;
-	using NoneList = typename PackExtractor<NoneF>::type;
+	using ReqList = PackExtractor<AllF>::type;
+	using YieldList = RegularTypeList<ReqList>::type;
+	using AnyList = PackExtractor<AnyF>::type;
+	using NoneList = PackExtractor<NoneF>::type;
 	constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
 	constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
 	constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
@@ -356,7 +360,7 @@ auto view()
 				 .none = noneMask,
 				 .requiredTags = requiredTags,
 				 .anyTags = anyTags,
-				 .noneTags = noneTags};
+				 .noneTags = noneTags,};
 	return [&]<typename... Comps>(TypeList<Comps...>) {
 		return View<false, Comps...>(*this, AnyList{}, NoneList{}, key, requiredMask, anyMask, noneMask, requiredTags, anyTags, noneTags);
 	}(YieldList{});
@@ -366,10 +370,10 @@ auto view()
 template <AllType AllF, AnyType AnyF, NoneType NoneF>
 auto view() const
 {
-	using ReqList = typename PackExtractor<AllF>::type;
-	using YieldList = typename RegularTypeList<ReqList>::type;
-	using AnyList = typename PackExtractor<AnyF>::type;
-	using NoneList = typename PackExtractor<NoneF>::type;
+	using ReqList = PackExtractor<AllF>::type;
+	using YieldList = RegularTypeList<ReqList>::type;
+	using AnyList = PackExtractor<AnyF>::type;
+	using NoneList = PackExtractor<NoneF>::type;
 	constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
 	constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
 	constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
@@ -381,7 +385,7 @@ auto view() const
 				 .none = noneMask,
 				 .requiredTags = requiredTags,
 				 .anyTags = anyTags,
-				 .noneTags = noneTags};
+				 .noneTags = noneTags,};
 	return [&]<typename... Comps>(TypeList<Comps...>) {
 		return View<true, Comps...>(*this, AnyList{}, NoneList{}, key, requiredMask, anyMask, noneMask, requiredTags, anyTags, noneTags);
 	}(YieldList{});

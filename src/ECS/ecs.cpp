@@ -14,16 +14,18 @@
 #include <cstddef>
 #include <memory>
 #include <mutex>
+#include <new>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "ECS/archetype.h"
 #include "ECS/componentMask.h"
 #include "ECS/componentRegistry.h"
-#include "ECS/constants.h"
 #include "ECS/entity.h"
 #include "ECS/entityRecord.h"
 #include "ECS/processChunkHelpers.h"
+#include "ECS/systemVersion.h"
 
 namespace Dimensia::ECS
 {
@@ -216,7 +218,7 @@ namespace Dimensia::ECS
 		const VersionType version{nextVersion()};
 		Entity entity{allocateEntityID()};
 
-		Archetype *emptyArch{getOrCreateArchetype(ComponentMask(0))};
+		Archetype *const emptyArch{getOrCreateArchetype(ComponentMask(0))};
 		std::array<const void *, MAX_COMPONENTS> noCopy{};
 		std::array<void *, MAX_COMPONENTS> noMove{};
 
@@ -232,7 +234,7 @@ namespace Dimensia::ECS
 								  .archetypeID = emptyArch->getId(),
 								  .chunkIndex = chunk,
 								  .slotIndex = slot,
-								  .state = State::Active};
+								  .state = State::Active,};
 
 		return entity;
 	}
@@ -301,7 +303,7 @@ namespace Dimensia::ECS
 
 		assert(rec.archetypeID < mArchetypePtrs.size());
 
-		Archetype *arch{mArchetypePtrs[rec.archetypeID].get()};
+		Archetype *const arch{mArchetypePtrs[rec.archetypeID].get()};
 
 		auto [movedEntity, newSlot]{arch->removeEntity(rec.chunkIndex, rec.slotIndex, nextVersion())};
 
@@ -427,6 +429,96 @@ namespace Dimensia::ECS
 		return rec.generation == entity.generation && rec.state == State::Active && rec.archetypeID != INVALID_ARCHETYPE_ID;
 	}
 
+	bool ECS::archetypeIsEmpty(const Archetype &archetype) noexcept
+	{
+		for (ui chunk{0}; chunk < archetype.getChunkCount(); ++chunk)
+		{
+			if (archetype.getEntityCount(chunk) > 0)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	void ECS::updateArchetypeEntityRecords(const Archetype &archetype, const ui archetypeID)
+	{
+		for (ui chunk{0}; chunk < archetype.getChunkCount(); ++chunk)
+		{
+			const ui entityCount{archetype.getEntityCount(chunk)};
+			const Entity *entities{archetype.getEntityArray(chunk)};
+			for (ui slot{0}; slot < entityCount; ++slot)
+			{
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+				assert(entities[slot].index < mRecords.size());
+
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic,cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				mRecords[entities[slot].index].archetypeID = archetypeID;
+			}
+		}
+	}
+
+	void ECS::pruneEmptyArchetypes()
+	{
+		for (std::size_t i{mArchetypePtrs.size()}; i > 1; --i)
+		{
+			const std::size_t idx{i - 1};
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			const Archetype *archetype{mArchetypePtrs[idx].get()};
+			if (!archetypeIsEmpty(*archetype))
+			{
+				continue;
+			}
+
+			mQueryCache.removeArchetype(archetype);
+			mArchetypeMaskToID.erase(archetype->getRegularMask());
+
+			const std::size_t lastIndex{mArchetypePtrs.size() - 1};
+			if (idx != lastIndex)
+			{
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				std::swap(mArchetypePtrs[idx], mArchetypePtrs[lastIndex]);
+
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				Archetype &movedArchetype{*mArchetypePtrs[idx]};
+				movedArchetype.setId(static_cast<ui>(idx));
+				mArchetypeMaskToID[movedArchetype.getRegularMask()] = static_cast<ui>(idx);
+				updateArchetypeEntityRecords(movedArchetype, static_cast<ui>(idx));
+			}
+
+			mArchetypePtrs.pop_back();
+		}
+	}
+
+	void ECS::compactHierarchyStorage()
+	{
+		const std::scoped_lock<std::mutex> lock(mHierarchyMutex);
+		ui maxAliveIndex{0};
+		bool hasAlive{false};
+
+		for (ui index{0}; index < static_cast<ui>(mRecords.size()); ++index)
+		{
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			if (mRecords[index].state == State::Active)
+			{
+				maxAliveIndex = index;
+				hasAlive = true;
+			}
+		}
+
+		const std::size_t newSize{hasAlive ? static_cast<std::size_t>(maxAliveIndex) + 1 : 0};
+		if (newSize >= mParent.size())
+		{
+			return;
+		}
+
+		mParent.resize(newSize);
+		mParent.shrink_to_fit();
+		mChildren.resize(newSize);
+		mChildren.shrink_to_fit();
+	}
+
 	void ECS::compact()
 	{
 		const StructuralGuard structuralGuard{mStructuralMutex};
@@ -435,95 +527,8 @@ namespace Dimensia::ECS
 			archPtr->compact(mRecords);
 		}
 
-		// Prune empty archetypes (skip index 0 — the empty archetype)
-		for (std::size_t i{mArchetypePtrs.size()}; i > 1; --i)
-		{
-			const std::size_t idx{i - 1};
-
-			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			const Archetype *arch{mArchetypePtrs[idx].get()};
-
-			// Check if archetype has any entities across all chunks
-			bool empty{true};
-			for (ui chunk{0}; chunk < arch->getChunkCount(); ++chunk)
-			{
-				if (arch->getEntityCount(chunk) > 0)
-				{
-					empty = false;
-					break;
-				}
-			}
-
-			if (!empty)
-			{
-				continue;
-			}
-
-			mQueryCache.removeArchetype(arch);
-			mArchetypeMaskToID.erase(arch->getRegularMask());
-
-			// Swap with last element and pop to avoid shifting
-			const std::size_t lastIdx{mArchetypePtrs.size() - 1};
-
-			if (idx != lastIdx)
-			{
-				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-				std::swap(mArchetypePtrs[idx], mArchetypePtrs[lastIdx]);
-
-				// Update the swapped archetype's internal ID and mask-to-ID map
-				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-				mArchetypePtrs[idx]->setId(static_cast<ui>(idx));
-				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-				mArchetypeMaskToID[mArchetypePtrs[idx]->getRegularMask()] = static_cast<ui>(idx);
-
-				// Update entity records by iterating the moved archetype's chunks
-				// instead of scanning all records (O(entities in archetype) vs O(all entities))
-				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-				const Archetype *movedArch{mArchetypePtrs[idx].get()};
-				for (ui chunk{0}; chunk < movedArch->getChunkCount(); ++chunk)
-				{
-					const ui entityCount{movedArch->getEntityCount(chunk)};
-					const Entity *entities{movedArch->getEntityArray(chunk)};
-					for (ui slot{0}; slot < entityCount; ++slot)
-					{
-						// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
-						assert(entities[slot].index < mRecords.size());
-
-						// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic,cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-						mRecords[entities[slot].index].archetypeID = static_cast<ui>(idx);
-					}
-				}
-			}
-
-			mArchetypePtrs.pop_back();
-		}
-
-		// Shrink hierarchy vectors to the highest alive entity index + 1
-		{
-			const std::scoped_lock<std::mutex> lock(mHierarchyMutex);
-			ui maxAliveIndex{0};
-			bool hasAlive{false};
-
-			for (ui i{0}; i < static_cast<ui>(mRecords.size()); ++i)
-			{
-				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-				if (mRecords[i].state == State::Active)
-				{
-					maxAliveIndex = i;
-					hasAlive = true;
-				}
-			}
-
-			const std::size_t newSize{hasAlive ? static_cast<std::size_t>(maxAliveIndex) + 1 : 0};
-
-			if (newSize < mParent.size())
-			{
-				mParent.resize(newSize);
-				mParent.shrink_to_fit();
-				mChildren.resize(newSize);
-				mChildren.shrink_to_fit();
-			}
-		}
+		pruneEmptyArchetypes();
+		compactHierarchyStorage();
 
 		invalidateQueries();
 	}
@@ -606,9 +611,9 @@ namespace Dimensia::ECS
 			return mArchetypePtrs[iterator->second].get();
 		}
 
-		ui newID{static_cast<ui>(mArchetypePtrs.size())};
+		const ui newID{static_cast<ui>(mArchetypePtrs.size())};
 		auto newArch{std::make_unique<Archetype>(regularMask, newID)};
-		Archetype *ptr{newArch.get()};
+		Archetype *const ptr{newArch.get()};
 
 		mArchetypePtrs.push_back(std::move(newArch));
 		mArchetypeMaskToID[regularMask] = newID;
@@ -620,16 +625,19 @@ namespace Dimensia::ECS
 			const std::unique_lock lock(mMultiQueryMutex);
 			for (auto &[key, results] : mMultiQueryCache)
 			{
+				// NOLINTNEXTLINE(readability-redundant-parentheses)
 				if ((regularMask & key.required) != key.required)
 				{
 					continue;
 				}
 
+				// NOLINTNEXTLINE(readability-redundant-parentheses)
 				if (key.any && !key.anyTags && !(regularMask & key.any))
 				{
 					continue;
 				}
 
+				// NOLINTNEXTLINE(readability-redundant-parentheses)
 				if (key.none && (regularMask & key.none))
 				{
 					continue;
@@ -737,8 +745,8 @@ namespace Dimensia::ECS
 		Archetype *srcArch{mArchetypePtrs[rec.archetypeID].get()};
 		// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 
-		ui srcChunk{rec.chunkIndex};
-		ui srcSlot{rec.slotIndex};
+		const ui srcChunk{rec.chunkIndex};
+		const ui srcSlot{rec.slotIndex};
 
 		const ComponentMask oldRegular{srcArch->getRegularMask()};
 		const ComponentMask oldTags{srcArch->getTags(srcChunk, srcSlot)};
@@ -789,7 +797,7 @@ namespace Dimensia::ECS
 			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		});
 
-		Archetype *dstArch{getOrCreateArchetype(newRegularMask)};
+		Archetype *const dstArch{getOrCreateArchetype(newRegularMask)};
 		const VersionType version{nextVersion()};
 		auto [newChunk, newSlot]{dstArch->addEntity(entity, finalCopy, finalMove, targetTags, version)};
 		auto [movedEntity, vacatedSlot]{srcArch->removeEntity(srcChunk, srcSlot, version)};

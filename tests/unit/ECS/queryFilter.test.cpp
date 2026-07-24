@@ -137,7 +137,7 @@ SCENARIO("QueryFilter tag clause semantics")
 		WHEN("running a tag-filtered query under every execution policy")
 		{
 			std::array<ExecutionPolicy, 4> policies{ExecutionPolicy::Seq, ExecutionPolicy::Par, ExecutionPolicy::ParBatched,
-													ExecutionPolicy::ParStealing};
+													ExecutionPolicy::ParStealing,};
 			for (ExecutionPolicy policy : policies)
 			{
 				std::atomic<std::size_t> count{};
