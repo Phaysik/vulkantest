@@ -1,16 +1,25 @@
+#ifndef catch2
+	#define catch2
+#endif
+
+#include <catch2/catch_test_macros.hpp>
+
 #include "ECS/ecs.h"
 
 #include <cstddef>
 #include <latch>
+#include <new>
 #include <stdexcept>
+#include <string>
 #include <thread>
 
 #include "Components/Health/healthComponent.h"
+#include "Components/Name/nameComponent.h"
 #include "Components/Position/positionComponent.h"
+#include "ECS/componentMask.h"
+#include "ECS/componentRegistry.h"
 #include "ECS/entity.h"
 #include "Tags/Alive/aliveTag.h"
-
-#include <catch2/catch_test_macros.hpp>
 
 // NOLINTBEGIN(misc-const-correctness,cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
 
@@ -129,6 +138,140 @@ SCENARIO("ECS batch sizing")
 			THEN("the result remains nonzero")
 			{
 				CHECK((batchSize == 1));
+			}
+		}
+	}
+}
+
+SCENARIO("ECS runtime component ID validation")
+{
+	using Dimensia::ECS::ComponentMask;
+	using Dimensia::ECS::ECS;
+	using Dimensia::ECS::Entity;
+	using Dimensia::Registry::MAX_COMPONENTS;
+
+	GIVEN("a live entity and an out-of-range component identifier")
+	{
+		ECS ecs;
+		Entity entity{ecs.createEntity()};
+		auto invalidComponentID{static_cast<Dimensia::Registry::ComponentTypeID>(MAX_COMPONENTS)};
+
+		WHEN("the identifier crosses a runtime ECS boundary")
+		{
+			ComponentMask mask{0, 0};
+			mask.setBit(invalidComponentID);
+
+			THEN("the operation fails safely without changing storage")
+			{
+				CHECK_THROWS_AS(ecs.removeComponent(entity, invalidComponentID), std::out_of_range);
+				CHECK_FALSE(mask.testBit(invalidComponentID));
+				CHECK(ecs.alive(entity));
+			}
+		}
+	}
+}
+
+SCENARIO("ECS entity creation rollback")
+{
+	using Dimensia::Components::Health;
+	using Dimensia::ECS::ECS;
+	using Dimensia::ECS::Entity;
+
+	GIVEN("a reusable entity index and a failing archetype allocation")
+	{
+		ECS ecs;
+		Entity releasedEntity{ecs.createEntity()};
+		ecs.destroyEntity(releasedEntity, false);
+
+		WHEN("component entity creation throws after reserving the index")
+		{
+			ecs.failNextEntityInsertionForTest();
+			CHECK_THROWS_AS(ecs.createEntityWith(Health{10.0F}), std::bad_alloc);
+			Entity replacement{ecs.createEntity()};
+
+			THEN("the reservation is returned to the free list")
+			{
+				CHECK((replacement.index == releasedEntity.index));
+				CHECK(ecs.alive(replacement));
+				CHECK_FALSE(ecs.alive(releasedEntity));
+			}
+		}
+	}
+
+	GIVEN("a fresh entity index and a failing archetype allocation")
+	{
+		ECS ecs;
+
+		WHEN("component entity creation throws after reserving the first index")
+		{
+			ecs.failNextEntityInsertionForTest();
+			CHECK_THROWS_AS(ecs.createEntityWith(Health{10.0F}), std::bad_alloc);
+			Entity replacement{ecs.createEntity()};
+
+			THEN("the top index is rewound for the next creation")
+			{
+				CHECK((replacement.index == 0));
+				CHECK((replacement.generation == 1));
+				CHECK(ecs.alive(replacement));
+			}
+		}
+	}
+}
+
+SCENARIO("ECS clone rollback")
+{
+	using Dimensia::Components::Name;
+	using Dimensia::ECS::ECS;
+	using Dimensia::ECS::Entity;
+
+	GIVEN("a source with an allocating component and a reusable entity index")
+	{
+		ECS ecs;
+		std::string sourceName(256, 'n');
+		Entity source{ecs.createEntityWith(Name{sourceName})};
+		Entity releasedEntity{ecs.createEntity()};
+		ecs.destroyEntity(releasedEntity, false);
+
+		WHEN("copying the clone component throws")
+		{
+			ecs.failNextEntityInsertionForTest();
+			CHECK_THROWS_AS(ecs.cloneEntity(source), std::bad_alloc);
+			Entity replacement{ecs.createEntity()};
+			std::size_t namedEntities{};
+			ecs.forEach<Name>([&](Entity, Name &) { ++namedEntities; });
+
+			THEN("the partial clone is removed and the source remains intact")
+			{
+				REQUIRE(ecs.getComponent<Name>(source) != nullptr);
+				CHECK((ecs.getComponent<Name>(source)->name == sourceName));
+				CHECK((replacement.index == releasedEntity.index));
+				CHECK((namedEntities == 1));
+				CHECK(ecs.alive(source));
+			}
+		}
+	}
+
+	GIVEN("a source hierarchy whose child clone insertion will fail")
+	{
+		ECS ecs;
+		Entity sourceRoot{ecs.createEntityWith(Name{"root"})};
+		Entity sourceChild{ecs.createEntityWith(Name{"child"})};
+		ecs.setParent(sourceChild, sourceRoot);
+
+		WHEN("hierarchy cloning fails after inserting the cloned root")
+		{
+			ecs.failEntityInsertionAfterForTest(1);
+			CHECK_THROWS_AS(ecs.cloneEntity(sourceRoot, true), std::bad_alloc);
+			std::size_t namedEntities{};
+			ecs.forEach<Name>([&](Entity, Name &) { ++namedEntities; });
+
+			THEN("all partial clones are destroyed and the source hierarchy remains intact")
+			{
+				CHECK((namedEntities == 2));
+				CHECK(ecs.alive(sourceRoot));
+				CHECK(ecs.alive(sourceChild));
+				CHECK((ecs.getParent(sourceChild) == sourceRoot));
+				CHECK((ecs.getChildren(sourceRoot).size() == 1));
 			}
 		}
 	}

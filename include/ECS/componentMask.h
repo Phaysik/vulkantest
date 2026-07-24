@@ -201,6 +201,11 @@ namespace Dimensia::ECS
 			*/
 			constexpr void setBit(const ul typeID) noexcept
 			{
+				if (typeID >= UPPER_HALF_BIT_MASK)
+				{
+					return;
+				}
+
 				if (typeID < LOWER_HALF_BIT_MASK)
 				{
 					mLow |= (1ULL << typeID);
@@ -216,6 +221,11 @@ namespace Dimensia::ECS
 			*/
 			constexpr void clearBit(const ul typeID) noexcept
 			{
+				if (typeID >= UPPER_HALF_BIT_MASK)
+				{
+					return;
+				}
+
 				if (typeID < LOWER_HALF_BIT_MASK)
 				{
 					mLow &= ~(1ULL << typeID);
@@ -232,6 +242,11 @@ namespace Dimensia::ECS
 			*/
 			ATTR_NODISCARD constexpr bool testBit(const ul typeID) const noexcept
 			{
+				if (typeID >= UPPER_HALF_BIT_MASK)
+				{
+					return false;
+				}
+
 				if (typeID < LOWER_HALF_BIT_MASK)
 				{
 					return (mLow & (1ULL << typeID)) != 0;

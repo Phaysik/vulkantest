@@ -26,6 +26,10 @@
 #include <utility>
 #include <vector>
 
+#ifdef catch2
+	#include <new>
+#endif
+
 #include "Core/cconcepts.h"
 #include "Core/typedefs.h"
 #include "Threading/threadPool.h"
@@ -344,6 +348,26 @@ namespace Dimensia::ECS
 
 			void invalidateQueries();
 
+#ifdef catch2
+			/*! @brief Arms a one-shot entity insertion failure for rollback tests.
+				@details The next entity creation or clone throws `std::bad_alloc` after reserving its entity identifier and before archetype insertion.
+				@qualifier test
+			*/
+			void failNextEntityInsertionForTest() noexcept
+			{
+				mEntityInsertionsBeforeFailure = 0;
+			}
+
+			/*! @brief Arms an insertion failure after a number of successful insertions.
+				@param[in] successfulInsertions Number of entity insertions allowed before the one-shot failure.
+				@qualifier test
+			*/
+			void failEntityInsertionAfterForTest(const std::size_t successfulInsertions) noexcept
+			{
+				mEntityInsertionsBeforeFailure = successfulInsertions;
+			}
+#endif
+
 			// MARK: Template Member Functions
 
 			/*! @brief Create an entity and emplace provided components/tags.
@@ -390,19 +414,30 @@ namespace Dimensia::ECS
 				// Allocate entity ID without placing in any archetype
 				Entity entity{allocateEntityID()};
 
-				// Place directly in the target archetype, bypassing the empty archetype
-				Archetype *targetArch{getOrCreateArchetype(regularMask)};
+				try
+				{
+#ifdef catch2
+					throwIfEntityInsertionFailureArmed();
+#endif
+					// Place directly in the target archetype, bypassing the empty archetype
+					Archetype *targetArch{getOrCreateArchetype(regularMask)};
 
-				auto [chunk, slot]{targetArch->addEntity(entity, copyData, moveData, tagMask, version)};
+					auto [chunk, slot]{targetArch->addEntity(entity, copyData, moveData, tagMask, version)};
 
-				assert(entity.index < mRecords.size());
+					assert(entity.index < mRecords.size());
 
-				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-				mRecords[entity.index] = {.generation = entity.generation,
-										  .archetypeID = targetArch->getId(),
-										  .chunkIndex = chunk,
-										  .slotIndex = slot,
-										  .state = State::Active,};
+					// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+					mRecords[entity.index] = {.generation = entity.generation,
+											  .archetypeID = targetArch->getId(),
+											  .chunkIndex = chunk,
+											  .slotIndex = slot,
+											  .state = State::Active,};
+				}
+				catch (...)
+				{
+					releaseReservedEntityID(entity);
+					throw;
+				}
 
 				return entity;
 			}
@@ -703,6 +738,35 @@ namespace Dimensia::ECS
 			   the caller must place it and populate `mRecords[entity.index]`.
 			*/
 			Entity allocateEntityID();
+
+			/*! @brief Returns an uncommitted entity identifier to the free list.
+				@param[in] entity Reserved identifier that was not inserted into an archetype.
+				@pre The structural mutation guard is held and @p entity is not active.
+				@post The entity index is available to a subsequent creation operation.
+			*/
+			void releaseReservedEntityID(const Entity &entity) noexcept;
+
+#ifdef catch2
+			/*! @brief Throws the armed one-shot insertion failure.
+				@throws std::bad_alloc When the per-world insertion failure is armed.
+				@qualifier test
+			*/
+			void throwIfEntityInsertionFailureArmed()
+			{
+				if (!mEntityInsertionsBeforeFailure.has_value())
+				{
+					return;
+				}
+
+				if (*mEntityInsertionsBeforeFailure == 0)
+				{
+					mEntityInsertionsBeforeFailure.reset();
+					throw std::bad_alloc{};
+				}
+
+				--*mEntityInsertionsBeforeFailure;
+			}
+#endif
 
 			/*! @brief Tests whether an archetype has no live rows in any chunk.
 				@param[in] archetype Archetype to inspect.
@@ -1118,6 +1182,13 @@ namespace Dimensia::ECS
 				@brief Monotonically increasing counter used to assign new entity indices when free-list is empty.
 			*/
 			ui mNextEntityIndex{0};
+
+#ifdef catch2
+			/*! @brief Stores the successful insertion countdown before a test-build failure.
+				@qualifier test
+			*/
+			std::optional<std::size_t> mEntityInsertionsBeforeFailure{};
+#endif
 	};
 } // namespace Dimensia::ECS
 

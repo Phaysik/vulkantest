@@ -14,8 +14,8 @@
 #include <cstddef>
 #include <memory>
 #include <mutex>
-#include <new>
 #include <optional>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -176,30 +176,23 @@ namespace Dimensia::ECS
 
 	Entity ECS::allocateEntityID()
 	{
-		ui index{};
-		ui gen{};
+		const bool reuseIndex{!mFreeIndices.empty()};
+		const ui index{reuseIndex ? mFreeIndices.back() : mNextEntityIndex};
 
-		if (!mFreeIndices.empty())
+		if (!reuseIndex)
 		{
-			index = mFreeIndices.back();
-			mFreeIndices.pop_back();
+			if (mNextEntityIndex == UINT32_MAX)
+			{
+				throw std::overflow_error("ECS entity index space exhausted");
+			}
 
-			assert(index < mRecords.size());
-
-			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			gen = mRecords[index].generation;
+			mRecords.resize(static_cast<std::size_t>(index) + 1);
 		}
-		else
-		{
-			index = mNextEntityIndex++;
-			mRecords.resize(index + 1);
-			gen = 1;
 
-			assert(index < mRecords.size());
+		assert(index < mRecords.size());
 
-			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			mRecords[index].generation = gen;
-		}
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		const ui generation{reuseIndex ? mRecords[index].generation : 1};
 
 		const std::scoped_lock<std::mutex> lock(mHierarchyMutex);
 
@@ -209,7 +202,41 @@ namespace Dimensia::ECS
 			mChildren.resize(index + 1);
 		}
 
-		return Entity{.index = index, .generation = gen};
+		if (reuseIndex)
+		{
+			mFreeIndices.pop_back();
+		}
+		else
+		{
+			++mNextEntityIndex;
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			mRecords[index].generation = generation;
+		}
+
+		return Entity{.index = index, .generation = generation};
+	}
+
+	void ECS::releaseReservedEntityID(const Entity &entity) noexcept
+	{
+		assert(entity.index < mRecords.size());
+
+		// A newly issued top index can be rewound without touching the free list.
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		if (mRecords[entity.index].state == State::Uninitialized && entity.index + 1 == mNextEntityIndex)
+		{
+			--mNextEntityIndex;
+			mRecords.pop_back();
+			return;
+		}
+
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+		mRecords[entity.index] = {.generation = entity.generation,
+								  .archetypeID = INVALID_ARCHETYPE_ID,
+								  .chunkIndex = 0,
+								  .slotIndex = 0,
+								  .state = State::Destroyed,};
+		mFreeIndices.push_back(entity.index);
 	}
 
 	Entity ECS::createEntity()
@@ -218,23 +245,34 @@ namespace Dimensia::ECS
 		const VersionType version{nextVersion()};
 		Entity entity{allocateEntityID()};
 
-		Archetype *const emptyArch{getOrCreateArchetype(ComponentMask(0))};
-		std::array<const void *, MAX_COMPONENTS> noCopy{};
-		std::array<void *, MAX_COMPONENTS> noMove{};
+		try
+		{
+#ifdef catch2
+			throwIfEntityInsertionFailureArmed();
+#endif
+			Archetype *const emptyArch{getOrCreateArchetype(ComponentMask(0))};
+			std::array<const void *, MAX_COMPONENTS> noCopy{};
+			std::array<void *, MAX_COMPONENTS> noMove{};
 
-		noCopy.fill(nullptr);
-		noMove.fill(nullptr);
+			noCopy.fill(nullptr);
+			noMove.fill(nullptr);
 
-		auto [chunk, slot]{emptyArch->addEntity(entity, noCopy, noMove, ComponentMask(0), version)};
+			auto [chunk, slot]{emptyArch->addEntity(entity, noCopy, noMove, ComponentMask(0), version)};
 
-		assert(entity.index < mRecords.size());
+			assert(entity.index < mRecords.size());
 
-		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-		mRecords[entity.index] = {.generation = entity.generation,
-								  .archetypeID = emptyArch->getId(),
-								  .chunkIndex = chunk,
-								  .slotIndex = slot,
-								  .state = State::Active,};
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			mRecords[entity.index] = {.generation = entity.generation,
+									  .archetypeID = emptyArch->getId(),
+									  .chunkIndex = chunk,
+									  .slotIndex = slot,
+									  .state = State::Active,};
+		}
+		catch (...)
+		{
+			releaseReservedEntityID(entity);
+			throw;
+		}
 
 		return entity;
 	}
@@ -335,82 +373,82 @@ namespace Dimensia::ECS
 		assert(src.index < mRecords.size());
 
 		// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-		const EntityRecord &srcRec{mRecords[src.index]};
+		const EntityRecord srcRec{mRecords[src.index]};
 
 		assert(srcRec.archetypeID < mArchetypePtrs.size());
 
-		const Archetype *srcArch{mArchetypePtrs[srcRec.archetypeID].get()};
+		Archetype *srcArch{mArchetypePtrs[srcRec.archetypeID].get()};
 
 		// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 
 		const ComponentMask srcTags{srcArch->getTags(srcRec.chunkIndex, srcRec.slotIndex)};
 
 		std::array<const void *, MAX_COMPONENTS> copyData{};
-		std::array<void *, MAX_COMPONENTS> ownedPtrs{};
+		std::array<void *, MAX_COMPONENTS> noMove{};
 		copyData.fill(nullptr);
-		ownedPtrs.fill(nullptr);
+		noMove.fill(nullptr);
 
 		srcArch->forEachComponent([&](ComponentTypeID compID) {
-			const void *srcPtr{getComponentPtr(src, compID)};
-
-			if (!srcPtr)
-			{
-				return; // shouldn't happen
-			}
-
-			assert(compID < ComponentInfos.size());
-
-			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			const ComponentInfo &info{ComponentInfos[compID]};
-
-			void *mem = operator new(info.size, std::align_val_t(info.alignment));
-			info.copyConstruct(mem, srcPtr);
-
 			assert(compID < copyData.size());
 
-			// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			copyData[compID] = mem;
-			ownedPtrs[compID] = mem;
-			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-		});
-
-		// Create a new entity (initially in the empty archetype)
-		Entity dst = createEntity();
-
-		// Move the new entity to the target archetype, constructing components from the copies
-		moveEntity(dst, srcArch->getRegularMask(), copyData, {}, srcTags);
-
-		// Free the temporary component copies allocated above
-		srcArch->forEachComponent([&](ComponentTypeID compID) {
 			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			if (ownedPtrs[compID] != nullptr)
-			{
-				assert(compID < ComponentInfos.size());
-
-				// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-				const ComponentInfo &info{ComponentInfos[compID]};
-				info.destructor(ownedPtrs[compID]);
-				operator delete(ownedPtrs[compID], std::align_val_t(info.alignment));
-				// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			}
+			copyData[compID] = getComponentPtr(src, compID);
 		});
 
-		// Recursively clone children if requested
-		if (cloneHierarchy)
+		Entity dst{allocateEntityID()};
+		try
 		{
-			const std::vector<Entity> children{getChildren(src)};
+#ifdef catch2
+			throwIfEntityInsertionFailureArmed();
+#endif
+			auto [chunk, slot]{srcArch->addEntity(dst, copyData, noMove, srcTags, nextVersion())};
 
-			for (const Entity &child : children)
+			assert(dst.index < mRecords.size());
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			mRecords[dst.index] = {.generation = dst.generation,
+								   .archetypeID = srcArch->getId(),
+								   .chunkIndex = chunk,
+								   .slotIndex = slot,
+								   .state = State::Active,};
+		}
+		catch (...)
+		{
+			releaseReservedEntityID(dst);
+			throw;
+		}
+
+		try
+		{
+			if (cloneHierarchy)
 			{
-				if (!alive(child))
+				const std::vector<Entity> children{getChildren(src)};
+
+				for (const Entity &child : children)
 				{
-					continue;
+					if (!alive(child))
+					{
+						continue;
+					}
+
+					Entity childClone{cloneEntity(child, true)};
+
+					try
+					{
+						setParent(childClone, dst);
+					}
+					catch (...)
+					{
+						destroyEntity(childClone, true);
+						throw;
+					}
 				}
-
-				const Entity childClone{cloneEntity(child, true)};
-
-				setParent(childClone, dst);
 			}
+		}
+		catch (...)
+		{
+			destroyEntity(dst, true);
+			throw;
 		}
 
 		return dst;
@@ -536,6 +574,11 @@ namespace Dimensia::ECS
 	void ECS::removeComponent(const Entity &entity, const ComponentTypeID compID)
 	{
 		const StructuralGuard structuralGuard{mStructuralMutex};
+		if (compID >= ComponentInfos.size())
+		{
+			throw std::out_of_range("Invalid ECS component type ID");
+		}
+
 		if (!alive(entity))
 		{
 			return;

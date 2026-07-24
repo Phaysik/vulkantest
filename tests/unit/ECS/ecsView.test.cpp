@@ -22,7 +22,7 @@ SCENARIO("ECS view change tracking")
 		ECS ecs;
 		Entity target{ecs.createEntityWith(Health{10.0F})};
 		SystemVersion observer;
-		ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([](Entity, Health &) {});
+		ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([](Entity, const Health &) {});
 
 		WHEN("the view mutates its component")
 		{
@@ -33,7 +33,7 @@ SCENARIO("ECS view change tracking")
 				health.hp = 40.0F;
 			}
 			std::size_t changes{};
-			ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([&](Entity, Health &) { ++changes; });
+			ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([&](Entity, const Health &) { ++changes; });
 
 			THEN("the dereferenced chunk advances its component version")
 			{
@@ -48,7 +48,7 @@ SCENARIO("ECS view change tracking")
 		ECS ecs;
 		static_cast<void>(ecs.createEntityWith(Health{10.0F}));
 		SystemVersion observer;
-		ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([](Entity, Health &) {});
+		ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([](Entity, const Health &) {});
 
 		WHEN("the read-only view is exhausted")
 		{
@@ -58,7 +58,7 @@ SCENARIO("ECS view change tracking")
 				static_cast<void>(health);
 			}
 			std::size_t changes{};
-			ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([&](Entity, Health &) { ++changes; });
+			ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([&](Entity, const Health &) { ++changes; });
 
 			THEN("the observer remains clean")
 			{
@@ -76,7 +76,7 @@ SCENARIO("ECS view change tracking")
 			static_cast<void>(ecs.createEntityWith(Health{static_cast<float>(index)}));
 		}
 		SystemVersion observer;
-		ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([](Entity, Health &) {});
+		ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([](Entity, const Health &) {});
 
 		WHEN("a writable view dereferences one row and exits")
 		{
@@ -87,7 +87,7 @@ SCENARIO("ECS view change tracking")
 				break;
 			}
 			std::size_t changedRows{};
-			ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([&](Entity, Health &) { ++changedRows; });
+			ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([&](Entity, const Health &) { ++changedRows; });
 
 			THEN("only the touched chunk is considered changed")
 			{

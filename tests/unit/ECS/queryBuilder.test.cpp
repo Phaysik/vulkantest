@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <stdexcept>
+#include <type_traits>
 
 #include "Components/Health/healthComponent.h"
 #include "Components/Position/positionComponent.h"
@@ -28,19 +29,19 @@ SCENARIO("QueryBuilder explicit component access tracking")
 		Entity target{ecs.createEntityWith(Health{10.0F}, Position{.x = 1.0F, .y = 2.0F, .z = 3.0F})};
 		SystemVersion healthObserver;
 		SystemVersion positionObserver;
-		ecs.query<Health>().version(healthObserver).changed<Health>().read<Health>().forEach([](Entity, Health &) {});
-		ecs.query<Position>().version(positionObserver).changed<Position>().read<Position>().forEach([](Entity, Position &) {});
+		ecs.query<Health>().version(healthObserver).changed<Health>().read<Health>().forEach([](Entity, const Health &) {});
+		ecs.query<Position>().version(positionObserver).changed<Position>().read<Position>().forEach([](Entity, const Position &) {});
 
 		WHEN("Position is declared read-only and Health writable")
 		{
 			ecs.query<Position, Health>().read<Position>().write<Health>().forEach(
-				[](Entity, Position &, Health &health) { health.hp += 5.0F; });
+				[](Entity, const Position &, Health &health) { health.hp += 5.0F; });
 			std::size_t healthChanges{};
 			std::size_t positionChanges{};
-			ecs.query<Health>().version(healthObserver).changed<Health>().read<Health>().forEach([&](Entity, Health &) {
+			ecs.query<Health>().version(healthObserver).changed<Health>().read<Health>().forEach([&](Entity, const Health &) {
 				++healthChanges;
 			});
-			ecs.query<Position>().version(positionObserver).changed<Position>().read<Position>().forEach([&](Entity, Position &) {
+			ecs.query<Position>().version(positionObserver).changed<Position>().read<Position>().forEach([&](Entity, const Position &) {
 				++positionChanges;
 			});
 
@@ -58,17 +59,38 @@ SCENARIO("QueryBuilder explicit component access tracking")
 		ECS ecs;
 		static_cast<void>(ecs.createEntityWith(Health{10.0F}));
 		SystemVersion observer;
-		ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([](Entity, Health &) {});
+		ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([](Entity, const Health &) {});
 
 		WHEN("the query performs no write")
 		{
-			ecs.query<Health>().read<Health>().forEach([](Entity, Health &) {});
+			ecs.query<Health>().read<Health>().forEach([](Entity, const Health &) {});
 			std::size_t changes{};
-			ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([&](Entity, Health &) { ++changes; });
+			ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([&](Entity, const Health &) { ++changes; });
 
 			THEN("the observer remains clean")
 			{
 				CHECK((changes == 0));
+			}
+		}
+	}
+
+	GIVEN("a query with a read-declared component")
+	{
+		ECS ecs;
+		static_cast<void>(ecs.createEntityWith(Health{10.0F}));
+
+		WHEN("the callback receives the component")
+		{
+			bool receivedConstReference{false};
+			ecs.query<Health>().read<Health>().forEach([&](Entity, auto &health) {
+				using HealthReference = decltype(health);
+				static_assert(std::is_const_v<std::remove_reference_t<HealthReference>>);
+				receivedConstReference = std::is_const_v<std::remove_reference_t<HealthReference>>;
+			});
+
+			THEN("the component is exposed as a const reference")
+			{
+				CHECK(receivedConstReference);
 			}
 		}
 	}
@@ -78,7 +100,7 @@ SCENARIO("QueryBuilder explicit component access tracking")
 		ECS ecs;
 		Entity target{ecs.createEntityWith(Health{10.0F})};
 		SystemVersion observer;
-		ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([](Entity, Health &) {});
+		ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([](Entity, const Health &) {});
 
 		WHEN("the callback throws")
 		{
@@ -95,7 +117,7 @@ SCENARIO("QueryBuilder explicit component access tracking")
 				exceptionObserved = true;
 			}
 			std::size_t changes{};
-			ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([&](Entity, Health &) { ++changes; });
+			ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([&](Entity, const Health &) { ++changes; });
 
 			THEN("the exception propagates and the partial write remains observable")
 			{
@@ -108,8 +130,12 @@ SCENARIO("QueryBuilder explicit component access tracking")
 
 	GIVEN("one writable query for each execution policy")
 	{
-		std::array<ExecutionPolicy, 4> policies{ExecutionPolicy::Seq, ExecutionPolicy::Par, ExecutionPolicy::ParBatched,
-											ExecutionPolicy::ParStealing,};
+		std::array<ExecutionPolicy, 4> policies{
+			ExecutionPolicy::Seq,
+			ExecutionPolicy::Par,
+			ExecutionPolicy::ParBatched,
+			ExecutionPolicy::ParStealing,
+		};
 
 		WHEN("each policy executes a writable query")
 		{
@@ -119,12 +145,12 @@ SCENARIO("QueryBuilder explicit component access tracking")
 				ECS policyEcs;
 				static_cast<void>(policyEcs.createEntityWith(Health{10.0F}));
 				SystemVersion observer;
-				policyEcs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([](Entity, Health &) {});
+				policyEcs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([](Entity, const Health &) {});
 				policyEcs.query<Health>().policy(policies.at(policyIndex)).write<Health>().forEach([](Entity, Health &health) {
 					health.hp += 1.0F;
 				});
 				policyEcs.query<Health>().version(observer).changed<Health>().read<Health>().forEach(
-					[&](Entity, Health &) { ++changeCounts.at(policyIndex); });
+					[&](Entity, const Health &) { ++changeCounts.at(policyIndex); });
 			}
 
 			THEN("every execution policy stamps the written component")
@@ -143,16 +169,18 @@ SCENARIO("QueryBuilder explicit component access tracking")
 		Entity target{ecs.createEntityWith(Health{10.0F})};
 		SystemVersion firstObserver;
 		SystemVersion secondObserver;
-		ecs.query<Health>().version(firstObserver).changed<Health>().read<Health>().forEach([](Entity, Health &) {});
-		ecs.query<Health>().version(secondObserver).changed<Health>().read<Health>().forEach([](Entity, Health &) {});
+		ecs.query<Health>().version(firstObserver).changed<Health>().read<Health>().forEach([](Entity, const Health &) {});
+		ecs.query<Health>().version(secondObserver).changed<Health>().read<Health>().forEach([](Entity, const Health &) {});
 
 		WHEN("the component changes and both systems process it")
 		{
 			ecs.addComponent(target, Health{30.0F});
 			std::size_t firstChanges{};
 			std::size_t secondChanges{};
-			ecs.query<Health>().version(firstObserver).changed<Health>().read<Health>().forEach([&](Entity, Health &) { ++firstChanges; });
-			ecs.query<Health>().version(secondObserver).changed<Health>().read<Health>().forEach([&](Entity, Health &) {
+			ecs.query<Health>().version(firstObserver).changed<Health>().read<Health>().forEach([&](Entity, const Health &) {
+				++firstChanges;
+			});
+			ecs.query<Health>().version(secondObserver).changed<Health>().read<Health>().forEach([&](Entity, const Health &) {
 				++secondChanges;
 			});
 

@@ -29,14 +29,14 @@ SCENARIO("SystemVersion global change timeline")
 			ecs.addComponent(hotEntity, Health{static_cast<float>(iteration)});
 		}
 		SystemVersion observer;
-		ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([](Entity, Health &) {});
+		ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([](Entity, const Health &) {});
 
 		WHEN("the quieter archetype changes after the observer baseline")
 		{
 			ecs.addComponent(quietEntity, Health{99.0F});
 			std::size_t processedCount{};
 			Entity processedEntity{};
-			ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([&](Entity candidate, Health &) {
+			ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([&](Entity candidate, const Health &) {
 				++processedCount;
 				processedEntity = candidate;
 			});

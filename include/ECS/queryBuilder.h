@@ -23,9 +23,10 @@
 	@tparam ReqList `TypeList<...>` of required component types.
 	@tparam AnyList `TypeList<...>` of alternative-match component types (default empty).
 	@tparam NoneList `TypeList<...>` of excluded component types (default empty).
-	@note The builder is lightweight (4 members) and designed for chaining on temporaries. It does not own any resources.
+	@tparam ReadList `TypeList<...>` of required components exposed as const references.
+	@note The builder is lightweight and designed for chaining on temporaries. It does not own any resources.
 */
-template <bool IsConst, typename ReqList, typename AnyList = TypeList<>, typename NoneList = TypeList<>>
+template <bool IsConst, typename ReqList, typename AnyList = TypeList<>, typename NoneList = TypeList<>, typename ReadList = TypeList<>>
 class QueryBuilder
 {
 
@@ -87,11 +88,11 @@ class QueryBuilder
 		}
 
 		/*! @brief Declares required components that this query only reads.
-			@tparam Ts Required regular component types removed from the conservative write set.
-			@return Reference to this builder for chaining.
+			@tparam Ts Required regular component types exposed to the callback as const references and removed from the write set.
+			@return A builder carrying the updated compile-time read access declaration.
 		*/
 		template <typename... Ts>
-		QueryBuilder &read()
+		ATTR_NODISCARD auto read()
 		{
 			const ComponentMask requested{buildRequiredMask<Ts...>()};
 			const ComponentMask required{buildMaskFromList<ReqList>()};
@@ -100,17 +101,19 @@ class QueryBuilder
 			{
 				throw std::invalid_argument("Query read access must name required regular components");
 			}
-			forEachSetBit(requested, [&](const ComponentTypeID componentTypeID) { mWriteMask.clearBit(componentTypeID); });
-			return *this;
+			using NextReadList = typename TypeListConcat<ReadList, TypeList<Ts...>>::type;
+			ComponentMask nextWriteMask{mWriteMask};
+			forEachSetBit(requested, [&](const ComponentTypeID componentTypeID) { nextWriteMask.clearBit(componentTypeID); });
+			return QueryBuilder<IsConst, ReqList, AnyList, NoneList, NextReadList>{*this, nextWriteMask};
 		}
 
 		/*! @brief Declares required components that this query may write.
-			@tparam Ts Required regular component types added to the write set.
-			@return Reference to this builder for chaining.
+			@tparam Ts Required regular component types exposed to the callback as mutable references and added to the write set.
+			@return A builder carrying the updated compile-time write access declaration.
 		*/
 		template <typename... Ts>
 			requires(!IsConst)
-		QueryBuilder &write()
+		ATTR_NODISCARD auto write()
 		{
 			const ComponentMask requested{buildRequiredMask<Ts...>()};
 			const ComponentMask required{buildMaskFromList<ReqList>()};
@@ -119,8 +122,9 @@ class QueryBuilder
 			{
 				throw std::invalid_argument("Query write access must name required regular components");
 			}
-			mWriteMask |= requested;
-			return *this;
+			using NextReadList = typename TypeListRemove<ReadList, Ts...>::type;
+			ComponentMask nextWriteMask{mWriteMask | requested};
+			return QueryBuilder<IsConst, ReqList, AnyList, NoneList, NextReadList>{*this, nextWriteMask};
 		}
 
 		/*! @brief Execute the query, invoking @p func for each matching entity.
@@ -137,16 +141,58 @@ class QueryBuilder
 
 			if constexpr (!isFilterQuery)
 			{
-				[&]<typename... Comps>(TypeList<Comps...>) { dispatchRaw<Comps...>(std::forward<Func>(func)); }(ReqList{});
+				[&]<typename... Comps>(TypeList<Comps...>) {
+					auto accessFunction{makeAccessFunction<Comps...>(std::forward<Func>(func))};
+					dispatchRaw<Comps...>(std::move(accessFunction));
+				}(ReqList{});
 			}
 			else
 			{
-				dispatchFiltered(std::forward<Func>(func));
+				[&]<typename... Comps>(TypeList<Comps...>) {
+					auto accessFunction{makeAccessFunction<Comps...>(std::forward<Func>(func))};
+					dispatchFiltered(std::move(accessFunction));
+				}(ReqList{});
 			}
 		}
 
 	private:
 		using DirtyChunks = std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>>;
+
+		template <bool, typename, typename, typename, typename>
+		friend class QueryBuilder;
+
+		template <typename OtherReadList>
+		explicit QueryBuilder(const QueryBuilder<IsConst, ReqList, AnyList, NoneList, OtherReadList> &other,
+						  const ComponentMask writeMask) noexcept
+			: mECS(other.mECS), mPolicy(other.mPolicy), mVersion(other.mVersion), mCmds(other.mCmds), mChangedMask(other.mChangedMask),
+			  mWriteMask(writeMask)
+		{}
+
+		template <typename Component, typename Arg>
+		static decltype(auto) applyComponentAccess(Arg &&arg)
+		{
+			if constexpr (!isTagV<Component> && (IsConst || TypeListContains<Component, ReadList>::value))
+			{
+				return std::as_const(arg);
+			}
+			else
+			{
+				return std::forward<Arg>(arg);
+			}
+		}
+
+		template <typename... Components, typename Func>
+		static auto makeAccessFunction(Func &&func)
+		{
+			return [function = std::forward<Func>(func)](auto &&entity, auto &&...components) {
+				static_assert(sizeof...(Components) == sizeof...(components));
+				auto componentTuple{std::forward_as_tuple(std::forward<decltype(components)>(components)...)};
+				[&]<std::size_t... Index>(std::index_sequence<Index...>) {
+					function(std::forward<decltype(entity)>(entity),
+							 applyComponentAccess<Components>(std::get<Index>(componentTuple))...);
+				}(std::index_sequence_for<Components...>{});
+			};
+		}
 
 		template <typename... Components, typename Func>
 		void dispatchRaw(Func &&func)

@@ -286,11 +286,11 @@ SCENARIO("CommandBuffer world timeline integration")
 			commands.addComponent(target, Health{10.0F});
 			commands.apply(ecs);
 			std::size_t added{};
-			ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([&](Entity, Health &) { ++added; });
+			ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([&](Entity, const Health &) { ++added; });
 			commands.addComponent(target, Health{20.0F});
 			commands.apply(ecs);
 			std::size_t replaced{};
-			ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([&](Entity, Health &) { ++replaced; });
+			ecs.query<Health>().version(observer).changed<Health>().read<Health>().forEach([&](Entity, const Health &) { ++replaced; });
 
 			THEN("both deferred writes advance the shared timeline")
 			{
@@ -311,9 +311,9 @@ SCENARIO("CommandBuffer world timeline integration")
 		SystemVersion removeObserver;
 		SystemVersion tagObserver;
 		SystemVersion destroyObserver;
-		ecs.query<Position>().version(removeObserver).changed<Position>().read<Position>().forEach([](Entity, Position &) {});
-		ecs.query<Position>().version(tagObserver).changed<Position>().read<Position>().forEach([](Entity, Position &) {});
-		ecs.query<Position>().version(destroyObserver).changed<Position>().read<Position>().forEach([](Entity, Position &) {});
+		ecs.query<Position>().version(removeObserver).changed<Position>().read<Position>().forEach([](Entity, const Position &) {});
+		ecs.query<Position>().version(tagObserver).changed<Position>().read<Position>().forEach([](Entity, const Position &) {});
+		ecs.query<Position>().version(destroyObserver).changed<Position>().read<Position>().forEach([](Entity, const Position &) {});
 		CommandBuffer commands;
 
 		WHEN("the commands are applied in separate playback batches")
@@ -321,24 +321,26 @@ SCENARIO("CommandBuffer world timeline integration")
 			commands.removeComponent<Health>(removedTarget);
 			commands.apply(ecs);
 			std::size_t removeRows{};
-			ecs.query<Position>().version(removeObserver).changed<Position>().read<Position>().forEach([&](Entity, Position &) {
+			ecs.query<Position>().version(removeObserver).changed<Position>().read<Position>().forEach([&](Entity, const Position &) {
 				++removeRows;
 			});
 
 			commands.addComponent(taggedTarget, AliveTag{});
 			commands.apply(ecs);
 			std::size_t tagRows{};
-			ecs.query<Position>().version(tagObserver).changed<Position>().read<Position>().forEach([&](Entity, Position &) { ++tagRows; });
+			ecs.query<Position>().version(tagObserver).changed<Position>().read<Position>().forEach([&](Entity, const Position &) {
+				++tagRows;
+			});
 
 			commands.destroy(destroyedTarget);
 			commands.apply(ecs);
 			std::size_t destroyRows{};
-			ecs.query<Position>().version(destroyObserver).changed<Position>().read<Position>().forEach([&](Entity, Position &) {
+			ecs.query<Position>().version(destroyObserver).changed<Position>().read<Position>().forEach([&](Entity, const Position &) {
 				++destroyRows;
 			});
 
 			std::size_t taggedRows{};
-			ecs.query<All<Position, AliveTag>>().read<Position>().forEach([&](Entity, Position &, AliveTag) { ++taggedRows; });
+			ecs.query<All<Position, AliveTag>>().read<Position>().forEach([&](Entity, const Position &, AliveTag) { ++taggedRows; });
 
 			THEN("each structural command is visible and world state remains coherent")
 			{

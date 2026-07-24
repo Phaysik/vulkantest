@@ -48,12 +48,44 @@ namespace Dimensia::ECS
 	{};
 
 	template <typename T, typename List>
+	struct TypeListContains;
+
+	template <typename T, typename... Ts>
+	struct TypeListContains<T, TypeList<Ts...>> : std::bool_constant<(std::is_same_v<T, Ts> || ...)>
+	{};
+
+	template <typename Left, typename Right>
+	struct TypeListConcat;
+
+	template <typename... Left, typename... Right>
+	struct TypeListConcat<TypeList<Left...>, TypeList<Right...>>
+	{
+		using type = TypeList<Left..., Right...>;
+	};
+
+	template <typename T, typename List>
 	struct TypeListPrepend;
 
 	template <typename T, typename... Ts>
 	struct TypeListPrepend<T, TypeList<Ts...>>
 	{
 		using type = TypeList<T, Ts...>;
+	};
+
+	template <typename List, typename... Removed>
+	struct TypeListRemove;
+
+	template <typename... Removed>
+	struct TypeListRemove<TypeList<>, Removed...>
+	{
+		using type = TypeList<>;
+	};
+
+	template <typename T, typename... Ts, typename... Removed>
+	struct TypeListRemove<TypeList<T, Ts...>, Removed...>
+	{
+		using tail = TypeListRemove<TypeList<Ts...>, Removed...>::type;
+		using type = std::conditional_t<(std::is_same_v<T, Removed> || ...), tail, typename TypeListPrepend<T, tail>::type>;
 	};
 
 	template <typename List>
