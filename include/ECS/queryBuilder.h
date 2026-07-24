@@ -101,7 +101,7 @@ class QueryBuilder
 			{
 				throw std::invalid_argument("Query read access must name required regular components");
 			}
-			using NextReadList = typename TypeListConcat<ReadList, TypeList<Ts...>>::type;
+			using NextReadList = TypeListConcat<ReadList, TypeList<Ts...>>::type;
 			ComponentMask nextWriteMask{mWriteMask};
 			forEachSetBit(requested, [&](const ComponentTypeID componentTypeID) { nextWriteMask.clearBit(componentTypeID); });
 			return QueryBuilder<IsConst, ReqList, AnyList, NoneList, NextReadList>{*this, nextWriteMask};
@@ -122,8 +122,8 @@ class QueryBuilder
 			{
 				throw std::invalid_argument("Query write access must name required regular components");
 			}
-			using NextReadList = typename TypeListRemove<ReadList, Ts...>::type;
-			ComponentMask nextWriteMask{mWriteMask | requested};
+			using NextReadList = TypeListRemove<ReadList, Ts...>::type;
+			const ComponentMask nextWriteMask{mWriteMask | requested};
 			return QueryBuilder<IsConst, ReqList, AnyList, NoneList, NextReadList>{*this, nextWriteMask};
 		}
 
@@ -163,7 +163,7 @@ class QueryBuilder
 
 		template <typename OtherReadList>
 		explicit QueryBuilder(const QueryBuilder<IsConst, ReqList, AnyList, NoneList, OtherReadList> &other,
-						  const ComponentMask writeMask) noexcept
+							  const ComponentMask writeMask) noexcept
 			: mECS(other.mECS), mPolicy(other.mPolicy), mVersion(other.mVersion), mCmds(other.mCmds), mChangedMask(other.mChangedMask),
 			  mWriteMask(writeMask)
 		{}
@@ -188,8 +188,7 @@ class QueryBuilder
 				static_assert(sizeof...(Components) == sizeof...(components));
 				auto componentTuple{std::forward_as_tuple(std::forward<decltype(components)>(components)...)};
 				[&]<std::size_t... Index>(std::index_sequence<Index...>) {
-					function(std::forward<decltype(entity)>(entity),
-							 applyComponentAccess<Components>(std::get<Index>(componentTuple))...);
+					function(std::forward<decltype(entity)>(entity), applyComponentAccess<Components>(std::get<Index>(componentTuple))...);
 				}(std::index_sequence_for<Components...>{});
 			};
 		}
@@ -253,7 +252,7 @@ class QueryBuilder
 
 			try
 			{
-				process(trackedFunction);
+				std::forward<Process>(process)(trackedFunction);
 			}
 			catch (...)
 			{

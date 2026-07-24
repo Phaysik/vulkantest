@@ -1,7 +1,3 @@
-#include <catch2/catch_test_macros.hpp>
-
-#include "ECS/ecs.h"
-
 #include <array>
 #include <cstddef>
 #include <stdexcept>
@@ -9,8 +5,11 @@
 
 #include "Components/Health/healthComponent.h"
 #include "Components/Position/positionComponent.h"
+#include "ECS/ecs.h"
 #include "ECS/entity.h"
 #include "ECS/systemVersion.h"
+
+#include <catch2/catch_test_macros.hpp>
 
 // NOLINTBEGIN(misc-const-correctness,cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
 

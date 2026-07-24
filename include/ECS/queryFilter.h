@@ -60,7 +60,7 @@ namespace Dimensia::ECS
 	template <typename... Left, typename... Right>
 	struct TypeListConcat<TypeList<Left...>, TypeList<Right...>>
 	{
-		using type = TypeList<Left..., Right...>;
+			using type = TypeList<Left..., Right...>;
 	};
 
 	template <typename T, typename List>
@@ -69,7 +69,7 @@ namespace Dimensia::ECS
 	template <typename T, typename... Ts>
 	struct TypeListPrepend<T, TypeList<Ts...>>
 	{
-		using type = TypeList<T, Ts...>;
+			using type = TypeList<T, Ts...>;
 	};
 
 	template <typename List, typename... Removed>
@@ -78,14 +78,14 @@ namespace Dimensia::ECS
 	template <typename... Removed>
 	struct TypeListRemove<TypeList<>, Removed...>
 	{
-		using type = TypeList<>;
+			using type = TypeList<>;
 	};
 
 	template <typename T, typename... Ts, typename... Removed>
 	struct TypeListRemove<TypeList<T, Ts...>, Removed...>
 	{
-		using tail = TypeListRemove<TypeList<Ts...>, Removed...>::type;
-		using type = std::conditional_t<(std::is_same_v<T, Removed> || ...), tail, typename TypeListPrepend<T, tail>::type>;
+			using tail = TypeListRemove<TypeList<Ts...>, Removed...>::type;
+			using type = std::conditional_t<(std::is_same_v<T, Removed> || ...), tail, typename TypeListPrepend<T, tail>::type>;
 	};
 
 	template <typename List>
@@ -94,14 +94,14 @@ namespace Dimensia::ECS
 	template <>
 	struct RegularTypeList<TypeList<>>
 	{
-		using type = TypeList<>;
+			using type = TypeList<>;
 	};
 
 	template <typename T, typename... Ts>
 	struct RegularTypeList<TypeList<T, Ts...>>
 	{
-		using tail = RegularTypeList<TypeList<Ts...>>::type;
-		using type = std::conditional_t<isTagV<T>, tail, typename TypeListPrepend<T, tail>::type>;
+			using tail = RegularTypeList<TypeList<Ts...>>::type;
+			using type = std::conditional_t<isTagV<T>, tail, typename TypeListPrepend<T, tail>::type>;
 	};
 
 	/*! @brief Marker wrapper expressing a query clause where all listed component types are required.
@@ -284,7 +284,7 @@ namespace Dimensia::ECS
 	template <typename... Ts>
 	struct TagMaskBuilder<TypeList<Ts...>>
 	{
-		static constexpr ComponentMask value = buildTagMask<Ts...>();
+			static constexpr ComponentMask value = buildTagMask<Ts...>();
 	};
 
 	template <typename List>
@@ -374,7 +374,7 @@ namespace std
 				const std::size_t noneTags{hash<Dimensia::ECS::ComponentMask>{}(key.noneTags)};
 
 				return required ^ (any << ANY_SHIFT) ^ (none << NONE_SHIFT) ^ (requiredTags << REQUIRED_TAGS_SHIFT)
-					   ^ (anyTags << ANY_TAGS_SHIFT) ^ (noneTags << NONE_TAGS_SHIFT);
+					 ^ (anyTags << ANY_TAGS_SHIFT) ^ (noneTags << NONE_TAGS_SHIFT);
 			}
 	};
 } // namespace std

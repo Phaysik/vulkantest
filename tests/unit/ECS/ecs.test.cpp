@@ -1,5 +1,3 @@
-#include <catch2/catch_test_macros.hpp>
-
 #include "ECS/ecs.h"
 
 #include <cstddef>
@@ -17,6 +15,8 @@
 #include "ECS/componentRegistry.h"
 #include "ECS/entity.h"
 #include "Tags/Alive/aliveTag.h"
+
+#include <catch2/catch_test_macros.hpp>
 
 namespace
 {
@@ -275,7 +275,7 @@ SCENARIO("ECS clone rollback")
 
 			THEN("the partial clone is removed and the source remains intact")
 			{
-				REQUIRE(ecs.getComponent<Name>(source) != nullptr);
+				REQUIRE((ecs.getComponent<Name>(source) != nullptr));
 				CHECK((ecs.getComponent<Name>(source)->name == sourceName));
 				CHECK((replacement.index == releasedEntity.index));
 				CHECK((namedEntities == 1));

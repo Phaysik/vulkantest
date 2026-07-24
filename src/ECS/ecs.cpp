@@ -12,6 +12,7 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -232,11 +233,13 @@ namespace Dimensia::ECS
 		}
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-		mRecords[entity.index] = {.generation = entity.generation,
-								  .archetypeID = INVALID_ARCHETYPE_ID,
-								  .chunkIndex = 0,
-								  .slotIndex = 0,
-								  .state = State::Destroyed,};
+		mRecords[entity.index] = {
+			.generation = entity.generation,
+			.archetypeID = INVALID_ARCHETYPE_ID,
+			.chunkIndex = 0,
+			.slotIndex = 0,
+			.state = State::Destroyed,
+		};
 		mFreeIndices.push_back(entity.index);
 	}
 
@@ -261,11 +264,13 @@ namespace Dimensia::ECS
 			assert(entity.index < mRecords.size());
 
 			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			mRecords[entity.index] = {.generation = entity.generation,
-									  .archetypeID = emptyArch->getId(),
-									  .chunkIndex = chunk,
-									  .slotIndex = slot,
-									  .state = State::Active,};
+			mRecords[entity.index] = {
+				.generation = entity.generation,
+				.archetypeID = emptyArch->getId(),
+				.chunkIndex = chunk,
+				.slotIndex = slot,
+				.state = State::Active,
+			};
 		}
 		catch (...)
 		{
@@ -403,11 +408,13 @@ namespace Dimensia::ECS
 			assert(dst.index < mRecords.size());
 
 			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			mRecords[dst.index] = {.generation = dst.generation,
-								   .archetypeID = srcArch->getId(),
-								   .chunkIndex = chunk,
-								   .slotIndex = slot,
-								   .state = State::Active,};
+			mRecords[dst.index] = {
+				.generation = dst.generation,
+				.archetypeID = srcArch->getId(),
+				.chunkIndex = chunk,
+				.slotIndex = slot,
+				.state = State::Active,
+			};
 		}
 		catch (...)
 		{

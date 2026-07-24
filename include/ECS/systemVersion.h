@@ -1,7 +1,7 @@
 /*! @file systemVersion.h
 	@brief Tracks version state used by systems to determine chunk processing.
-	@details Provides `SystemVersion` which stores the greatest world-global structural and component epochs successfully processed by a system.
-   requires reprocessing by the system. See the `SystemVersion` member documentation for usage notes and thread-safety remarks.
+	@details Provides `SystemVersion` which stores the greatest world-global structural and component epochs successfully processed by a
+   system. requires reprocessing by the system. See the `SystemVersion` member documentation for usage notes and thread-safety remarks.
 	@date 02/14/2026
 	@version x.x.x
 	@since x.x.x

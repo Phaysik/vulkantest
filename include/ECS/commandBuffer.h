@@ -79,10 +79,10 @@ namespace Dimensia::ECS
 			void destroy(const Entity &entity);
 
 			/*! @brief Apply all queued commands to the provided `ECS` instance.
-				@details Detaches all per-thread command lists, merges them globally, and sorts them by phase and monotonic recording sequence.
-			   Phase order is: 1) Adds, 2) Removes, 3) Destroys, 4) SetParent. Within a phase, commands execute in recording order. Therefore a
-			   later add replaces an earlier add, remove wins over add in the same playback, destroy wins over component operations, and parent
-			   assignments are attempted last.
+				@details Detaches all per-thread command lists, merges them globally, and sorts them by phase and monotonic recording
+			   sequence. Phase order is: 1) Adds, 2) Removes, 3) Destroys, 4) SetParent. Within a phase, commands execute in recording
+			   order. Therefore a later add replaces an earlier add, remove wins over add in the same playback, destroy wins over component
+			   operations, and parent assignments are attempted last.
 				@param[in,out] ecs The `ECS` instance to mutate.
 			*/
 			void apply(ECS &ecs);
@@ -139,8 +139,8 @@ namespace Dimensia::ECS
 
 			/*! @brief Appends a command to the calling thread's buffer.
 				@param[in] command Command value to append.
-				@note Thread-safe with concurrent producers, @ref apply, and @ref clear. A command racing with playback is consumed either by
-			   that playback snapshot or the next one.
+				@note Thread-safe with concurrent producers, @ref apply, and @ref clear. A command racing with playback is consumed either
+			   by that playback snapshot or the next one.
 			*/
 			void record(Command command);
 

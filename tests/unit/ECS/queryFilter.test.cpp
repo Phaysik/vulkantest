@@ -122,8 +122,10 @@ SCENARIO("QueryFilter tag clause semantics")
 		WHEN("recording commands through a tag-filtered command query")
 		{
 			CommandBuffer commands;
-			ecs.query<All<Position, AliveTag>, None<DebugTag>>().policy(ExecutionPolicy::Seq).commands(commands).forEach(
-				[&](Entity entity, Position &, AliveTag) { commands.addComponent(entity, Health{99.0F}); });
+			ecs.query<All<Position, AliveTag>, None<DebugTag>>()
+				.policy(ExecutionPolicy::Seq)
+				.commands(commands)
+				.forEach([&](Entity entity, Position &, AliveTag) { commands.addComponent(entity, Health{99.0F}); });
 			commands.apply(ecs);
 
 			THEN("only matching rows receive commands")
@@ -136,8 +138,12 @@ SCENARIO("QueryFilter tag clause semantics")
 
 		WHEN("running a tag-filtered query under every execution policy")
 		{
-			std::array<ExecutionPolicy, 4> policies{ExecutionPolicy::Seq, ExecutionPolicy::Par, ExecutionPolicy::ParBatched,
-													ExecutionPolicy::ParStealing,};
+			std::array<ExecutionPolicy, 4> policies{
+				ExecutionPolicy::Seq,
+				ExecutionPolicy::Par,
+				ExecutionPolicy::ParBatched,
+				ExecutionPolicy::ParStealing,
+			};
 			for (ExecutionPolicy policy : policies)
 			{
 				std::atomic<std::size_t> count{};

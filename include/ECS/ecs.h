@@ -57,8 +57,8 @@ namespace Dimensia::ECS
 
 	/*! @struct EntityInsertionHook include/ECS/ecs.h
 		@brief Holds an optional non-owning callback invoked before an entity enters archetype storage.
-		@details The hook supports instrumentation and deterministic fault injection at the entity-reservation commit boundary. An empty hook
-	   has no effect. The bound callable must outlive every `ECS` instance that stores the hook.
+		@details The hook supports instrumentation and deterministic fault injection at the entity-reservation commit boundary. An empty
+	   hook has no effect. The bound callable must outlive every `ECS` instance that stores the hook.
 		@date 07/24/2026
 		@version x.x.x
 		@since x.x.x
@@ -92,8 +92,7 @@ namespace Dimensia::ECS
 			}
 
 		private:
-			explicit EntityInsertionHook(void *hookContext, void (*hookInvoke)(void *)) noexcept
-				: context(hookContext), invoke(hookInvoke)
+			explicit EntityInsertionHook(void *hookContext, void (*hookInvoke)(void *)) noexcept : context(hookContext), invoke(hookInvoke)
 			{}
 
 			/*! @brief Non-owning pointer passed to the callback. */
@@ -153,11 +152,13 @@ namespace Dimensia::ECS
 						return;
 					}
 
-					states.push_back({.mutex = &mutex,
-									  .readDepth = 1,
-									  .writeDepth = 0,
-									  .readLock = std::shared_lock<std::shared_mutex>(mutex),
-									  .writeLock = {},});
+					states.push_back({
+						.mutex = &mutex,
+						.readDepth = 1,
+						.writeDepth = 0,
+						.readLock = std::shared_lock<std::shared_mutex>(mutex),
+						.writeLock = {},
+					});
 					mActive = true;
 				}
 
@@ -219,11 +220,13 @@ namespace Dimensia::ECS
 						return;
 					}
 
-					states.push_back({.mutex = &mutex,
-									  .readDepth = 0,
-									  .writeDepth = 1,
-									  .readLock = {},
-									  .writeLock = std::unique_lock<std::shared_mutex>(mutex),});
+					states.push_back({
+						.mutex = &mutex,
+						.readDepth = 0,
+						.writeDepth = 1,
+						.readLock = {},
+						.writeLock = std::unique_lock<std::shared_mutex>(mutex),
+					});
 					mActive = true;
 				}
 
@@ -421,18 +424,19 @@ namespace Dimensia::ECS
 				std::tuple<std::decay_t<Ts>...> storage{std::forward<Ts>(components)...};
 
 				[&]<std::size_t... I>(std::index_sequence<I...>) {
-					([&] {
-						 assert(I < compIds.size());
+					(
+						[&] {
+							assert(I < compIds.size());
 
-						 // NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-						 const ComponentTypeID componentTypeID{compIds[I]};
+							// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+							const ComponentTypeID componentTypeID{compIds[I]};
 
-						 assert(componentTypeID < ComponentInfos.size());
+							assert(componentTypeID < ComponentInfos.size());
 
-						 processCreateComponent<decltype(components)>(componentTypeID, copyData, moveData, regularMask, tagMask,
-																	  std::get<I>(storage));
-					 }(),
-					 ...);
+							processCreateComponent<decltype(components)>(componentTypeID, copyData, moveData, regularMask, tagMask,
+																		 std::get<I>(storage));
+						}(),
+						...);
 				}(std::index_sequence_for<Ts...>{});
 
 				// Allocate entity ID without placing in any archetype
@@ -449,11 +453,13 @@ namespace Dimensia::ECS
 					assert(entity.index < mRecords.size());
 
 					// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-					mRecords[entity.index] = {.generation = entity.generation,
-											  .archetypeID = targetArch->getId(),
-											  .chunkIndex = chunk,
-											  .slotIndex = slot,
-											  .state = State::Active,};
+					mRecords[entity.index] = {
+						.generation = entity.generation,
+						.archetypeID = targetArch->getId(),
+						.chunkIndex = chunk,
+						.slotIndex = slot,
+						.state = State::Active,
+					};
 				}
 				catch (...)
 				{

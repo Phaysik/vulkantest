@@ -1,10 +1,11 @@
-#include <catch2/catch_test_macros.hpp>
+#include "ECS/command.h"
 
 #include <utility>
 
 #include "Components/Name/nameComponent.h"
-#include "ECS/command.h"
 #include "ECS/entity.h"
+
+#include <catch2/catch_test_macros.hpp>
 
 // NOLINTBEGIN(misc-const-correctness,cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
 

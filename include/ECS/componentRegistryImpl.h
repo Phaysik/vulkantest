@@ -51,24 +51,30 @@ namespace Dimensia::Registry
 		static_assert((has_safe_chunk_lifecycle_v<Ts> && ...),
 					  "Registered ECS components must be nothrow move constructible and nothrow destructible");
 
-		return {{{[](void *ptr) { static_cast<Ts *>(ptr)->~Ts(); },
-				  [](void *dest, const void *src) { new (dest) Ts(*static_cast<const Ts *>(src)); },
-				  [](void *dest, void *src) {
-					  if constexpr (std::is_move_constructible_v<Ts>)
-					  {
-						  new (dest) Ts(std::move(*static_cast<Ts *>(src)));
-					  }
-					  else
-					  {
-						  new (dest) Ts(*static_cast<const Ts *>(src));
-					  }
-				  },
-				  [](Dimensia::ECS::ECS *ecs, const Dimensia::ECS::Entity &entity, std::byte *buffer) {
-					  // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
-					  Ts &value = *std::launder(reinterpret_cast<Ts *>(buffer));
-					  ecs->addComponent(entity, std::move(value));
-				  },
-				  sizeof(Ts), alignof(Ts), is_tag_component<Ts>::value,}...},};
+		return {
+			{{
+				[](void *ptr) { static_cast<Ts *>(ptr)->~Ts(); },
+				[](void *dest, const void *src) { new (dest) Ts(*static_cast<const Ts *>(src)); },
+				[](void *dest, void *src) {
+					if constexpr (std::is_move_constructible_v<Ts>)
+					{
+						new (dest) Ts(std::move(*static_cast<Ts *>(src)));
+					}
+					else
+					{
+						new (dest) Ts(*static_cast<const Ts *>(src));
+					}
+				},
+				[](Dimensia::ECS::ECS *ecs, const Dimensia::ECS::Entity &entity, std::byte *buffer) {
+					// NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+					Ts &value = *std::launder(reinterpret_cast<Ts *>(buffer));
+					ecs->addComponent(entity, std::move(value));
+				},
+				sizeof(Ts),
+				alignof(Ts),
+				is_tag_component<Ts>::value,
+			}...},
+		};
 	}
 
 } // namespace Dimensia::Registry

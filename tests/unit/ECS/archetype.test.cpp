@@ -1,16 +1,17 @@
 #include "ECS/archetype.h"
 
+#include <array>
+#include <cstddef>
+#include <stdexcept>
+#include <utility>
+
 #include "Components/Position/positionComponent.h"
 #include "Components/Velocity/velocityComponent.h"
 #include "ECS/componentMask.h"
 #include "ECS/componentRegistry.h"
 #include "ECS/entity.h"
 
-#include <array>
 #include <catch2/catch_test_macros.hpp>
-#include <cstddef>
-#include <stdexcept>
-#include <utility>
 
 // NOLINTBEGIN(misc-const-correctness,cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
 
@@ -37,7 +38,9 @@ SCENARIO("Archetype empty chunk reuse")
 		std::size_t nextEntityIndex{};
 		for (;; ++nextEntityIndex)
 		{
-			auto location{archetype.addEntity(Entity{.index = static_cast<unsigned int>(nextEntityIndex), .generation = 1}, copyData, moveData)};
+			auto location{
+				archetype.addEntity(Entity{.index = static_cast<unsigned int>(nextEntityIndex), .generation = 1}, copyData, moveData),
+			};
 			if (location.first == 1)
 			{
 				break;
@@ -58,12 +61,14 @@ SCENARIO("Archetype empty chunk reuse")
 			for (std::size_t addedCount{0}; addedCount < (firstChunkCapacity * 2) - 1; ++addedCount)
 			{
 				++nextEntityIndex;
-				static_cast<void>(archetype.addEntity(
-					Entity{.index = static_cast<unsigned int>(nextEntityIndex), .generation = 1}, copyData, moveData));
+				static_cast<void>(
+					archetype.addEntity(Entity{.index = static_cast<unsigned int>(nextEntityIndex), .generation = 1}, copyData, moveData));
 			}
 
 			++nextEntityIndex;
-			auto location{archetype.addEntity(Entity{.index = static_cast<unsigned int>(nextEntityIndex), .generation = 1}, copyData, moveData)};
+			auto location{
+				archetype.addEntity(Entity{.index = static_cast<unsigned int>(nextEntityIndex), .generation = 1}, copyData, moveData),
+			};
 
 			THEN("a new chunk is allocated without resetting a live reused chunk")
 			{

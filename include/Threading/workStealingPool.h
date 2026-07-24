@@ -111,12 +111,14 @@ namespace Dimensia::Threading
 
 				const Func forwardedFunc{std::forward<Func>(func)};
 				auto submitBatch = [&](const ChunkVector &batchToSubmit) {
-					auto packagedTask{std::make_shared<std::packaged_task<void()>>([batchToSubmit, forwardedFunc] {
-						for (const auto &[arch, index] : batchToSubmit)
-						{
-							forwardedFunc(arch, index);
-						}
-					}),};
+					auto packagedTask{
+						std::make_shared<std::packaged_task<void()>>([batchToSubmit, forwardedFunc] {
+							for (const auto &[arch, index] : batchToSubmit)
+							{
+								forwardedFunc(arch, index);
+							}
+						}),
+					};
 					futures.push_back(packagedTask->get_future());
 					submitTask([packagedTask, &latch] {
 						// NOLINTNEXTLINE(readability-redundant-parentheses)

@@ -42,11 +42,18 @@ static void forEachQueryImpl(Self &self, ExecutionPolicy &policy, Func &&func,
 	constexpr ComponentMask noneTags{buildTagMaskFromList<NoneList>()};
 	constexpr bool hasAnyClause{TypeListSize<AnyList>::value != 0};
 
-	QueryKey const key{
-		.required = requiredMask, .any = anyMask, .none = noneMask, .requiredTags = requiredTags, .anyTags = anyTags, .noneTags = noneTags,};
+	const QueryKey key{
+		.required = requiredMask,
+		.any = anyMask,
+		.none = noneMask,
+		.requiredTags = requiredTags,
+		.anyTags = anyTags,
+		.noneTags = noneTags,
+	};
 
 	const std::vector<Archetype *> &matchingArchetypes{
-		getMatchingArchetypesForQueryCalls<Self, AnyList, NoneList>(self, key, requiredMask, anyMask, noneMask),};
+		getMatchingArchetypesForQueryCalls<Self, AnyList, NoneList>(self, key, requiredMask, anyMask, noneMask),
+	};
 
 	const Func forwardedFunction{std::forward<Func>(func)};
 
@@ -397,11 +404,18 @@ static void forEachQueryVersionImpl(Self &self, const ExecutionPolicy &policy, S
 	constexpr ComponentMask noneTags{buildTagMaskFromList<NoneList>()};
 	constexpr bool hasAnyClause{TypeListSize<AnyList>::value != 0};
 
-	QueryKey const key{
-		.required = requiredMask, .any = anyMask, .none = noneMask, .requiredTags = requiredTags, .anyTags = anyTags, .noneTags = noneTags,};
+	const QueryKey key{
+		.required = requiredMask,
+		.any = anyMask,
+		.none = noneMask,
+		.requiredTags = requiredTags,
+		.anyTags = anyTags,
+		.noneTags = noneTags,
+	};
 
 	const std::vector<Archetype *> &matchingArchetypes{
-		getMatchingArchetypesForQueryCalls<Self, AnyList, NoneList>(self, key, requiredMask, anyMask, noneMask),};
+		getMatchingArchetypesForQueryCalls<Self, AnyList, NoneList>(self, key, requiredMask, anyMask, noneMask),
+	};
 
 	// Collect chunks that need processing (dirty)
 	std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> dirtyChunks;
@@ -771,10 +785,17 @@ static void forEachQueryCommandImpl(Self &self, ExecutionPolicy &policy, Command
 	constexpr bool hasAnyClause{TypeListSize<AnyList>::value != 0};
 
 	QueryKey key{
-		.required = requiredMask, .any = anyMask, .none = noneMask, .requiredTags = requiredTags, .anyTags = anyTags, .noneTags = noneTags,};
+		.required = requiredMask,
+		.any = anyMask,
+		.none = noneMask,
+		.requiredTags = requiredTags,
+		.anyTags = anyTags,
+		.noneTags = noneTags,
+	};
 
 	const std::vector<Archetype *> &matchingArchetypes{
-		getMatchingArchetypesForQueryCalls<Self, AnyList, NoneList>(self, key, requiredMask, anyMask, noneMask),};
+		getMatchingArchetypesForQueryCalls<Self, AnyList, NoneList>(self, key, requiredMask, anyMask, noneMask),
+	};
 
 	using FuncT = std::decay_t<Func>;
 	const FuncT processChunkFunction{std::forward<Func>(func)};
@@ -1146,10 +1167,17 @@ static void forEachQueryVersionCommandImpl(Self &self, ExecutionPolicy &policy, 
 	constexpr bool hasAnyClause{TypeListSize<AnyList>::value != 0};
 
 	QueryKey key{
-		.required = requiredMask, .any = anyMask, .none = noneMask, .requiredTags = requiredTags, .anyTags = anyTags, .noneTags = noneTags,};
+		.required = requiredMask,
+		.any = anyMask,
+		.none = noneMask,
+		.requiredTags = requiredTags,
+		.anyTags = anyTags,
+		.noneTags = noneTags,
+	};
 
 	const std::vector<Archetype *> &matchingArchetypes{
-		getMatchingArchetypesForQueryCalls<Self, AnyList, NoneList>(self, key, requiredMask, anyMask, noneMask),};
+		getMatchingArchetypesForQueryCalls<Self, AnyList, NoneList>(self, key, requiredMask, anyMask, noneMask),
+	};
 
 	// Collect chunks that are dirty according to the version
 	std::vector<std::tuple<Archetype *, ui, const ChunkVersion *>> dirtyChunks;

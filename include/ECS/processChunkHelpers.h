@@ -58,14 +58,15 @@ namespace Dimensia::ECS
 	constexpr ComponentMask buildRequiredMask() noexcept
 	{
 		ComponentMask mask{0, 0};
-		([&] {
-			 if constexpr (!isTagV<Components>)
-			 {
-				 ComponentTypeID componentTypeID{componentID<Components>()};
-				 mask.setBit(componentTypeID);
-			 }
-		 }(),
-		 ...);
+		(
+			[&] {
+				if constexpr (!isTagV<Components>)
+				{
+					ComponentTypeID componentTypeID{componentID<Components>()};
+					mask.setBit(componentTypeID);
+				}
+			}(),
+			...);
 		return mask;
 	}
 
@@ -78,14 +79,15 @@ namespace Dimensia::ECS
 	constexpr ComponentMask buildTagMask() noexcept
 	{
 		ComponentMask mask{0, 0};
-		([&] {
-			 if constexpr (isTagV<Components>)
-			 {
-				 ComponentTypeID componentTypeID{componentID<Components>()};
-				 mask.setBit(componentTypeID);
-			 }
-		 }(),
-		 ...);
+		(
+			[&] {
+				if constexpr (isTagV<Components>)
+				{
+					ComponentTypeID componentTypeID{componentID<Components>()};
+					mask.setBit(componentTypeID);
+				}
+			}(),
+			...);
 		return mask;
 	}
 
@@ -124,6 +126,7 @@ namespace Dimensia::ECS
 	}
 
 	/*! @brief Pointer alias for `Archetype` respecting constness.
+
 		@tparam IsConst When true, yields `const Archetype *`, otherwise `Archetype *`.
 	*/
 	template <bool IsConst>
@@ -209,13 +212,14 @@ namespace Dimensia::ECS
 			// Advance regular component columns for every row, including rows rejected by the tag filter.
 			// Component IDs are registry-validated compile-time indices; byte-pointer advancement walks dense component columns.
 			// NOLINTBEGIN(cppcoreguidelines-pro-bounds-pointer-arithmetic,cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			([&] {
-				 if constexpr (!isTagV<Components>)
-				 {
-					 std::get<Is>(byteArrays) += ComponentInfos[componentID<Components>()].size;
-				 }
-			 }(),
-			 ...);
+			(
+				[&] {
+					if constexpr (!isTagV<Components>)
+					{
+						std::get<Is>(byteArrays) += ComponentInfos[componentID<Components>()].size;
+					}
+				}(),
+				...);
 			// NOLINTEND(cppcoreguidelines-pro-bounds-pointer-arithmetic,cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		}
 	}
@@ -226,18 +230,18 @@ namespace Dimensia::ECS
 									  const bool hasAnyClause, const bool anyRegularMatched)
 	{
 		processChunkEntitiesWithTags<false, Components...>(entityArr, entityCount, chunkIndex, arch, std::forward<Func>(func),
-															std::index_sequence_for<Components...>{}, requiredTags, anyTags, noneTags,
-															hasAnyClause, anyRegularMatched);
+														   std::index_sequence_for<Components...>{}, requiredTags, anyTags, noneTags,
+														   hasAnyClause, anyRegularMatched);
 	}
 
 	template <typename... Components, typename Func>
 	void processChunkEntitiesFilteredConst(const Entity *entityArr, const ui entityCount, const ui chunkIndex, const Archetype *arch,
-										 Func &&func, const ComponentMask requiredTags, const ComponentMask anyTags,
-										 const ComponentMask noneTags, const bool hasAnyClause, const bool anyRegularMatched)
+										   Func &&func, const ComponentMask requiredTags, const ComponentMask anyTags,
+										   const ComponentMask noneTags, const bool hasAnyClause, const bool anyRegularMatched)
 	{
 		processChunkEntitiesWithTags<true, Components...>(entityArr, entityCount, chunkIndex, arch, std::forward<Func>(func),
-														   std::index_sequence_for<Components...>{}, requiredTags, anyTags, noneTags,
-														   hasAnyClause, anyRegularMatched);
+														  std::index_sequence_for<Components...>{}, requiredTags, anyTags, noneTags,
+														  hasAnyClause, anyRegularMatched);
 	}
 
 	/*! @brief Process entities in a chunk when `Components...` contain no tag components.

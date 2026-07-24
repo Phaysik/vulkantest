@@ -60,8 +60,9 @@ namespace Dimensia::Registry
 				return false;
 			}
 
-			constexpr std::size_t tagOffset{(sizeof(Dimensia::ECS::Entity) + alignof(Dimensia::Core::ul) - 1)
-											& ~(alignof(Dimensia::Core::ul) - 1),};
+			constexpr std::size_t tagOffset{
+				(sizeof(Dimensia::ECS::Entity) + alignof(Dimensia::Core::ul) - 1) & ~(alignof(Dimensia::Core::ul) - 1),
+			};
 			constexpr std::size_t componentStart{tagOffset + (sizeof(Dimensia::Core::ul) * Dimensia::ECS::TAG_WORDS_PER_ENTITY)};
 			constexpr std::size_t componentOffset{(componentStart + alignof(T) - 1) & ~(alignof(T) - 1)};
 

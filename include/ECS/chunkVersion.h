@@ -27,8 +27,8 @@ namespace Dimensia::ECS
 
 	/*! @class ChunkVersion include/ECS/chunkVersion.h
 		@brief Represents version metadata for an archetype chunk.
-		@details Contains a structural chunk epoch and component epochs indexed by `ComponentTypeID`. Callers stamp versions allocated by the
-	   owning ECS world; values are never incremented independently by a chunk.
+		@details Contains a structural chunk epoch and component epochs indexed by `ComponentTypeID`. Callers stamp versions allocated by
+	   the owning ECS world; values are never incremented independently by a chunk.
 		@note Thread-safety depends on external synchronization when mutating versions.
 	*/
 	class ChunkVersion
@@ -66,6 +66,7 @@ namespace Dimensia::ECS
 			{
 				assignFrom(other);
 			}
+
 			ChunkVersion &operator=(ChunkVersion &&other) noexcept
 			{
 				if (this != &other)
@@ -74,6 +75,7 @@ namespace Dimensia::ECS
 				}
 				return *this;
 			}
+
 			~ChunkVersion() = default;
 
 			// MARK: Getters
@@ -145,8 +147,10 @@ namespace Dimensia::ECS
 			static void storeMaximum(std::atomic<VersionType> &target, const VersionType version) noexcept
 			{
 				VersionType current{target.load(std::memory_order_relaxed)};
-				while (current < version && !target.compare_exchange_weak(current, version, std::memory_order_release, std::memory_order_relaxed))
-				{}
+				while (current < version
+					   && !target.compare_exchange_weak(current, version, std::memory_order_release, std::memory_order_relaxed))
+				{
+				}
 			}
 
 			/*! @var mComponentVersions

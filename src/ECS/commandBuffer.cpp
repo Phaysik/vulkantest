@@ -67,7 +67,8 @@ namespace Dimensia::ECS
 			for (auto &[threadID, buf] : mBuffers)
 			{
 				const std::scoped_lock bufferLock(buf->mutex);
-				commands.insert(commands.end(), std::make_move_iterator(buf->commands.begin()), std::make_move_iterator(buf->commands.end()));
+				commands.insert(commands.end(), std::make_move_iterator(buf->commands.begin()),
+								std::make_move_iterator(buf->commands.end()));
 				buf->commands.clear();
 			}
 		}

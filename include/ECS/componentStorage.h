@@ -134,13 +134,15 @@ namespace Dimensia::ECS
 				std::unique_ptr<T, Deleter> owner(new (std::align_val_t(alignof(T))) T(std::forward<T>(value)));
 
 				// Transfer ownership to ComponentStorage
-				ComponentStorage storage{owner.get(),
-										 [](void *ptr) noexcept {
-											 T *tptr{static_cast<T *>(ptr)};
-											 tptr->~T();
-											 operator delete(ptr, std::align_val_t(alignof(T)));
-										 },
-										 componentID<T>(),};
+				ComponentStorage storage{
+					owner.get(),
+					[](void *ptr) noexcept {
+						T *tptr{static_cast<T *>(ptr)};
+						tptr->~T();
+						operator delete(ptr, std::align_val_t(alignof(T)));
+					},
+					componentID<T>(),
+				};
 
 				owner.release(); // storage now owns the object
 				return storage;

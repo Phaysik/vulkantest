@@ -229,14 +229,16 @@ static void forEachParStealingProcessChunkOnly(const std::vector<Archetype *> &m
 	using FuncT = std::decay_t<Func>;
 	const FuncT processChunkFunction{std::forward<Func>(func)};
 
-	auto futures{workStealingPool.submitChunks(
-		allChunks,
-		[processChunkFunction](Archetype *arch, ui chunkIndex) {
-			const ui entityCount{arch->getEntityCount(chunkIndex)};
+	auto futures{
+		workStealingPool.submitChunks(
+			allChunks,
+			[processChunkFunction](Archetype *arch, ui chunkIndex) {
+				const ui entityCount{arch->getEntityCount(chunkIndex)};
 
-			processChunkFunction(arch, chunkIndex, entityCount);
-		},
-		latch, batchSize),};
+				processChunkFunction(arch, chunkIndex, entityCount);
+			},
+			latch, batchSize),
+	};
 
 	latch.wait();
 	for (auto &future : futures)
@@ -614,8 +616,10 @@ static void forEachParStealingProcessChunkAndVersion(const std::vector<std::tupl
 	const std::size_t batchSize{getBatchSize(chunks.size())}; // same as in forEachPolicyImpl
 	std::latch latch(static_cast<std::ptrdiff_t>((chunks.size() + batchSize - 1) / batchSize));
 
-	auto futures{workStealingPool.submitChunks(
-		chunks, [processChunkFunction](Archetype *arch, ui chunkIndex) { processChunkFunction(arch, chunkIndex); }, latch, batchSize),};
+	auto futures{
+		workStealingPool.submitChunks(
+			chunks, [processChunkFunction](Archetype *arch, ui chunkIndex) { processChunkFunction(arch, chunkIndex); }, latch, batchSize),
+	};
 
 	// Work-stealing tasks always count down the latch, including when a callback throws.
 

@@ -36,11 +36,11 @@ class ViewIterator
 
 		// Begin constructor
 		ViewIterator(ECSType *ecs, const ArchVec *archetypes, std::size_t archIdx, const ComponentMask writeMask = ComponentMask(0),
-					 const ComponentMask requiredTags = ComponentMask(0),
-					 const ComponentMask anyTags = ComponentMask(0), const ComponentMask noneTags = ComponentMask(0),
-					 const ComponentMask anyRegular = ComponentMask(0), const bool hasAnyClause = false) noexcept
-			: mECS(ecs), mArchetypes(archetypes), mWriteMask(writeMask), mRequiredTags(requiredTags), mAnyTags(anyTags), mNoneTags(noneTags),
-			  mAnyRegular(anyRegular), mArchIdx(static_cast<ui>(archIdx)), mHasAnyClause(hasAnyClause)
+					 const ComponentMask requiredTags = ComponentMask(0), const ComponentMask anyTags = ComponentMask(0),
+					 const ComponentMask noneTags = ComponentMask(0), const ComponentMask anyRegular = ComponentMask(0),
+					 const bool hasAnyClause = false) noexcept
+			: mECS(ecs), mArchetypes(archetypes), mWriteMask(writeMask), mRequiredTags(requiredTags), mAnyTags(anyTags),
+			  mNoneTags(noneTags), mAnyRegular(anyRegular), mArchIdx(static_cast<ui>(archIdx)), mHasAnyClause(hasAnyClause)
 		{
 			seekMatching();
 		}
@@ -106,8 +106,9 @@ class ViewIterator
 			const ComponentMask entityTags{arch->getTags(mChunkIdx, mSlot)};
 			// NOLINTNEXTLINE(readability-redundant-parentheses)
 			const bool requiredMatch{(entityTags & mRequiredTags) == mRequiredTags};
-			const bool anyMatch{!mHasAnyClause || static_cast<bool>(arch->getRegularMask() & mAnyRegular)
-								|| static_cast<bool>(entityTags & mAnyTags),};
+			const bool anyMatch{
+				!mHasAnyClause || static_cast<bool>(arch->getRegularMask() & mAnyRegular) || static_cast<bool>(entityTags & mAnyTags),
+			};
 			const bool noneMatch{!static_cast<bool>(entityTags & mNoneTags)};
 			return requiredMatch && anyMatch && noneMatch;
 		}
@@ -209,15 +210,16 @@ class View
 			@param[in] archetypes Vector of matching archetypes copied for safe lifetime management.
 		*/
 		template <typename AnyFilterList, typename NoneFilterList>
-		explicit View(ECSType &ecs, AnyFilterList /*unused*/, NoneFilterList /*unused*/, const QueryKey &key, const ComponentMask &requiredMask,
-					  const ComponentMask &anyMask, const ComponentMask &noneMask, const ComponentMask requiredTags,
-					  const ComponentMask anyTags, const ComponentMask noneTags,
+		explicit View(ECSType &ecs, AnyFilterList /*unused*/, NoneFilterList /*unused*/, const QueryKey &key,
+					  const ComponentMask &requiredMask, const ComponentMask &anyMask, const ComponentMask &noneMask,
+					  const ComponentMask requiredTags, const ComponentMask anyTags, const ComponentMask noneTags,
 					  const ComponentMask writeMask = IsConst ? ComponentMask(0) : buildRequiredMask<Components...>())
-			: mECS(&ecs), mIterationGuard(ecs.mStructuralMutex), mMatchingArchetypes(getMatchingArchetypesForQueryCalls<ECSType, AnyFilterList, NoneFilterList>(ecs, key, requiredMask, anyMask, noneMask)), mRequiredTags(requiredTags), mAnyTags(anyTags), mNoneTags(noneTags),
-			  mAnyRegular(anyMask), mWriteMask(writeMask), mHasAnyClause(TypeListSize<AnyFilterList>::value != 0)
-		{
-			
-		}
+			: mECS(&ecs), mIterationGuard(ecs.mStructuralMutex),
+			  mMatchingArchetypes(
+				  getMatchingArchetypesForQueryCalls<ECSType, AnyFilterList, NoneFilterList>(ecs, key, requiredMask, anyMask, noneMask)),
+			  mRequiredTags(requiredTags), mAnyTags(anyTags), mNoneTags(noneTags), mAnyRegular(anyMask), mWriteMask(writeMask),
+			  mHasAnyClause(TypeListSize<AnyFilterList>::value != 0)
+		{}
 
 		ATTR_NODISCARD iterator begin() const noexcept
 		{
@@ -302,14 +304,17 @@ auto view()
 	constexpr ComponentMask requiredTags{buildTagMaskFromList<ReqList>()};
 	constexpr ComponentMask anyTags{0, 0};
 	constexpr ComponentMask noneTags{buildTagMaskFromList<NoneList>()};
-	QueryKey key{.required = requiredMask,
-				 .any = anyMask,
-				 .none = noneMask,
-				 .requiredTags = requiredTags,
-				 .anyTags = anyTags,
-				 .noneTags = noneTags,};
+	QueryKey key{
+		.required = requiredMask,
+		.any = anyMask,
+		.none = noneMask,
+		.requiredTags = requiredTags,
+		.anyTags = anyTags,
+		.noneTags = noneTags,
+	};
 	return [&]<typename... Comps>(TypeList<Comps...>) {
-		return View<false, Comps...>(*this, TypeList<>{}, NoneList{}, key, requiredMask, anyMask, noneMask, requiredTags, anyTags, noneTags);
+		return View<false, Comps...>(*this, TypeList<>{}, NoneList{}, key, requiredMask, anyMask, noneMask, requiredTags, anyTags,
+									 noneTags);
 	}(YieldList{});
 }
 
@@ -326,12 +331,14 @@ auto view() const
 	constexpr ComponentMask requiredTags{buildTagMaskFromList<ReqList>()};
 	constexpr ComponentMask anyTags{0, 0};
 	constexpr ComponentMask noneTags{buildTagMaskFromList<NoneList>()};
-	QueryKey key{.required = requiredMask,
-				 .any = anyMask,
-				 .none = noneMask,
-				 .requiredTags = requiredTags,
-				 .anyTags = anyTags,
-				 .noneTags = noneTags,};
+	QueryKey key{
+		.required = requiredMask,
+		.any = anyMask,
+		.none = noneMask,
+		.requiredTags = requiredTags,
+		.anyTags = anyTags,
+		.noneTags = noneTags,
+	};
 	return [&]<typename... Comps>(TypeList<Comps...>) {
 		return View<true, Comps...>(*this, TypeList<>{}, NoneList{}, key, requiredMask, anyMask, noneMask, requiredTags, anyTags, noneTags);
 	}(YieldList{});
@@ -355,12 +362,14 @@ auto view()
 	constexpr ComponentMask requiredTags{buildTagMaskFromList<ReqList>()};
 	constexpr ComponentMask anyTags{buildTagMaskFromList<AnyList>()};
 	constexpr ComponentMask noneTags{buildTagMaskFromList<NoneList>()};
-	QueryKey key{.required = requiredMask,
-				 .any = anyMask,
-				 .none = noneMask,
-				 .requiredTags = requiredTags,
-				 .anyTags = anyTags,
-				 .noneTags = noneTags,};
+	QueryKey key{
+		.required = requiredMask,
+		.any = anyMask,
+		.none = noneMask,
+		.requiredTags = requiredTags,
+		.anyTags = anyTags,
+		.noneTags = noneTags,
+	};
 	return [&]<typename... Comps>(TypeList<Comps...>) {
 		return View<false, Comps...>(*this, AnyList{}, NoneList{}, key, requiredMask, anyMask, noneMask, requiredTags, anyTags, noneTags);
 	}(YieldList{});
@@ -380,12 +389,14 @@ auto view() const
 	constexpr ComponentMask requiredTags{buildTagMaskFromList<ReqList>()};
 	constexpr ComponentMask anyTags{buildTagMaskFromList<AnyList>()};
 	constexpr ComponentMask noneTags{buildTagMaskFromList<NoneList>()};
-	QueryKey key{.required = requiredMask,
-				 .any = anyMask,
-				 .none = noneMask,
-				 .requiredTags = requiredTags,
-				 .anyTags = anyTags,
-				 .noneTags = noneTags,};
+	QueryKey key{
+		.required = requiredMask,
+		.any = anyMask,
+		.none = noneMask,
+		.requiredTags = requiredTags,
+		.anyTags = anyTags,
+		.noneTags = noneTags,
+	};
 	return [&]<typename... Comps>(TypeList<Comps...>) {
 		return View<true, Comps...>(*this, AnyList{}, NoneList{}, key, requiredMask, anyMask, noneMask, requiredTags, anyTags, noneTags);
 	}(YieldList{});
