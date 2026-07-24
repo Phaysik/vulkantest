@@ -200,11 +200,8 @@ namespace Dimensia::ECS
 			}
 
 			// Call user function with correctly typed pointers (tags get default-constructed values)
-			std::apply(
-				[&](auto *...bytePtrs) noexcept {
-					forwardedFunction(entity, derefComponentPtr<IsConst, Components>(bytePtrs)...);
-				},
-				byteArrays);
+			std::apply([&](auto *...bytePtrs) noexcept { forwardedFunction(entity, derefComponentPtr<IsConst, Components>(bytePtrs)...); },
+					   byteArrays);
 
 			// Advance byte pointers only for non-tag components (tags have nullptr)
 			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic,cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)

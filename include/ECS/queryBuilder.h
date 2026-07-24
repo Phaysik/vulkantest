@@ -69,7 +69,8 @@ class QueryBuilder
 		}
 
 		/*! @brief Attach a CommandBuffer for deferred command recording.
-			@param[in,out] c CommandBuffer that the caller should capture by reference in their callable. Stored for potential future use (e.g. thread-local command buffer distribution). Does not inject the buffer into the callback signature — capture it explicitly.
+			@param[in,out] c CommandBuffer that the caller should capture by reference in their callable. Stored for potential future use
+		   (e.g. thread-local command buffer distribution). Does not inject the buffer into the callback signature — capture it explicitly.
 			@return Reference to this builder for chaining.
 		*/
 		QueryBuilder &commands(ATTR_MAYBE_UNUSED CommandBuffer &cmdBuffer) noexcept

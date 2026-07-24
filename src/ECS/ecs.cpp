@@ -185,8 +185,11 @@ namespace Dimensia::ECS
 		assert(entity.index < mRecords.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-		mRecords[entity.index]
-			= {.generation = entity.generation, .archetypeID = emptyArch->getId(), .chunkIndex = chunk, .slotIndex = slot, .state = State::Active};
+		mRecords[entity.index] = {.generation = entity.generation,
+								  .archetypeID = emptyArch->getId(),
+								  .chunkIndex = chunk,
+								  .slotIndex = slot,
+								  .state = State::Active};
 
 		return entity;
 	}
@@ -545,7 +548,8 @@ namespace Dimensia::ECS
 
 	Archetype *ECS::getOrCreateArchetype(ComponentMask regularMask)
 	{
-		assert(mActiveIterations.load(std::memory_order_acquire) == 0 && "Structural change during active forEach iteration; use CommandBuffer for deferred mutations");
+		assert(mActiveIterations.load(std::memory_order_acquire) == 0
+			   && "Structural change during active forEach iteration; use CommandBuffer for deferred mutations");
 
 		auto iterator{mArchetypeMaskToID.find(regularMask)};
 

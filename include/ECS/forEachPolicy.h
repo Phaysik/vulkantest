@@ -442,8 +442,7 @@ static void forEachParProcessChunkAndVersion(const std::vector<std::tuple<Archet
 		Archetype *arch{std::get<0>(chunk)};
 		ui chunkIndex{std::get<1>(chunk)};
 
-		threadPool.submitWithLatch(
-			[arch, chunkIndex, processChunkFunction]() { processChunkFunction(arch, chunkIndex); }, latch);
+		threadPool.submitWithLatch([arch, chunkIndex, processChunkFunction]() { processChunkFunction(arch, chunkIndex); }, latch);
 	}
 
 	latch.wait();
