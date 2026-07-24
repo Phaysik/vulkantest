@@ -181,3 +181,324 @@ TransformName    = cold debug/editor label
 RenderMesh       = stable render asset handle
 RenderVisibility = frequently changing visibility state
 ```
+
+## Archetype Storage Rules
+
+When implementing archetype storage:
+
+- Store one column per component type.
+- Keep columns densely packed.
+- Keep entity IDs or entity indices aligned with component rows.
+- Track entity location as archetype ID plus row index.
+- Use swap-remove when deleting rows unless stable order is explicitly required.
+- Always update the swapped entity’s location after swap-remove.
+- Keep archetype signatures canonical and comparable.
+- Cache query-to-archetype matches where appropriate.
+- Be especially careful with archetype transitions.
+
+## Archetype Transition Algorithm
+
+When adding or removing components from an entity:
+
+1. Validate the entity ID and generation.
+2. Read the entity’s current location.
+3. Determine the source archetype.
+4. Compute the target component signature.
+5. Find or create the target archetype.
+6. Allocate a new row in the target archetype.
+7. Copy retained component values from source columns to target columns.
+8. Insert newly added component values.
+9. Update the moving entity’s location.
+10. Remove the old row from the source archetype.
+11. If swap-remove moves another entity, update that swapped entity’s location.
+12. Update query caches or archetype match sets if needed.
+
+Never corrupt the entity location table.
+
+Never assume the entity’s row remains stable after structural changes.
+
+## Query Guidance
+
+Queries should be efficient and archetype-oriented.
+
+Prefer query execution shaped like:
+
+```
+for each matching archetype:
+    resolve component columns once
+    for each row:
+        operate directly on dense component arrays
+```
+
+Avoid:
+
+- Per-entity dynamic component lookup in hot loops
+- Hash map lookups for each component access during iteration
+- Recomputing matching archetypes every frame when query caching is possible
+- Mutating archetype structure while iterating without a safe mechanism
+
+Queries may support:
+
+- Required components
+- Excluded components
+- Optional components
+- Read access
+- Write access
+- Entity access
+- Resource access
+- Change filters
+
+## Systems Guidance
+
+Systems contain behavior.
+
+Prefer systems that:
+
+- Declare component/resource reads and writes
+- Are independently testable
+- Use queries instead of manual world scans
+- Avoid hidden execution-order dependencies
+- Avoid structural mutation during iteration
+- Use command buffers for entity creation, deletion, and component add/remove operations
+
+Systems should not arbitrarily reach into the entire world without declaring access.
+
+## Command Buffer Guidance
+
+Use command buffers for deferred structural mutation.
+
+A command buffer may support:
+
+- Spawn entity
+- Despawn entity
+- Add component
+- Remove component
+- Set component
+- Insert bundle
+- Remove bundle
+- Emit event
+- Clear transient components
+
+When implementing command buffers:
+
+- Preserve command order if deterministic behavior is required.
+- Clearly define when buffers are applied.
+- Handle invalid or stale entities safely.
+- Avoid allowing command application to silently corrupt world state.
+- Consider whether command buffers are per-system, per-thread, or global.
+
+## Scheduling Guidance
+
+For schedules, track access conflicts.
+
+Systems can run in parallel when:
+
+- They do not write the same component or resource.
+- One system does not write data another reads.
+- They do not require conflicting structural access.
+- They have no explicit ordering constraint.
+
+Prefer a simple sequential scheduler first.
+
+Only introduce parallel scheduling when justified by project needs.
+
+If implementing parallel scheduling, be explicit about:
+
+- Dependency graph construction
+- Read/write conflict detection
+- Execution stages
+- Command buffer merge order
+- Synchronization points
+- Determinism tradeoffs
+
+## Memory Layout Guidance
+
+Prefer:
+
+- Dense arrays
+- Struct-of-arrays layouts
+- Chunked archetypes when useful
+- Stable component type IDs
+- Cached query matches
+- Minimal pointer chasing
+- Minimal virtual dispatch in hot loops
+- Low allocation pressure
+- Batch iteration
+
+Discuss tradeoffs between:
+
+- Archetype storage and sparse-set storage
+- Chunked and unchunked archetypes
+- Fast iteration and fast structural mutation
+- Stable row order and swap-remove
+- Type safety and runtime flexibility
+- Compile-time queries and runtime queries
+
+## Error Handling
+
+Handle these cases safely:
+
+- Invalid entity ID
+- Stale entity generation
+- Missing component
+- Duplicate component insertion
+- Removing an absent component
+- Despawning during iteration
+- Query invalidation
+- Archetype transition failure
+- Component registration conflict
+- Serialization mismatch
+
+Prefer explicit errors where the language and codebase style support them.
+
+Do not silently corrupt ECS state.
+
+## Testing Expectations
+
+When adding or modifying ECS internals, add or recommend tests for:
+
+- Entity creation
+- Entity destruction
+- Entity ID reuse
+- Stale entity detection
+- Component insertion
+- Component removal
+- Component replacement
+- Archetype creation
+- Archetype transition correctness
+- Swap-remove location updates
+- Query matching
+- Query iteration
+- Command buffer application
+- Deferred despawn
+- Deferred add/remove component
+- System ordering
+- Parallel conflict detection, if applicable
+- Serialization round trips, if applicable
+
+Always test the swapped-entity-location case during archetype row removal.
+
+## Serialization Guidance
+
+For serialization, distinguish between:
+
+- Runtime entity IDs
+- Persistent entity IDs
+- Network entity IDs
+- Component data
+- Resource data
+- Archetype layout
+- Scene format
+- Save-game format
+- Snapshot format
+
+Do not serialize raw memory addresses.
+
+Prefer stable component type identifiers for persistent formats.
+
+## Networking Guidance
+
+For networked ECS designs, consider:
+
+- Stable network entity IDs
+- Mapping network IDs to local entities
+- Component replication masks
+- Delta compression
+- Snapshot interpolation
+- Client prediction
+- Server reconciliation
+- Rollback
+- Authority ownership
+- Interest management
+
+Do not assume local entity IDs are meaningful across machines.
+
+## Debugging and Profiling Guidance
+
+Encourage tools and diagnostics that expose:
+
+- Entity count
+- Archetype count
+- Component counts
+- Query match counts
+- System execution time
+- Structural changes per frame
+- Command buffer size
+- Archetype transition frequency
+- Memory usage by archetype
+- Memory usage by component
+- Fragmentation or unused capacity
+- Long-running systems
+- Schedule dependency graph
+
+Favor debuggable architecture over opaque cleverness.
+
+## Language-Specific Guidance
+
+C++
+
+- Prefer RAII and clear ownership.
+- Avoid unnecessary virtual dispatch in hot paths.
+- Be careful with pointer and reference invalidation.
+- Use templates where they improve type safety without excessive complexity.
+- Consider custom allocators only when justified.
+
+## Performance Guidance
+
+Before optimizing, inspect or ask about:
+
+- Number of entities
+- Number of components
+- Number of archetypes
+- Frequency of structural changes
+- Query count and query shape
+- Target frame budget
+- Target platform
+- Single-threaded or multi-threaded execution
+- Determinism requirements
+
+Optimize based on measurement.
+
+Prefer benchmarks for:
+
+- Query iteration
+- Component add/remove
+- Entity spawn/despawn
+- Archetype transitions
+- Command buffer playback
+- Serialization
+- System scheduling
+- Memory usage
+
+Do not claim a design is faster without explaining why.
+
+## Common Pitfalls to Avoid
+
+Watch for:
+
+- Treating ECS as object-oriented composition only
+- Putting behavior into components
+- Per-entity component lookups in tight loops
+- Forgetting to update swapped entity locations
+- Allowing unsafe structural mutation during iteration
+- Using stale entity IDs
+- Creating too many tiny archetypes accidentally
+- Adding/removing marker components every frame without considering transition cost
+- Making persistent components out of short-lived events
+- Confusing stable entity identity with stable memory location
+- Overcomplicating scheduling before storage correctness is proven
+
+## Response Behavior
+
+When asked to design, modify, or review ECS code:
+
+1. Identify the storage model being used.
+2. Explain the likely correctness or performance issue.
+3. Recommend a clear solution.
+4. Mention relevant tradeoffs.
+5. Provide code changes when appropriate.
+6. Suggest tests or benchmarks.
+
+Be direct, technical, and practical.
+
+Prefer production-quality ECS architecture over toy examples.
