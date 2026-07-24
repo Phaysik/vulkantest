@@ -106,18 +106,24 @@ static void forEachParProcessChunkOnly(const std::vector<Archetype *> &matchingA
 	}
 
 	std::latch latch(static_cast<std::ptrdiff_t>(allChunks.size()));
+	std::vector<std::future<void>> futures;
+	futures.reserve(allChunks.size());
 
 	for (const auto &[arch, chunkIndex] : allChunks)
 	{
-		threadPool.submitWithLatch(
+		futures.push_back(threadPool.submitWithLatch(
 			[arch, chunkIndex, processChunkFunction]() {
 				const ui entityCount{arch->getEntityCount(chunkIndex)};
 				processChunkFunction(arch, chunkIndex, entityCount);
 			},
-			latch);
+			latch));
 	}
 
 	latch.wait();
+	for (auto &future : futures)
+	{
+		future.get();
+	}
 }
 
 /*! @brief Parallel batched processing: groups chunks into batches and schedules each batch.
@@ -153,6 +159,8 @@ static void forEachParBatchedProcessChunkOnly(const std::vector<Archetype *> &ma
 	const std::size_t batchSize{getBatchSize(allChunks.size())};
 
 	std::latch latch(static_cast<std::ptrdiff_t>((allChunks.size() + batchSize - 1) / batchSize));
+	std::vector<std::future<void>> futures;
+	futures.reserve((allChunks.size() + batchSize - 1) / batchSize);
 
 	// Move the user-provided callable into a shared pointer once so it can be safely
 	// captured by each batch task without forwarding/moving `func` multiple times.
@@ -165,7 +173,7 @@ static void forEachParBatchedProcessChunkOnly(const std::vector<Archetype *> &ma
 		const std::vector<std::pair<Archetype *, ui>> batch(allChunks.begin() + static_cast<std::ptrdiff_t>(i),
 															allChunks.begin() + static_cast<std::ptrdiff_t>(end));
 
-		threadPool.submitWithLatch(
+		futures.push_back(threadPool.submitWithLatch(
 			[batch, processChunkFunction]() mutable {
 				for (const auto &[arch, chunkIndex] : batch)
 				{
@@ -173,10 +181,14 @@ static void forEachParBatchedProcessChunkOnly(const std::vector<Archetype *> &ma
 					processChunkFunction(arch, chunkIndex, entityCount);
 				}
 			},
-			latch);
+			latch));
 	}
 
 	latch.wait();
+	for (auto &future : futures)
+	{
+		future.get();
+	}
 }
 
 /*! @brief Parallel processing using a work-stealing pool for dynamic load balancing.
@@ -217,16 +229,20 @@ static void forEachParStealingProcessChunkOnly(const std::vector<Archetype *> &m
 	using FuncT = std::decay_t<Func>;
 	const FuncT processChunkFunction{std::forward<Func>(func)};
 
-	workStealingPool.submitChunks(
+	auto futures{workStealingPool.submitChunks(
 		allChunks,
 		[processChunkFunction](Archetype *arch, ui chunkIndex) {
 			const ui entityCount{arch->getEntityCount(chunkIndex)};
 
 			processChunkFunction(arch, chunkIndex, entityCount);
 		},
-		latch, batchSize);
+		latch, batchSize)};
 
 	latch.wait();
+	for (auto &future : futures)
+	{
+		future.get();
+	}
 }
 
 /*! @brief Policy dispatcher for `forEach` that selects the execution strategy.
@@ -238,9 +254,11 @@ static void forEachParStealingProcessChunkOnly(const std::vector<Archetype *> &m
 	@param[in] func Callable to execute for matching entities or chunks.
 */
 template <class Self, typename... Components, typename Func>
-static void forEachPolicyImpl(Self &self, const ExecutionPolicy &policy, Func &&func)
+static void forEachPolicyImpl(Self &self, const ExecutionPolicy &policy, Func &&func,
+							  const ComponentMask writeMask
+							  = std::is_const_v<std::remove_reference_t<Self>> ? ComponentMask(0) : buildRequiredMask<Components...>())
 {
-	const IterationGuard iterGuard{self.mActiveIterations};
+	const IterationGuard iterGuard{self.mStructuralMutex};
 
 	constexpr ComponentMask requiredRegular{buildRequiredMask<Components...>()};
 	const std::vector<Archetype *> &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
@@ -248,16 +266,41 @@ static void forEachPolicyImpl(Self &self, const ExecutionPolicy &policy, Func &&
 	const Func processChunkFunction{std::forward<Func>(func)};
 
 	auto processChunk = [&](Archetype *arch, const ui chunkIndex, const ui entityCount) {
-		if constexpr (std::is_const_v<Self>)
+		const IterationGuard workerGuard{self.mStructuralMutex};
+		bool processedAny{false};
+		auto trackedFunction = [&](auto &&...args) {
+			processedAny = true;
+			processChunkFunction(std::forward<decltype(args)>(args)...);
+		};
+		auto stampWrites = [&] {
+			if constexpr (!std::is_const_v<std::remove_reference_t<Self>>)
+			{
+				if (processedAny)
+				{
+					self.markComponentsChanged(arch, chunkIndex, writeMask);
+				}
+			}
+		};
+
+		try
 		{
-			const Entity *entities{arch->getEntityArray(chunkIndex)};
-			processChunkEntitiesConst<Components...>(entities, entityCount, chunkIndex, arch, processChunkFunction);
+			if constexpr (std::is_const_v<std::remove_reference_t<Self>>)
+			{
+				const Entity *entities{arch->getEntityArray(chunkIndex)};
+				processChunkEntitiesConst<Components...>(entities, entityCount, chunkIndex, arch, trackedFunction);
+			}
+			else
+			{
+				Entity *entities{arch->getEntityArray(chunkIndex)};
+				processChunkEntities<Components...>(entities, entityCount, chunkIndex, arch, trackedFunction);
+			}
 		}
-		else
+		catch (...)
 		{
-			Entity *entities{arch->getEntityArray(chunkIndex)};
-			processChunkEntities<Components...>(entities, entityCount, chunkIndex, arch, processChunkFunction);
+			stampWrites();
+			throw;
 		}
+		stampWrites();
 	};
 
 	switch (policy)
@@ -322,9 +365,12 @@ void forEach(const ExecutionPolicy &policy, Func &&func) const
 	@note The `cmds` parameter is not forwarded into the callback; callers should capture it by reference in their lambda.
 */
 template <class Self, typename... Components, typename Func>
-static void forEachPolicyCommandImpl(Self &self, const ExecutionPolicy &policy, CommandBuffer & /*cmds*/, Func &&func)
+static void forEachPolicyCommandImpl(Self &self, const ExecutionPolicy &policy, CommandBuffer & /*cmds*/, Func &&func,
+									 const ComponentMask writeMask = std::is_const_v<std::remove_reference_t<Self>>
+																	   ? ComponentMask(0)
+																	   : buildRequiredMask<Components...>())
 {
-	const IterationGuard iterGuard{self.mActiveIterations};
+	const IterationGuard iterGuard{self.mStructuralMutex};
 
 	constexpr ComponentMask requiredRegular{buildRequiredMask<Components...>()};
 	const std::vector<Archetype *> &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
@@ -334,19 +380,43 @@ static void forEachPolicyCommandImpl(Self &self, const ExecutionPolicy &policy, 
 
 	// Processing lambda – uses the appropriate chunk function based on constness
 	auto processChunk = [&, processChunkFunction](Archetype *arch, ui chunkIndex, const ui entityCount) {
-		if constexpr (std::is_const_v<Self>)
+		const IterationGuard workerGuard{self.mStructuralMutex};
+		bool processedAny{false};
+		auto stampWrites = [&] {
+			if constexpr (!std::is_const_v<std::remove_reference_t<Self>>)
+			{
+				if (processedAny)
+				{
+					self.markComponentsChanged(arch, chunkIndex, writeMask);
+				}
+			}
+		};
+		try
 		{
-			const Entity *entities{arch->getEntityArray(chunkIndex)};
-			processChunkEntitiesConst<Components...>(
-				entities, entityCount, chunkIndex, arch,
-				[&](const Entity &entity, const auto &...comps) { processChunkFunction(entity, comps...); });
+			if constexpr (std::is_const_v<std::remove_reference_t<Self>>)
+			{
+				const Entity *entities{arch->getEntityArray(chunkIndex)};
+				processChunkEntitiesConst<Components...>(entities, entityCount, chunkIndex, arch,
+														 [&](const Entity &entity, const auto &...comps) {
+															 processedAny = true;
+															 processChunkFunction(entity, comps...);
+														 });
+			}
+			else
+			{
+				Entity *entities{arch->getEntityArray(chunkIndex)};
+				processChunkEntities<Components...>(entities, entityCount, chunkIndex, arch, [&](Entity &entity, auto &&...comps) {
+					processedAny = true;
+					processChunkFunction(entity, comps...);
+				});
+			}
 		}
-		else
+		catch (...)
 		{
-			Entity *entities{arch->getEntityArray(chunkIndex)};
-			processChunkEntities<Components...>(entities, entityCount, chunkIndex, arch,
-												[&](Entity &entity, auto &...comps) { processChunkFunction(entity, comps...); });
+			stampWrites();
+			throw;
 		}
+		stampWrites();
 	};
 
 	switch (policy)
@@ -436,16 +506,23 @@ static void forEachParProcessChunkAndVersion(const std::vector<std::tuple<Archet
 	const Ver updateVersionFunction{std::forward<Ver>(updateVersion)};
 
 	std::latch latch(static_cast<std::ptrdiff_t>(dirtyChunks.size()));
+	std::vector<std::future<void>> futures;
+	futures.reserve(dirtyChunks.size());
 
 	for (const auto &chunk : dirtyChunks)
 	{
 		Archetype *arch{std::get<0>(chunk)};
 		ui chunkIndex{std::get<1>(chunk)};
 
-		threadPool.submitWithLatch([arch, chunkIndex, processChunkFunction]() { processChunkFunction(arch, chunkIndex); }, latch);
+		futures.push_back(
+			threadPool.submitWithLatch([arch, chunkIndex, processChunkFunction]() { processChunkFunction(arch, chunkIndex); }, latch));
 	}
 
 	latch.wait();
+	for (auto &future : futures)
+	{
+		future.get();
+	}
 
 	for (const auto &chunk : dirtyChunks)
 	{
@@ -480,6 +557,8 @@ static void forEachParBatchedProcessChunkAndVersion(const std::vector<std::tuple
 	const std::size_t batchSize{getBatchSize(chunks.size())};
 
 	std::latch latch(static_cast<std::ptrdiff_t>((chunks.size() + batchSize - 1) / batchSize));
+	std::vector<std::future<void>> futures;
+	futures.reserve((chunks.size() + batchSize - 1) / batchSize);
 
 	for (std::size_t i{0}; i < chunks.size(); i += batchSize)
 	{
@@ -487,17 +566,21 @@ static void forEachParBatchedProcessChunkAndVersion(const std::vector<std::tuple
 		const std::vector<std::pair<Archetype *, ui>> batch(chunks.begin() + static_cast<std::ptrdiff_t>(i),
 															chunks.begin() + static_cast<std::ptrdiff_t>(end));
 
-		threadPool.submitWithLatch(
+		futures.push_back(threadPool.submitWithLatch(
 			[batch, processChunkFunction]() {
 				for (const auto &[arch, chunkIndex] : batch)
 				{
 					processChunkFunction(arch, chunkIndex);
 				}
 			},
-			latch);
+			latch));
 	}
 
 	latch.wait();
+	for (auto &future : futures)
+	{
+		future.get();
+	}
 
 	for (const auto &chunk : dirtyChunks)
 	{
@@ -531,10 +614,16 @@ static void forEachParStealingProcessChunkAndVersion(const std::vector<std::tupl
 	const std::size_t batchSize{getBatchSize(chunks.size())}; // same as in forEachPolicyImpl
 	std::latch latch(static_cast<std::ptrdiff_t>((chunks.size() + batchSize - 1) / batchSize));
 
-	workStealingPool.submitChunks(
-		chunks, [processChunkFunction](Archetype *arch, ui chunkIndex) { processChunkFunction(arch, chunkIndex); }, latch, batchSize);
+	auto futures{workStealingPool.submitChunks(
+		chunks, [processChunkFunction](Archetype *arch, ui chunkIndex) { processChunkFunction(arch, chunkIndex); }, latch, batchSize)};
+
+	// Work-stealing tasks always count down the latch, including when a callback throws.
 
 	latch.wait();
+	for (auto &future : futures)
+	{
+		future.get();
+	}
 
 	for (const auto &chunk : dirtyChunks)
 	{
@@ -552,9 +641,12 @@ static void forEachParStealingProcessChunkAndVersion(const std::vector<std::tupl
 	@param[in] func Callable to execute for matching entities.
 */
 template <class Self, typename... Components, typename Func>
-static void forEachPolicyVersionImpl(Self &self, const ExecutionPolicy &policy, SystemVersion &version, Func &&func)
+static void forEachPolicyVersionImpl(Self &self, const ExecutionPolicy &policy, SystemVersion &version, Func &&func,
+									 const ComponentMask writeMask = std::is_const_v<std::remove_reference_t<Self>>
+																	   ? ComponentMask(0)
+																	   : buildRequiredMask<Components...>())
 {
-	const IterationGuard iterGuard{self.mActiveIterations};
+	const IterationGuard iterGuard{self.mStructuralMutex};
 
 	constexpr ComponentMask requiredRegular{buildRequiredMask<Components...>()};
 	const std::vector<Archetype *> &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
@@ -570,19 +662,45 @@ static void forEachPolicyVersionImpl(Self &self, const ExecutionPolicy &policy, 
 	}
 
 	// Processing lambda – processes only the dirty chunks identified above
-	auto processChunk = [&func](Archetype *arch, const ui chunkIndex) {
+	using FuncT = std::decay_t<Func>;
+	const FuncT processChunkFunction{std::forward<Func>(func)};
+	auto processChunk = [&, processChunkFunction](Archetype *arch, const ui chunkIndex) {
+		const IterationGuard workerGuard{self.mStructuralMutex};
 		const ui count{arch->getEntityCount(chunkIndex)};
+		bool processedAny{false};
+		auto trackedFunction = [&](auto &&...args) {
+			processedAny = true;
+			processChunkFunction(std::forward<decltype(args)>(args)...);
+		};
+		auto stampWrites = [&] {
+			if constexpr (!std::is_const_v<std::remove_reference_t<Self>>)
+			{
+				if (processedAny)
+				{
+					self.markComponentsChanged(arch, chunkIndex, writeMask);
+				}
+			}
+		};
 
-		if constexpr (std::is_const_v<Self>)
+		try
 		{
-			const Entity *entityArr{arch->getEntityArray(chunkIndex)};
-			processChunkEntitiesConst<Components...>(entityArr, count, chunkIndex, arch, std::forward<Func>(func));
+			if constexpr (std::is_const_v<std::remove_reference_t<Self>>)
+			{
+				const Entity *entityArr{arch->getEntityArray(chunkIndex)};
+				processChunkEntitiesConst<Components...>(entityArr, count, chunkIndex, arch, trackedFunction);
+			}
+			else
+			{
+				Entity *entityArr{arch->getEntityArray(chunkIndex)};
+				processChunkEntities<Components...>(entityArr, count, chunkIndex, arch, trackedFunction);
+			}
 		}
-		else
+		catch (...)
 		{
-			Entity *entityArr{arch->getEntityArray(chunkIndex)};
-			processChunkEntities<Components...>(entityArr, count, chunkIndex, arch, std::forward<Func>(func));
+			stampWrites();
+			throw;
 		}
+		stampWrites();
 	};
 
 	auto noOpVersionUpdate = [](const auto &) {};
@@ -645,9 +763,12 @@ void forEach(const ExecutionPolicy &policy, SystemVersion &version, Func &&func)
 */
 template <class Self, typename... Components, typename Func>
 static void forEachPolicyVersionCommandImpl(Self &self, const ExecutionPolicy &policy, SystemVersion &version, CommandBuffer &cmds,
-											Func &&func)
+											Func &&func,
+											const ComponentMask writeMask = std::is_const_v<std::remove_reference_t<Self>>
+																			  ? ComponentMask(0)
+																			  : buildRequiredMask<Components...>())
 {
-	const IterationGuard iterGuard{self.mActiveIterations};
+	const IterationGuard iterGuard{self.mStructuralMutex};
 
 	constexpr ComponentMask requiredRegular{buildRequiredMask<Components...>()};
 	const std::vector<Archetype *> &matchingArchetypes{self.mQueryCache.get(requiredRegular)};
@@ -667,22 +788,45 @@ static void forEachPolicyVersionCommandImpl(Self &self, const ExecutionPolicy &p
 
 	// Processing lambda – processes only the dirty chunks identified above
 	auto processChunk = [&, processChunkFunction](Archetype *arch, const ui chunkIndex) {
+		const IterationGuard workerGuard{self.mStructuralMutex};
 		const ui count{arch->getEntityCount(chunkIndex)};
+		bool processedAny{false};
+		auto stampWrites = [&] {
+			if constexpr (!std::is_const_v<std::remove_reference_t<Self>>)
+			{
+				if (processedAny)
+				{
+					self.markComponentsChanged(arch, chunkIndex, writeMask);
+				}
+			}
+		};
+		try
+		{
 
-		if constexpr (std::is_const_v<Self>)
-		{
-			const Entity *entities{arch->getEntityArray(chunkIndex)};
-			processChunkEntitiesConst<Components...>(entities, count, chunkIndex, arch, [&](const Entity &entity, const auto &...comps) {
-				processChunkFunction(entity, comps..., cmds);
-			});
+			if constexpr (std::is_const_v<std::remove_reference_t<Self>>)
+			{
+				const Entity *entities{arch->getEntityArray(chunkIndex)};
+				processChunkEntitiesConst<Components...>(entities, count, chunkIndex, arch,
+														 [&](const Entity &entity, const auto &...comps) {
+															 processedAny = true;
+															 processChunkFunction(entity, comps..., cmds);
+														 });
+			}
+			else
+			{
+				Entity *entityArr = arch->getEntityArray(chunkIndex);
+				processChunkEntities<Components...>(entityArr, count, chunkIndex, arch, [&](const Entity &entity, auto &...comps) {
+					processedAny = true;
+					processChunkFunction(entity, comps..., cmds);
+				});
+			}
 		}
-		else
+		catch (...)
 		{
-			Entity *entityArr = arch->getEntityArray(chunkIndex);
-			processChunkEntities<Components...>(entityArr, count, chunkIndex, arch, [&](const Entity &entity, auto &...comps) {
-				processChunkFunction(entity, comps..., cmds);
-			});
+			stampWrites();
+			throw;
 		}
+		stampWrites();
 	};
 
 	auto noOpVersionUpdate = [](const auto &) {};

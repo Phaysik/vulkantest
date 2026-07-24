@@ -47,6 +47,31 @@ namespace Dimensia::ECS
 	struct TypeListSize<TypeList<Ts...>> : std::integral_constant<std::size_t, sizeof...(Ts)>
 	{};
 
+	template <typename T, typename List>
+	struct TypeListPrepend;
+
+	template <typename T, typename... Ts>
+	struct TypeListPrepend<T, TypeList<Ts...>>
+	{
+		using type = TypeList<T, Ts...>;
+	};
+
+	template <typename List>
+	struct RegularTypeList;
+
+	template <>
+	struct RegularTypeList<TypeList<>>
+	{
+		using type = TypeList<>;
+	};
+
+	template <typename T, typename... Ts>
+	struct RegularTypeList<TypeList<T, Ts...>>
+	{
+		using tail = RegularTypeList<TypeList<Ts...>>::type;
+		using type = std::conditional_t<isTagV<T>, tail, typename TypeListPrepend<T, tail>::type>;
+	};
+
 	/*! @brief Marker wrapper expressing a query clause where all listed component types are required.
 		@tparam Types Component/tag types that must all be present.
 		@date 03/03/2026
@@ -217,6 +242,25 @@ namespace Dimensia::ECS
 		return MaskBuilder<List>::value;
 	}
 
+	/*! @brief Computes a tag-only component mask from a `TypeList`.
+		@tparam List A `TypeList<...>` containing component and tag types.
+		@return Mask containing only tag type identifiers from @p List.
+	*/
+	template <typename List>
+	struct TagMaskBuilder;
+
+	template <typename... Ts>
+	struct TagMaskBuilder<TypeList<Ts...>>
+	{
+		static constexpr ComponentMask value = buildTagMask<Ts...>();
+	};
+
+	template <typename List>
+	constexpr ComponentMask buildTagMaskFromList()
+	{
+		return TagMaskBuilder<List>::value;
+	}
+
 	/*! @struct QueryKey include/ECS/queryKey.h
 		@brief Canonical runtime key representing a compiled ECS query signature.
 		@details `required` stores components that must be present, `any` stores optional-match components where at least one bit must
@@ -252,6 +296,21 @@ namespace Dimensia::ECS
 			*/
 			ComponentMask none;
 
+			/*! @var requiredTags
+				@brief Per-row tag bits that must all be present.
+			*/
+			ComponentMask requiredTags{0};
+
+			/*! @var anyTags
+				@brief Per-row tag bits where at least one may satisfy the Any clause.
+			*/
+			ComponentMask anyTags{0};
+
+			/*! @var noneTags
+				@brief Per-row tag bits that must all be absent.
+			*/
+			ComponentMask noneTags{0};
+
 			// NOLINTEND(misc-non-private-member-variables-in-classes)
 	};
 } // namespace Dimensia::ECS
@@ -270,11 +329,20 @@ namespace std
 			*/
 			std::size_t operator()(const Dimensia::ECS::QueryKey &key) const noexcept
 			{
+				constexpr unsigned int ANY_SHIFT{1U};
+				constexpr unsigned int NONE_SHIFT{2U};
+				constexpr unsigned int REQUIRED_TAGS_SHIFT{3U};
+				constexpr unsigned int ANY_TAGS_SHIFT{4U};
+				constexpr unsigned int NONE_TAGS_SHIFT{5U};
 				const std::size_t required{hash<Dimensia::ECS::ComponentMask>{}(key.required)};
 				const std::size_t any{hash<Dimensia::ECS::ComponentMask>{}(key.any)};
 				const std::size_t none{hash<Dimensia::ECS::ComponentMask>{}(key.none)};
+				const std::size_t requiredTags{hash<Dimensia::ECS::ComponentMask>{}(key.requiredTags)};
+				const std::size_t anyTags{hash<Dimensia::ECS::ComponentMask>{}(key.anyTags)};
+				const std::size_t noneTags{hash<Dimensia::ECS::ComponentMask>{}(key.noneTags)};
 
-				return required ^ (any << 1U) ^ (none << 2U);
+				return required ^ (any << ANY_SHIFT) ^ (none << NONE_SHIFT) ^ (requiredTags << REQUIRED_TAGS_SHIFT)
+					   ^ (anyTags << ANY_TAGS_SHIFT) ^ (noneTags << NONE_TAGS_SHIFT);
 			}
 	};
 } // namespace std

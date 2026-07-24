@@ -18,6 +18,7 @@
 
 #include "Core/typedefs.h"
 #include "ECS/componentList.h"
+#include "ECS/constants.h"
 #include "ECS/entity.h"
 
 // Forward declaration of ECS
@@ -40,6 +41,42 @@ namespace Dimensia::Registry
 	template <typename T>
 	struct is_tag_component<T, std::void_t<decltype(T::is_tag)>> : std::integral_constant<bool, T::is_tag>
 	{};
+
+	/*! @brief Indicates whether a component type can be stored in one ECS chunk row.
+		@details Tags require no component column. Regular components must not exceed the chunk's base alignment and must leave enough room
+	   for one entity handle, one tag mask, alignment padding, and one component instance.
+		@tparam T Component or tag type to validate.
+	*/
+	template <typename T>
+	constexpr bool is_chunk_storable_component_v = [] {
+		if constexpr (is_tag_component<T>::value)
+		{
+			return true;
+		}
+		else
+		{
+			if constexpr (alignof(T) > Dimensia::ECS::CHUNK_ALIGNMENT)
+			{
+				return false;
+			}
+
+			constexpr std::size_t tagOffset{(sizeof(Dimensia::ECS::Entity) + alignof(Dimensia::Core::ul) - 1)
+											& ~(alignof(Dimensia::Core::ul) - 1)};
+			constexpr std::size_t componentStart{tagOffset + (sizeof(Dimensia::Core::ul) * Dimensia::ECS::TAG_WORDS_PER_ENTITY)};
+			constexpr std::size_t componentOffset{(componentStart + alignof(T) - 1) & ~(alignof(T) - 1)};
+
+			return componentOffset <= Dimensia::ECS::CHUNK_SIZE && sizeof(T) <= (Dimensia::ECS::CHUNK_SIZE - componentOffset);
+		}
+	}();
+
+	/*! @brief Indicates whether a component's destructive relocation operations are safe for dense chunk storage.
+		@tparam T Component or tag type to validate.
+		@note Tags are accepted because they have no stored object lifetime. Regular components require no-throw move construction and
+	   destruction so swap removal cannot leave a partially relocated row.
+	*/
+	template <typename T>
+	constexpr bool has_safe_chunk_lifecycle_v
+		= is_tag_component<T>::value || (std::is_nothrow_move_constructible_v<T> && std::is_nothrow_destructible_v<T>);
 
 	/*! @brief Maximum number of distinct component types the registry supports.
 		@note This is a conservative upper bound and is independent from `ComponentTypes` size.

@@ -38,6 +38,11 @@ namespace Dimensia::ECS
 
 	std::vector<Entity> ECS::getChildren(const Entity &parent) const
 	{
+		if (!alive(parent))
+		{
+			return {};
+		}
+
 		const std::scoped_lock<std::mutex> lock(mHierarchyMutex);
 
 		if (parent.index < mChildren.size())
@@ -51,6 +56,11 @@ namespace Dimensia::ECS
 
 	Entity ECS::getParent(const Entity &child) const
 	{
+		if (!alive(child))
+		{
+			return NULL_ENTITY;
+		}
+
 		const std::scoped_lock<std::mutex> lock(mHierarchyMutex);
 
 		if (child.index < mParent.size())
@@ -66,6 +76,8 @@ namespace Dimensia::ECS
 
 	void ECS::setParent(const Entity &child, const Entity &parent)
 	{
+		const StructuralGuard structuralGuard{mStructuralMutex};
+
 		if (parent == child)
 		{
 			return;
@@ -88,6 +100,11 @@ namespace Dimensia::ECS
 		{
 			mParent.resize(maxIdx + 1, NULL_ENTITY);
 			mChildren.resize(maxIdx + 1);
+		}
+
+		if (wouldCreateHierarchyCycle(child, parent))
+		{
+			return;
 		}
 
 		assert(child.index < mParent.size());
@@ -127,6 +144,30 @@ namespace Dimensia::ECS
 			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			mChildren[parent.index].push_back(child);
 		}
+	}
+
+	bool ECS::wouldCreateHierarchyCycle(const Entity &child, const Entity &parent) const
+	{
+		Entity ancestor{parent};
+		std::size_t visitedCount{};
+		while (ancestor != NULL_ENTITY && visitedCount <= mParent.size())
+		{
+			if (ancestor == child)
+			{
+				return true;
+			}
+
+			if (!alive(ancestor) || ancestor.index >= mParent.size())
+			{
+				return false;
+			}
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			ancestor = mParent[ancestor.index];
+			++visitedCount;
+		}
+
+		return visitedCount > mParent.size();
 	}
 
 	// MARK: Member Functions
@@ -171,6 +212,8 @@ namespace Dimensia::ECS
 
 	Entity ECS::createEntity()
 	{
+		const StructuralGuard structuralGuard{mStructuralMutex};
+		const VersionType version{nextVersion()};
 		Entity entity{allocateEntityID()};
 
 		Archetype *emptyArch{getOrCreateArchetype(ComponentMask(0))};
@@ -180,7 +223,7 @@ namespace Dimensia::ECS
 		noCopy.fill(nullptr);
 		noMove.fill(nullptr);
 
-		auto [chunk, slot]{emptyArch->addEntity(entity, noCopy, noMove, ComponentMask(0))};
+		auto [chunk, slot]{emptyArch->addEntity(entity, noCopy, noMove, ComponentMask(0), version)};
 
 		assert(entity.index < mRecords.size());
 
@@ -196,6 +239,7 @@ namespace Dimensia::ECS
 
 	void ECS::destroyEntity(Entity &entity, const bool destroyChildren)
 	{
+		const StructuralGuard structuralGuard{mStructuralMutex};
 		if (!alive(entity))
 		{
 			return;
@@ -259,7 +303,7 @@ namespace Dimensia::ECS
 
 		Archetype *arch{mArchetypePtrs[rec.archetypeID].get()};
 
-		auto [movedEntity, newSlot]{arch->removeEntity(rec.chunkIndex, rec.slotIndex)};
+		auto [movedEntity, newSlot]{arch->removeEntity(rec.chunkIndex, rec.slotIndex, nextVersion())};
 
 		if (movedEntity != NULL_ENTITY)
 		{
@@ -280,6 +324,7 @@ namespace Dimensia::ECS
 
 	Entity ECS::cloneEntity(const Entity &src, bool cloneHierarchy)
 	{
+		const StructuralGuard structuralGuard{mStructuralMutex};
 		if (!alive(src))
 		{
 			return NULL_ENTITY;
@@ -384,6 +429,7 @@ namespace Dimensia::ECS
 
 	void ECS::compact()
 	{
+		const StructuralGuard structuralGuard{mStructuralMutex};
 		for (auto &archPtr : mArchetypePtrs)
 		{
 			archPtr->compact(mRecords);
@@ -484,6 +530,7 @@ namespace Dimensia::ECS
 
 	void ECS::removeComponent(const Entity &entity, const ComponentTypeID compID)
 	{
+		const StructuralGuard structuralGuard{mStructuralMutex};
 		if (!alive(entity))
 		{
 			return;
@@ -503,7 +550,7 @@ namespace Dimensia::ECS
 
 			assert(rec.archetypeID < mArchetypePtrs.size());
 
-			mArchetypePtrs[rec.archetypeID]->clearTag(rec.chunkIndex, rec.slotIndex, compID);
+			mArchetypePtrs[rec.archetypeID]->clearTag(rec.chunkIndex, rec.slotIndex, compID, nextVersion());
 			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 
 			return;
@@ -538,6 +585,7 @@ namespace Dimensia::ECS
 
 	void ECS::invalidateQueries()
 	{
+		const StructuralGuard structuralGuard{mStructuralMutex};
 		mQueryCache.clearResults();
 
 		const std::unique_lock lock(mMultiQueryMutex);
@@ -548,9 +596,6 @@ namespace Dimensia::ECS
 
 	Archetype *ECS::getOrCreateArchetype(ComponentMask regularMask)
 	{
-		assert(mActiveIterations.load(std::memory_order_acquire) == 0
-			   && "Structural change during active forEach iteration; use CommandBuffer for deferred mutations");
-
 		auto iterator{mArchetypeMaskToID.find(regularMask)};
 
 		if (iterator != mArchetypeMaskToID.end())
@@ -580,7 +625,7 @@ namespace Dimensia::ECS
 					continue;
 				}
 
-				if (key.any && !(regularMask & key.any))
+				if (key.any && !key.anyTags && !(regularMask & key.any))
 				{
 					continue;
 				}
@@ -680,7 +725,7 @@ namespace Dimensia::ECS
 	// MARK: Private Member Functions
 
 	void ECS::moveEntity(const Entity &entity, ComponentMask newRegularMask, const std::array<const void *, MAX_COMPONENTS> &copyData,
-						 const std::array<void *, MAX_COMPONENTS> &moveData, ComponentMask newTags)
+						 const std::array<void *, MAX_COMPONENTS> &moveData, const std::optional<ComponentMask> newTags)
 	{
 		assert(entity.index < mRecords.size());
 
@@ -697,8 +742,9 @@ namespace Dimensia::ECS
 
 		const ComponentMask oldRegular{srcArch->getRegularMask()};
 		const ComponentMask oldTags{srcArch->getTags(srcChunk, srcSlot)};
+		const ComponentMask targetTags{newTags.value_or(oldTags)};
 
-		if (oldRegular == newRegularMask && oldTags == newTags)
+		if (oldRegular == newRegularMask && oldTags == targetTags)
 		{
 			return;
 		}
@@ -709,11 +755,11 @@ namespace Dimensia::ECS
 		finalCopy.fill(nullptr);
 		finalMove.fill(nullptr);
 
-		forEachSetBit(oldRegular, [&](const ComponentTypeID componentTypeID) {
-			assert(componentTypeID < finalMove.size());
+		forEachSetBit(oldRegular & newRegularMask, [&](const ComponentTypeID componentTypeID) {
+			assert(componentTypeID < finalCopy.size());
 
 			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			finalMove[componentTypeID] = getComponentPtr(entity, componentTypeID);
+			finalCopy[componentTypeID] = getComponentPtr(entity, componentTypeID);
 		});
 
 		ComponentMask moveOverrideMask{0, 0};
@@ -744,8 +790,9 @@ namespace Dimensia::ECS
 		});
 
 		Archetype *dstArch{getOrCreateArchetype(newRegularMask)};
-		auto [newChunk, newSlot]{dstArch->addEntity(entity, finalCopy, finalMove, newTags)};
-		auto [movedEntity, vacatedSlot]{srcArch->removeEntity(srcChunk, srcSlot)};
+		const VersionType version{nextVersion()};
+		auto [newChunk, newSlot]{dstArch->addEntity(entity, finalCopy, finalMove, targetTags, version)};
+		auto [movedEntity, vacatedSlot]{srcArch->removeEntity(srcChunk, srcSlot, version)};
 
 		rec.archetypeID = dstArch->getId();
 		rec.chunkIndex = newChunk;

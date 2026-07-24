@@ -198,13 +198,13 @@ int main()
 	// false for all chunks → nothing is processed.
 	{
 		CommandBuffer commands;
-		bool processedAny{false};
+		std::atomic_bool processedAny{false};
 
 		ecs.forEach<Health>(ExecutionPolicy::ParBatched, healthVersion, commands, [&](Entity, Health &, CommandBuffer &) {
-			processedAny = true; // This should NOT be called
+			processedAny.store(true, std::memory_order_relaxed); // This should NOT be called
 		});
 
-		if (!processedAny)
+		if (!processedAny.load(std::memory_order_relaxed))
 		{
 			std::cout << "Second run correctly skipped all chunks (no changes).\n";
 		}
@@ -224,12 +224,12 @@ int main()
 	// Third run: the chunk containing that entity is now dirty, so it will be processed.
 	{
 		CommandBuffer commands;
-		std::size_t processedCount{0};
+		std::atomic_size_t processedCount{0};
 
 		ecs.forEach<Health>(ExecutionPolicy::ParBatched, healthVersion, commands,
-							[&](Entity, Health &, CommandBuffer &) { ++processedCount; });
+							[&](Entity, Health &, CommandBuffer &) { processedCount.fetch_add(1, std::memory_order_relaxed); });
 
-		std::cout << "Third run processed " << processedCount << " chunk(s) (the one that was modified).\n";
+		std::cout << "Third run processed " << processedCount.load(std::memory_order_relaxed) << " entity/entities in the modified chunk.\n";
 	}
 
 	// ------------------------------------------------------------------------

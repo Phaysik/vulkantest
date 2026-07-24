@@ -91,25 +91,27 @@ namespace Dimensia::Threading
 				task has completed. The latch must outlive the task.
 				@pre `task` must be invocable with no arguments. Use `std::ref` to
 				pass references via the callable if required.
-				@post `latch.count_down()` is called exactly once after `task()`
-				completes (even if `task()` throws; exception propagation depends on
-				the callable and is not captured by this API).
+				@post `latch.count_down()` is called exactly once after `task()` completes.
+				@return Future that rethrows any exception produced by @p task when `get()` is called.
 				@note Thread-safe for concurrent calls from multiple threads.
 			*/
 			template <typename Func>
 				requires InvocableNoArgs<Func>
-			void submitWithLatch(Func &&task, std::latch &latch) const
+			std::future<void> submitWithLatch(Func &&task, std::latch &latch) const
 			{
+				auto packagedTask{std::make_shared<std::packaged_task<void()>>(std::forward<Func>(task))};
+				std::future<void> result{packagedTask->get_future()};
 				{
 					const std::scoped_lock<std::mutex> lock(mQueueMutex);
 
-					mTasks.emplace([task = std::forward<Func>(task), &latch]() mutable {
-						task();
+					mTasks.emplace([packagedTask, &latch]() mutable {
+						(*packagedTask)();
 						latch.count_down();
 					});
 				}
 
 				mCondition.notify_one();
+				return result;
 			}
 
 			/*! @brief Submit a no-argument callable and obtain a future for its result.

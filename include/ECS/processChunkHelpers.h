@@ -170,13 +170,14 @@ namespace Dimensia::ECS
 	*/
 	template <bool IsConst, typename... Components, typename Func, std::size_t... Is>
 	void processChunkEntitiesWithTags(EntityPtr<IsConst> entityArr, const ui entityCount, const ui chunkIndex, ArchPtr<IsConst> arch,
-									  Func &&func, const std::index_sequence<Is...> & /* indexSequence*/)
+									  Func &&func, const std::index_sequence<Is...> & /* indexSequence*/,
+									  const ComponentMask requiredTags = buildTagMask<Components...>(),
+									  const ComponentMask anyTags = ComponentMask(0), const ComponentMask noneTags = ComponentMask(0),
+									  const bool hasAnyClause = false, const bool anyRegularMatched = false)
 	{
 		using BytePtr = std::conditional_t<IsConst, const std::byte *, std::byte *>;
 
 		const ul *tagBits{arch->getTagBitset(chunkIndex)};
-		const ComponentMask requiredTags{buildTagMask<Components...>()};
-
 		// Store pointers as std::byte* in a tuple with deduced type
 		auto byteArrays{std::tuple{static_cast<BytePtr>(arch->getComponentArray(chunkIndex, componentID<Components>()))...}};
 
@@ -194,16 +195,17 @@ namespace Dimensia::ECS
 
 			// NOLINTEND(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 
-			if ((entityTags & requiredTags) != requiredTags)
+			const bool requiredMatch{(entityTags & requiredTags) == requiredTags};
+			const bool anyMatch{!hasAnyClause || anyRegularMatched || static_cast<bool>(entityTags & anyTags)};
+			const bool noneMatch{!static_cast<bool>(entityTags & noneTags)};
+			if (requiredMatch && anyMatch && noneMatch)
 			{
-				continue;
+				// Call user function with correctly typed pointers (tags get default-constructed values)
+				std::apply([&](auto *...bytePtrs) { forwardedFunction(entity, derefComponentPtr<IsConst, Components>(bytePtrs)...); },
+						   byteArrays);
 			}
 
-			// Call user function with correctly typed pointers (tags get default-constructed values)
-			std::apply([&](auto *...bytePtrs) noexcept { forwardedFunction(entity, derefComponentPtr<IsConst, Components>(bytePtrs)...); },
-					   byteArrays);
-
-			// Advance byte pointers only for non-tag components (tags have nullptr)
+			// Advance regular component columns for every row, including rows rejected by the tag filter.
 			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic,cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			(([&] {
 				 if constexpr (!isTagV<Components>)
@@ -213,6 +215,26 @@ namespace Dimensia::ECS
 			 }()),
 			 ...);
 		}
+	}
+
+	template <typename... Components, typename Func>
+	void processChunkEntitiesFiltered(Entity *entityArr, const ui entityCount, const ui chunkIndex, Archetype *arch, Func &&func,
+									  const ComponentMask requiredTags, const ComponentMask anyTags, const ComponentMask noneTags,
+									  const bool hasAnyClause, const bool anyRegularMatched)
+	{
+		processChunkEntitiesWithTags<false, Components...>(entityArr, entityCount, chunkIndex, arch, std::forward<Func>(func),
+															std::index_sequence_for<Components...>{}, requiredTags, anyTags, noneTags,
+															hasAnyClause, anyRegularMatched);
+	}
+
+	template <typename... Components, typename Func>
+	void processChunkEntitiesFilteredConst(const Entity *entityArr, const ui entityCount, const ui chunkIndex, const Archetype *arch,
+										 Func &&func, const ComponentMask requiredTags, const ComponentMask anyTags,
+										 const ComponentMask noneTags, const bool hasAnyClause, const bool anyRegularMatched)
+	{
+		processChunkEntitiesWithTags<true, Components...>(entityArr, entityCount, chunkIndex, arch, std::forward<Func>(func),
+														   std::index_sequence_for<Components...>{}, requiredTags, anyTags, noneTags,
+														   hasAnyClause, anyRegularMatched);
 	}
 
 	/*! @brief Process entities in a chunk when `Components...` contain no tag components.
@@ -243,7 +265,7 @@ namespace Dimensia::ECS
 			Entity entity{entityArr[slot]};
 
 			std::apply(
-				[&](auto *...bytePtrs) noexcept {
+				[&](auto *...bytePtrs) {
 					forwardedFunction(
 						// NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
 						entity, (*reinterpret_cast<std::conditional_t<IsConst, const Components *, Components *>>(bytePtrs))...);

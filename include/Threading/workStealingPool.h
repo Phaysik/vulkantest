@@ -14,7 +14,9 @@
 #define INCLUDE_ECS_WORKSTEALINGPOOL_H
 
 #include <atomic>
+#include <future>
 #include <latch>
+#include <memory>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -92,18 +94,35 @@ namespace Dimensia::Threading
 						 `latch.count_down()` to signal completion.
 				@pre `batchSize > 0`. The caller is responsible for initializing `latch`
 					 to the number of tasks that will be submitted.
+				@return One future per submitted batch. Calling `get()` propagates exceptions raised while processing that batch.
 				@note Work is distributed using `submitTask` which pushes tasks to per-worker
 					  queues in a round-robin fashion. Complexity is O(N) in the number
 					  of input `chunks`.
 			*/
 			template <typename Func>
 				requires Dimensia::Core::InvocableWithArgs<Func, Archetype *, ui>
-			void submitChunks(const ChunkVector &chunks, Func &&func, std::latch &latch, const std::size_t batchSize)
+			std::vector<std::future<void>> submitChunks(const ChunkVector &chunks, Func &&func, std::latch &latch,
+														const std::size_t batchSize)
 			{
 				ChunkVector batch;
 				batch.reserve(batchSize);
+				std::vector<std::future<void>> futures;
+				futures.reserve((chunks.size() + batchSize - 1) / batchSize);
 
 				const Func forwardedFunc{std::forward<Func>(func)};
+				auto submitBatch = [&](const ChunkVector &batchToSubmit) {
+					auto packagedTask{std::make_shared<std::packaged_task<void()>>([batchToSubmit, forwardedFunc] {
+						for (const auto &[arch, index] : batchToSubmit)
+						{
+							forwardedFunc(arch, index);
+						}
+					})};
+					futures.push_back(packagedTask->get_future());
+					submitTask([packagedTask, &latch] {
+						(*packagedTask)();
+						latch.count_down();
+					});
+				};
 
 				for (const auto &chunk : chunks)
 				{
@@ -111,33 +130,17 @@ namespace Dimensia::Threading
 
 					if (batch.size() >= batchSize)
 					{
-						auto task = [batch, forwardedFunc, &latch]() {
-							for (const auto &[arch, index] : batch)
-							{
-								forwardedFunc(arch, index);
-							}
-
-							latch.count_down();
-						};
-
-						submitTask(std::move(task));
+						submitBatch(batch);
 						batch.clear();
 					}
 				}
 
 				if (!batch.empty())
 				{
-					auto task = [batch, forwardedFunc, &latch]() {
-						for (const auto &[arch, index] : batch)
-						{
-							forwardedFunc(arch, index);
-						}
-
-						latch.count_down();
-					};
-
-					submitTask(std::move(task));
+					submitBatch(batch);
 				}
+
+				return futures;
 			}
 
 		private:

@@ -1,6 +1,6 @@
 /*! @file chunkVersion.h
 	@brief Tracks per-chunk and per-component version counters used for change detection.
-	@details `ChunkVersion` stores a global version number for a chunk and an array of per-component versions. Systems and caches use these
+	@details `ChunkVersion` stores world-global structural and per-component epoch stamps. Systems and caches use these
    values to determine whether a chunk or specific component data have changed and therefore require reprocessing. This header documents the
    version bumping and reset semantics used by the ECS.
 	@date 02/14/2026
@@ -13,8 +13,8 @@
 #define INCLUDE_ECS_CHUNKVERSION_H
 
 #include <array>
+#include <atomic>
 #include <cassert>
-#include <compare>
 
 #include "Core/attributeMacros.h"
 #include "ECS/componentRegistry.h"
@@ -27,9 +27,8 @@ namespace Dimensia::ECS
 
 	/*! @class ChunkVersion include/ECS/chunkVersion.h
 		@brief Represents version metadata for an archetype chunk.
-		@details Contains a global chunk `mVersion` and an array `mComponentVersions` indexed by `ComponentTypeID`. Callers should use
-	   `bump()` to indicate a global change and `bumpComponent()` to indicate a component-level change. `reset()` initializes the version
-	   counters to 1 to avoid zero-valued versions.
+		@details Contains a structural chunk epoch and component epochs indexed by `ComponentTypeID`. Callers stamp versions allocated by the
+	   owning ECS world; values are never incremented independently by a chunk.
 		@note Thread-safety depends on external synchronization when mutating versions.
 	*/
 	class ChunkVersion
@@ -37,38 +36,54 @@ namespace Dimensia::ECS
 		public:
 			// MARK: Constructor
 
-			/*! @brief Default-constructs a ChunkVersion.
-				@details Initializes the per-component versions to zero.
-			*/
-			explicit constexpr ChunkVersion()
+			explicit ChunkVersion() noexcept
 			{
-				mComponentVersions.fill(0);
+				for (auto &version : mComponentVersions)
+				{
+					version.store(0, std::memory_order_relaxed);
+				}
 			}
 
-			// MARK: Comparison
+			ChunkVersion(const ChunkVersion &other) noexcept : ChunkVersion()
+			{
+				*this = other;
+			}
 
-			/*! @brief Defaulted three-way comparison for `ChunkVersion`.
-				@return A `std::strong_ordering` comparing component versions and the global version.
-			*/
-			std::strong_ordering operator<=>(const ChunkVersion &) const noexcept = default;
+			ChunkVersion &operator=(const ChunkVersion &other) noexcept
+			{
+				if (this != &other)
+				{
+					mVersion.store(other.getVersion(), std::memory_order_relaxed);
+					for (ComponentTypeID componentTypeID{0}; componentTypeID < MAX_COMPONENTS; ++componentTypeID)
+					{
+						mComponentVersions.at(componentTypeID).store(other.getComponentVersion(componentTypeID), std::memory_order_relaxed);
+					}
+				}
+				return *this;
+			}
+
+			ChunkVersion(ChunkVersion &&other) noexcept : ChunkVersion()
+			{
+				assignFrom(other);
+			}
+			ChunkVersion &operator=(ChunkVersion &&other) noexcept
+			{
+				if (this != &other)
+				{
+					assignFrom(other);
+				}
+				return *this;
+			}
+			~ChunkVersion() = default;
 
 			// MARK: Getters
 
 			/*! @brief Returns the global chunk version.
 				@return The stored `VersionType` for the chunk.
 			*/
-			ATTR_NODISCARD constexpr VersionType getVersion() const noexcept
+			ATTR_NODISCARD VersionType getVersion() const noexcept
 			{
-				return mVersion;
-			}
-
-			/*! @brief Returns a const reference to the per-component versions.
-				@deprecated Prefer `getComponentVersion()` for single-component queries.
-				@return Const reference to the internal per-component versions array.
-			*/
-			ATTR_DEPRECATED ATTR_NODISCARD constexpr const std::array<VersionType, MAX_COMPONENTS> &getComponentVersions() const noexcept
-			{
-				return mComponentVersions;
+				return mVersion.load(std::memory_order_acquire);
 			}
 
 			/*! @brief Returns the stored version for a specific component type.
@@ -76,58 +91,75 @@ namespace Dimensia::ECS
 				@pre `componentTypeID < MAX_COMPONENTS`
 				@return The `VersionType` for the given component.
 			*/
-			ATTR_NODISCARD constexpr VersionType getComponentVersion(const ComponentTypeID componentTypeID) const noexcept
+			ATTR_NODISCARD VersionType getComponentVersion(const ComponentTypeID componentTypeID) const noexcept
 			{
 				assert(componentTypeID < MAX_COMPONENTS);
 
 				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-				return mComponentVersions[componentTypeID];
+				return mComponentVersions[componentTypeID].load(std::memory_order_acquire);
 			}
 
 			// MARK: Member Functions
 
-			/*! @brief Increment the global chunk version.
-				@post `mVersion` is incremented by one.
-			*/
-			constexpr void bump() noexcept
+			/*! @brief Stamps a structural change from the world-global timeline. */
+			void markStructural(const VersionType version) noexcept
 			{
-				++mVersion;
+				storeMaximum(mVersion, version);
 			}
 
 			/*! @brief Increment the version counter for a specific component type.
 				@param[in] componentTypeID The component type index to bump (must be < @ref MAX_COMPONENTS).
 				@post The per-component version for `componentTypeID` is incremented by one.
 			*/
-			constexpr void bumpComponent(const ComponentTypeID componentTypeID) noexcept
+			void markComponent(const ComponentTypeID componentTypeID, const VersionType version) noexcept
 			{
 				assert(componentTypeID < MAX_COMPONENTS);
 
 				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-				++mComponentVersions[componentTypeID];
+				storeMaximum(mComponentVersions[componentTypeID], version);
 			}
 
 			/*! @brief Reset all version counters to 1.
 				@details Initializes the global version and all per-component versions to 1. Using 1 avoids confusion with
 			   default-initialized zero values.
 			*/
-			constexpr void reset()
+			void reset() noexcept
 			{
-				mVersion = 1;
-				mComponentVersions.fill(1);
+				mVersion.store(1, std::memory_order_relaxed);
+				for (auto &version : mComponentVersions)
+				{
+					version.store(1, std::memory_order_relaxed);
+				}
 			}
 
 		private:
+			void assignFrom(const ChunkVersion &other) noexcept
+			{
+				mVersion.store(other.getVersion(), std::memory_order_relaxed);
+				for (ComponentTypeID componentTypeID{0}; componentTypeID < MAX_COMPONENTS; ++componentTypeID)
+				{
+					mComponentVersions.at(componentTypeID).store(other.getComponentVersion(componentTypeID), std::memory_order_relaxed);
+				}
+			}
+
+			static void storeMaximum(std::atomic<VersionType> &target, const VersionType version) noexcept
+			{
+				VersionType current{target.load(std::memory_order_relaxed)};
+				while (current < version && !target.compare_exchange_weak(current, version, std::memory_order_release, std::memory_order_relaxed))
+				{}
+			}
+
 			/*! @var mComponentVersions
 				@brief Per-component version counters indexed by `ComponentTypeID`.
 				@details Used to detect component-level changes inside a chunk.
 			*/
-			std::array<VersionType, MAX_COMPONENTS> mComponentVersions{};
+			std::array<std::atomic<VersionType>, MAX_COMPONENTS> mComponentVersions{};
 
 			/*! @var mVersion
 				@brief Global version counter for the chunk.
 				@details Incremented by `bump()` to indicate any change affecting the whole chunk.
 			*/
-			VersionType mVersion{1};
+			std::atomic<VersionType> mVersion{1};
 	};
 } // namespace Dimensia::ECS
 

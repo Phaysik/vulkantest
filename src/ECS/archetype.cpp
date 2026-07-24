@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -42,6 +43,10 @@ namespace Dimensia::ECS
 
 			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			const ComponentInfo &info{ComponentInfos[typeID]};
+			if (info.alignment > CHUNK_ALIGNMENT)
+			{
+				throw std::invalid_argument("Component alignment exceeds ECS chunk alignment");
+			}
 
 			if (info.size > 0)
 			{
@@ -154,7 +159,7 @@ namespace Dimensia::ECS
 
 	// MARK: Setter
 
-	void Archetype::setTag(const ui chunkIndex, const ui slotIndex, const ComponentTypeID tagID)
+	void Archetype::setTag(const ui chunkIndex, const ui slotIndex, const ComponentTypeID tagID, const VersionType version)
 	{
 		assert(chunkIndex < mChunks.size());
 
@@ -175,7 +180,7 @@ namespace Dimensia::ECS
 		assert(chunkIndex < mChunkVersions.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-		mChunkVersions[chunkIndex].bump();
+		mChunkVersions[chunkIndex].markStructural(version);
 	}
 
 	// MARK: Member Functions
@@ -197,7 +202,7 @@ namespace Dimensia::ECS
 		// NOLINTEND(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 	}
 
-	void Archetype::clearTag(const ui chunkIndex, const ui slotIndex, const ComponentTypeID tagID)
+	void Archetype::clearTag(const ui chunkIndex, const ui slotIndex, const ComponentTypeID tagID, const VersionType version)
 	{
 		assert(chunkIndex < mChunks.size());
 
@@ -218,36 +223,38 @@ namespace Dimensia::ECS
 		assert(chunkIndex < mChunkVersions.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-		mChunkVersions[chunkIndex].bump();
+		mChunkVersions[chunkIndex].markStructural(version);
 	}
 
-	void Archetype::bumpChunkVersion(const ui chunkIndex)
+	void Archetype::markChunkChanged(const ui chunkIndex, const VersionType version)
 	{
 		assert(chunkIndex < mChunkVersions.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-		mChunkVersions[chunkIndex].bump();
+		mChunkVersions[chunkIndex].markStructural(version);
 	}
 
-	void Archetype::bumpComponentVersion(const ui chunkIndex, const ComponentTypeID compID)
+	void Archetype::markComponentChanged(const ui chunkIndex, const ComponentTypeID compID, const VersionType version)
 	{
 		assert(chunkIndex < mChunkVersions.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-		mChunkVersions[chunkIndex].bumpComponent(compID);
+		mChunkVersions[chunkIndex].markComponent(compID, version);
 	}
 
 	std::pair<ui, ui> Archetype::addEntity(const Entity &entity, const std::array<const void *, MAX_COMPONENTS> &copyData,
-										   const std::array<void *, MAX_COMPONENTS> &moveData, const ComponentMask &tags)
+										   const std::array<void *, MAX_COMPONENTS> &moveData, const ComponentMask &tags,
+										   const VersionType version)
 	{
 		Chunk *chunk{nullptr};
 		std::size_t chunkIndex{0};
 
 		acquireFreeChunk(chunk, chunkIndex);
 
-		ui slot{chunk->mCount++};
+		const ui slot{chunk->mCount};
 
 		assert(mEntityArrayOffset < chunk->mBuffer.size());
+		assert(slot < chunk->mCapacity);
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,cppcoreguidelines-pro-type-reinterpret-cast)
 		Entity *entityArr{reinterpret_cast<Entity *>(&chunk->mBuffer[mEntityArrayOffset])};
@@ -255,36 +262,65 @@ namespace Dimensia::ECS
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 		new (&entityArr[slot]) Entity(entity);
 
-		for (const ComponentTypeID componentTypeID : mSortedRegular)
+		std::size_t constructedCount{0};
+		try
 		{
-			assert(componentTypeID < mComponentOffsets.size());
-			assert(componentTypeID < mComponentSizes.size());
-			assert(componentTypeID < ComponentInfos.size());
-			assert(componentTypeID < moveData.size());
-			assert(componentTypeID < copyData.size());
-
-			// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-			const std::size_t offset{mComponentOffsets[componentTypeID]};
-			const std::size_t size{mComponentSizes[componentTypeID]};
-
-			assert(offset + (slot * size) <= chunk->mBuffer.size());
-
-			void *dest = &chunk->mBuffer[offset + (slot * size)];
-
-			const ComponentInfo &info = ComponentInfos[componentTypeID];
-			if (moveData[componentTypeID] != nullptr)
+			for (const ComponentTypeID componentTypeID : mSortedRegular)
 			{
-				info.moveConstruct(dest, moveData[componentTypeID]);
+				assert(componentTypeID < mComponentOffsets.size());
+				assert(componentTypeID < mComponentSizes.size());
+				assert(componentTypeID < ComponentInfos.size());
+				assert(componentTypeID < moveData.size());
+				assert(componentTypeID < copyData.size());
+
+				// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				const std::size_t offset{mComponentOffsets[componentTypeID]};
+				const std::size_t size{mComponentSizes[componentTypeID]};
+
+				assert(offset + (slot * size) < chunk->mBuffer.size());
+
+				void *dest{&chunk->mBuffer[offset + (slot * size)]};
+				const ComponentInfo &info{ComponentInfos[componentTypeID]};
+
+				if (moveData[componentTypeID] != nullptr)
+				{
+					info.moveConstruct(dest, moveData[componentTypeID]);
+				}
+				else if (copyData[componentTypeID] != nullptr)
+				{
+					info.copyConstruct(dest, copyData[componentTypeID]);
+				}
+				else
+				{
+					throw std::invalid_argument("Component in archetype mask has no data source");
+				}
+
+				++constructedCount;
+				// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			}
-			else if (copyData[componentTypeID] != nullptr)
+		}
+		catch (...)
+		{
+			while (constructedCount > 0)
 			{
-				info.copyConstruct(dest, copyData[componentTypeID]);
+				--constructedCount;
+
+				// NOLINTBEGIN(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				const ComponentTypeID componentTypeID{mSortedRegular[constructedCount]};
+				const std::size_t offset{mComponentOffsets[componentTypeID]};
+				const std::size_t size{mComponentSizes[componentTypeID]};
+				void *ptr{&chunk->mBuffer[offset + (slot * size)]};
+				ComponentInfos[componentTypeID].destructor(ptr);
+				// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			}
-			else
+
+			// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
+			std::destroy_at(&entityArr[slot]);
+			if (chunk->mCount == 0)
 			{
-				assert(false && "Component in archetype mask has no data source in addEntity");
+				mFreeChunks.push_back(static_cast<ui>(chunkIndex));
 			}
-			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+			throw;
 		}
 
 		ul *tagBits{getTagBitset(chunk)};
@@ -293,16 +329,17 @@ namespace Dimensia::ECS
 		tagBits[slot * TAG_WORDS_PER_ENTITY] = tags.low();
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-pointer-arithmetic)
 		tagBits[(slot * TAG_WORDS_PER_ENTITY) + 1] = tags.high();
+		++chunk->mCount;
 
 		assert(chunkIndex < mChunkVersions.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-		mChunkVersions[chunkIndex].bump();
+		mChunkVersions[chunkIndex].markStructural(version);
 
 		return {chunkIndex, slot};
 	}
 
-	std::pair<Entity, ui> Archetype::removeEntity(const ui chunkIndex, const ui slotIndex)
+	std::pair<Entity, ui> Archetype::removeEntity(const ui chunkIndex, const ui slotIndex, const VersionType version)
 	{
 		assert(chunkIndex < mChunks.size());
 
@@ -342,7 +379,7 @@ namespace Dimensia::ECS
 		assert(chunkIndex < mChunkVersions.size());
 
 		// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-		mChunkVersions[chunkIndex].bump();
+		mChunkVersions[chunkIndex].markStructural(version);
 
 		if (chunk->mCount == 0)
 		{
@@ -418,10 +455,6 @@ namespace Dimensia::ECS
 
 		perEntity += sizeof(ul) * TAG_WORDS_PER_ENTITY; // tag bitset (2 words for 128-bit mask)
 
-		// Binary search for the largest capacity that fits in CHUNK_SIZE
-		ui low{1};
-		ui high{static_cast<ui>(CHUNK_SIZE / perEntity) + 1};
-
 		// Lambda to compute the actual byte layout for a given capacity
 		auto layoutFits = [&](const ui testCap) -> bool {
 			std::size_t offset{0};
@@ -442,6 +475,15 @@ namespace Dimensia::ECS
 
 			return offset <= CHUNK_SIZE;
 		};
+
+		if (!layoutFits(1))
+		{
+			throw std::length_error("Archetype component layout cannot fit one entity in a chunk");
+		}
+
+		// Binary search for the largest capacity that fits in CHUNK_SIZE
+		ui low{1};
+		ui high{static_cast<ui>(CHUNK_SIZE / perEntity) + 1};
 
 		// Find the largest cap where layoutFits returns true
 		while (low < high)
@@ -494,7 +536,24 @@ namespace Dimensia::ECS
 
 	void Archetype::acquireFreeChunk(Chunk *&chunk, std::size_t &chunkIndex)
 	{
-		for (; chunkIndex < mChunks.size(); ++chunkIndex)
+		while (!mFreeChunks.empty())
+		{
+			chunkIndex = mFreeChunks.back();
+			mFreeChunks.pop_back();
+
+			if (chunkIndex < mChunks.size())
+			{
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+				Chunk *candidate{mChunks[chunkIndex].get()};
+				if (candidate->mCount == 0)
+				{
+					chunk = candidate;
+					return;
+				}
+			}
+		}
+
+		for (chunkIndex = 0; chunkIndex < mChunks.size(); ++chunkIndex)
 		{
 			assert(chunkIndex < mChunks.size());
 
@@ -502,40 +561,19 @@ namespace Dimensia::ECS
 			if (mChunks[chunkIndex]->mCount < mChunkCapacity)
 			{
 				chunk = mChunks[chunkIndex].get();
-				break;
+				return;
 			}
 			// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 		}
 
-		if ((chunk == nullptr) && !mFreeChunks.empty())
-		{
-			chunkIndex = mFreeChunks.back();
-			mFreeChunks.pop_back();
+		auto newChunk{std::make_unique<Chunk>()};
+		newChunk->mCapacity = mChunkCapacity;
 
-			// Validate the free-list entry; discard stale indices that point
-			// beyond the current chunk vector (can happen after compaction).
-			if (chunkIndex < mChunks.size())
-			{
-				assert(chunkIndex < mChunks.size());
+		chunk = newChunk.get();
+		mChunks.push_back(std::move(newChunk));
+		mChunkVersions.emplace_back();
 
-				// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-				chunk = mChunks[chunkIndex].get();
-				chunk->mCount = 0;
-			}
-			// else: stale entry, discard and fall through to allocation below
-		}
-
-		if (chunk == nullptr)
-		{
-			auto newChunk{std::make_unique<Chunk>()};
-			newChunk->mCapacity = mChunkCapacity;
-
-			chunk = newChunk.get();
-			mChunks.push_back(std::move(newChunk));
-			mChunkVersions.emplace_back();
-
-			chunkIndex = mChunks.size() - 1;
-		}
+		chunkIndex = mChunks.size() - 1;
 	}
 
 	void Archetype::releaseChunk(Chunk *&chunk, Entity &movedEntity, const ui slotIndex, const ui lastSlot)

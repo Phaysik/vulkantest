@@ -29,91 +29,81 @@ namespace Dimensia::ECS
 
 	void CommandBuffer::setParent(const Entity &child, const Entity &parent)
 	{
-		ThreadBuffer *buf{getThreadBuffer()};
-		buf->commands.push_back(Command::makeSetParent(child, parent));
+		record(Command::makeSetParent(child, parent));
 	}
 
 	void CommandBuffer::destroy(const Entity &entity)
 	{
-		ThreadBuffer *buf{getThreadBuffer()};
-		buf->commands.push_back(Command::makeDestroy(entity));
+		record(Command::makeDestroy(entity));
 	}
 
 	void CommandBuffer::apply(ECS &ecs)
 	{
-		std::vector<std::vector<Command>> local_command_lists;
+		auto commandPhase = [](const CmdType type) constexpr noexcept -> Dimensia::Core::ub {
+			switch (type)
+			{
+				case CmdType::AddComponent:
+					return 0;
+				case CmdType::RemoveComponent:
+					return 1;
+				case CmdType::Destroy:
+					return 2;
+				case CmdType::SetParent:
+					return 3;
+				default:
+					return 4;
+			}
+		};
+
+		const ECS::StructuralGuard structuralGuard{ecs.mStructuralMutex};
+		const std::scoped_lock consumerLock(mConsumerMutex);
+		std::vector<Command> commands;
 		{
 			const std::unique_lock lock(mMapMutex);
-			local_command_lists.reserve(mBuffers.size());
 			for (auto &[threadID, buf] : mBuffers)
 			{
-				// Move the commands vector out – buf->commands becomes empty.
-				local_command_lists.push_back(std::move(buf->commands));
-				// The ThreadBuffer itself stays in mBuffers, ready for reuse.
+				const std::scoped_lock bufferLock(buf->mutex);
+				commands.insert(commands.end(), std::make_move_iterator(buf->commands.begin()), std::make_move_iterator(buf->commands.end()));
+				buf->commands.clear();
 			}
 		}
 
-		for (auto &commands : local_command_lists)
+		std::ranges::sort(commands, [commandPhase](const Command &left, const Command &right) {
+			const auto leftPhase{commandPhase(left.getType())};
+			const auto rightPhase{commandPhase(right.getType())};
+			return (leftPhase < rightPhase) || (leftPhase == rightPhase && left.getSequence() < right.getSequence());
+		});
+
+		for (Command &command : commands)
 		{
-			if (commands.empty())
+			switch (command.getType())
 			{
-				continue;
-			}
-
-			// ---- 1️⃣ Partition Adds to front ----
-			// NOLINTBEGIN(modernize-use-ranges,boost-use-ranges,llvm-use-ranges)
-			auto addEnd{std::partition(commands.begin(), commands.end(),
-									   [](const Command &command) { return command.getType() == CmdType::AddComponent; })};
-			// NOLINTEND(modernize-use-ranges,boost-use-ranges,llvm-use-ranges)
-
-			// ---- Process Adds ----
-			for (auto it{commands.begin()}; it != addEnd; ++it)
-			{
-				auto &cmd{*it};
-				auto &addData{std::get<AddData>(cmd.getData())};
-
-				processAdd(ecs, cmd.getEntity(), addData);
-			}
-
-			// ---- 2️⃣ Partition Removes in remaining range ----
-			auto removeEnd{std::partition(addEnd, commands.end(),
-										  [](const Command &command) { return command.getType() == CmdType::RemoveComponent; })};
-
-			// ---- Process Removes ----
-			for (auto it{addEnd}; it != removeEnd; ++it)
-			{
-				auto &cmd{*it};
-				const auto &removeData{std::get<RemoveData>(cmd.getData())};
-
-				dispatchRemove(ecs, cmd.getEntity(), removeData.compId);
-			}
-
-			// ---- 3️⃣ Partition Destroy in remaining range ----
-			auto destroyEnd{
-				std::partition(removeEnd, commands.end(), [](const Command &command) { return command.getType() == CmdType::Destroy; })};
-
-			// ---- Process Destroy ----
-			for (auto it{removeEnd}; it != destroyEnd; ++it)
-			{
-				ecs.destroyEntity(it->getEntity(), true);
-			}
-
-			// ---- 4️⃣ Remaining are SetParent ----
-			for (auto it{destroyEnd}; it != commands.end(); ++it)
-			{
-				const auto &setParentData{std::get<SetParentData>(it->getData())};
-
-				ecs.setParent(it->getEntity(), setParentData.parent);
+				case CmdType::AddComponent:
+					processAdd(ecs, command.getEntity(), std::get<AddData>(command.getData()));
+					break;
+				case CmdType::RemoveComponent:
+					dispatchRemove(ecs, command.getEntity(), std::get<RemoveData>(command.getData()).compId);
+					break;
+				case CmdType::Destroy:
+					ecs.destroyEntity(command.getEntity(), true);
+					break;
+				case CmdType::SetParent:
+					ecs.setParent(command.getEntity(), std::get<SetParentData>(command.getData()).parent);
+					break;
+				default:
+					break;
 			}
 		}
 	}
 
 	void CommandBuffer::clear()
 	{
+		const std::scoped_lock consumerLock(mConsumerMutex);
 		const std::unique_lock lock(mMapMutex);
 
 		for (auto &[threadID, buf] : mBuffers)
 		{
+			const std::scoped_lock bufferLock(buf->mutex);
 			buf->commands.clear();
 		}
 	}
@@ -160,6 +150,14 @@ namespace Dimensia::ECS
 		cachedBuffer = slot.get();
 		cachedInstanceID = mInstanceID;
 		return cachedBuffer;
+	}
+
+	void CommandBuffer::record(Command command)
+	{
+		ThreadBuffer *buf{getThreadBuffer()};
+		const std::scoped_lock lock(buf->mutex);
+		command.setSequence(mNextSequence.fetch_add(1, std::memory_order_relaxed));
+		buf->commands.push_back(std::move(command));
 	}
 
 	void CommandBuffer::processAdd(ECS &ecs, const Entity &entity, const AddData &addData)

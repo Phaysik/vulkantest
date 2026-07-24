@@ -32,7 +32,7 @@ class QueryBuilder
 	public:
 		using SelfType = std::conditional_t<IsConst, const ECS, ECS>;
 
-		explicit QueryBuilder(SelfType &ecs) noexcept : mECS(&ecs) {}
+		explicit QueryBuilder(SelfType &ecs) noexcept : mECS(&ecs), mWriteMask(IsConst ? ComponentMask(0) : buildMaskFromList<ReqList>()) {}
 
 		/*! @brief Set the execution policy for this query.
 			@param[in] p Execution policy (Seq, Par, ParBatched, ParStealing).
@@ -62,9 +62,15 @@ class QueryBuilder
 			@return Reference to this builder for chaining.
 		*/
 		template <typename... Ts>
-		QueryBuilder &changed() noexcept
+		QueryBuilder &changed()
 		{
-			mChangedMask = buildRequiredMask<Ts...>();
+			const ComponentMask requested{buildRequiredMask<Ts...>()};
+			const ComponentMask required{buildMaskFromList<ReqList>()};
+			if ((requested & required) != requested)
+			{
+				throw std::invalid_argument("Changed components must be required regular components");
+			}
+			mChangedMask = requested;
 			return *this;
 		}
 
@@ -79,6 +85,41 @@ class QueryBuilder
 			return *this;
 		}
 
+		/*! @brief Declares required components that this query only reads.
+			@tparam Ts Required regular component types removed from the conservative write set.
+			@return Reference to this builder for chaining.
+		*/
+		template <typename... Ts>
+		QueryBuilder &read()
+		{
+			const ComponentMask requested{buildRequiredMask<Ts...>()};
+			const ComponentMask required{buildMaskFromList<ReqList>()};
+			if ((requested & required) != requested)
+			{
+				throw std::invalid_argument("Query read access must name required regular components");
+			}
+			forEachSetBit(requested, [&](const ComponentTypeID componentTypeID) { mWriteMask.clearBit(componentTypeID); });
+			return *this;
+		}
+
+		/*! @brief Declares required components that this query may write.
+			@tparam Ts Required regular component types added to the write set.
+			@return Reference to this builder for chaining.
+		*/
+		template <typename... Ts>
+			requires(!IsConst)
+		QueryBuilder &write()
+		{
+			const ComponentMask requested{buildRequiredMask<Ts...>()};
+			const ComponentMask required{buildMaskFromList<ReqList>()};
+			if ((requested & required) != requested)
+			{
+				throw std::invalid_argument("Query write access must name required regular components");
+			}
+			mWriteMask |= requested;
+			return *this;
+		}
+
 		/*! @brief Execute the query, invoking @p func for each matching entity.
 			@tparam Func Callable type compatible with the per-entity processing helpers.
 			@param[in] func User callable forwarded to the appropriate dispatch implementation.
@@ -88,6 +129,7 @@ class QueryBuilder
 		template <typename Func>
 		void forEach(Func &&func)
 		{
+			const IterationGuard iterGuard{mECS->mStructuralMutex};
 			constexpr bool isFilterQuery = (TypeListSize<AnyList>::value > 0) || (TypeListSize<NoneList>::value > 0);
 
 			if constexpr (!isFilterQuery)
@@ -105,20 +147,42 @@ class QueryBuilder
 
 						if (!dirtyChunks.empty())
 						{
-							const IterationGuard iterGuard{mECS->mActiveIterations};
-
-							auto processChunk = [&func](Archetype *arch, const ui chunkIndex) {
+							auto processChunk = [&func, this](Archetype *arch, const ui chunkIndex) {
+								const IterationGuard workerGuard{mECS->mStructuralMutex};
 								const ui count{arch->getEntityCount(chunkIndex)};
+								bool processedAny{false};
+								auto trackedFunction = [&](auto &&...args) {
+									processedAny = true;
+									func(std::forward<decltype(args)>(args)...);
+								};
+								auto stampWrites = [&] {
+									if constexpr (!IsConst)
+									{
+										if (processedAny)
+										{
+											mECS->markComponentsChanged(arch, chunkIndex, mWriteMask);
+										}
+									}
+								};
+								try
+								{
 								if constexpr (IsConst)
 								{
 									const Entity *entityArr{arch->getEntityArray(chunkIndex)};
-									processChunkEntitiesConst<Comps...>(entityArr, count, chunkIndex, arch, std::forward<Func>(func));
+									processChunkEntitiesConst<Comps...>(entityArr, count, chunkIndex, arch, trackedFunction);
 								}
 								else
 								{
 									Entity *entityArr{arch->getEntityArray(chunkIndex)};
-									processChunkEntities<Comps...>(entityArr, count, chunkIndex, arch, std::forward<Func>(func));
+									processChunkEntities<Comps...>(entityArr, count, chunkIndex, arch, trackedFunction);
 								}
+								}
+								catch (...)
+								{
+									stampWrites();
+									throw;
+								}
+								stampWrites();
 							};
 
 							auto noOp = [](const auto &) {};
@@ -146,11 +210,11 @@ class QueryBuilder
 					}
 					else if (mVersion != nullptr)
 					{
-						ECS::forEachPolicyVersionImpl<SelfType, Comps...>(*mECS, mPolicy, *mVersion, std::forward<Func>(func));
+						ECS::forEachPolicyVersionImpl<SelfType, Comps...>(*mECS, mPolicy, *mVersion, std::forward<Func>(func), mWriteMask);
 					}
 					else
 					{
-						ECS::forEachPolicyImpl<SelfType, Comps...>(*mECS, mPolicy, std::forward<Func>(func));
+						ECS::forEachPolicyImpl<SelfType, Comps...>(*mECS, mPolicy, std::forward<Func>(func), mWriteMask);
 					}
 				}(ReqList{});
 			}
@@ -163,7 +227,16 @@ class QueryBuilder
 					constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
 					constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
 					constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
-					QueryKey key{.required = requiredMask, .any = anyMask, .none = noneMask};
+					constexpr ComponentMask requiredTags{buildTagMaskFromList<ReqList>()};
+					constexpr ComponentMask anyTags{buildTagMaskFromList<AnyList>()};
+					constexpr ComponentMask noneTags{buildTagMaskFromList<NoneList>()};
+					constexpr bool hasAnyClause{TypeListSize<AnyList>::value != 0};
+					QueryKey key{.required = requiredMask,
+								 .any = anyMask,
+								 .none = noneMask,
+								 .requiredTags = requiredTags,
+								 .anyTags = anyTags,
+								 .noneTags = noneTags};
 
 					const std::vector<Archetype *> &matchingArchetypes{
 						getMatchingArchetypesForQueryCalls<SelfType, AnyList, NoneList>(*mECS, key, requiredMask, anyMask, noneMask)};
@@ -173,24 +246,50 @@ class QueryBuilder
 
 					if (!dirtyChunks.empty())
 					{
-						const IterationGuard iterGuard{mECS->mActiveIterations};
-
-						auto processChunk = [&func](Archetype *arch, const ui chunkIndex) {
+						auto processChunk = [&func, this, requiredTags, anyTags, noneTags, anyMask](Archetype *arch, const ui chunkIndex) {
+							const IterationGuard workerGuard{mECS->mStructuralMutex};
 							const ui count{arch->getEntityCount(chunkIndex)};
+							const bool anyRegularMatched{static_cast<bool>(arch->getRegularMask() & anyMask)};
+							bool processedAny{false};
+							auto trackedFunction = [&](auto &&...args) {
+								processedAny = true;
+								func(std::forward<decltype(args)>(args)...);
+							};
+							auto stampWrites = [&] {
+								if constexpr (!IsConst)
+								{
+									if (processedAny)
+									{
+										mECS->markComponentsChanged(arch, chunkIndex, mWriteMask);
+									}
+								}
+							};
+							try
+							{
 							if constexpr (IsConst)
 							{
 								const Entity *entities{arch->getEntityArray(chunkIndex)};
 								[&]<typename... Req>(TypeList<Req...>) {
-									processChunkEntitiesConst<Req...>(entities, count, chunkIndex, arch, std::forward<Func>(func));
+									processChunkEntitiesFilteredConst<Req...>(entities, count, chunkIndex, arch, trackedFunction,
+																			  requiredTags, anyTags, noneTags, hasAnyClause,
+																			  anyRegularMatched);
 								}(ReqList{});
 							}
 							else
 							{
 								Entity *entities{arch->getEntityArray(chunkIndex)};
 								[&]<typename... Req>(TypeList<Req...>) {
-									processChunkEntities<Req...>(entities, count, chunkIndex, arch, std::forward<Func>(func));
+									processChunkEntitiesFiltered<Req...>(entities, count, chunkIndex, arch, trackedFunction,
+																		 requiredTags, anyTags, noneTags, hasAnyClause, anyRegularMatched);
 								}(ReqList{});
 							}
+							}
+							catch (...)
+							{
+								stampWrites();
+								throw;
+							}
+							stampWrites();
 						};
 
 						auto noOp = [](const auto &) {};
@@ -218,11 +317,11 @@ class QueryBuilder
 				}
 				else if (mVersion != nullptr)
 				{
-					ECS::forEachQueryVersionImpl<SelfType, ReqList, AnyList, NoneList>(*mECS, mPolicy, *mVersion, std::forward<Func>(func));
+					ECS::forEachQueryVersionImpl<SelfType, ReqList, AnyList, NoneList>(*mECS, mPolicy, *mVersion, std::forward<Func>(func), mWriteMask);
 				}
 				else
 				{
-					ECS::forEachQueryImpl<SelfType, ReqList, AnyList, NoneList>(*mECS, mPolicy, std::forward<Func>(func));
+					ECS::forEachQueryImpl<SelfType, ReqList, AnyList, NoneList>(*mECS, mPolicy, std::forward<Func>(func), mWriteMask);
 				}
 			}
 		}
@@ -233,6 +332,7 @@ class QueryBuilder
 		SystemVersion *mVersion{nullptr};
 		CommandBuffer *mCmds{nullptr};
 		ComponentMask mChangedMask{0, 0};
+		ComponentMask mWriteMask{0, 0};
 };
 
 // MARK: query<>() Factory Methods

@@ -163,7 +163,7 @@ namespace Dimensia::ECS
 				@param[in] tagID ComponentTypeID of the tag to set.
 				@post Bumps the chunk version to indicate a change.
 			*/
-			void setTag(const ui chunkIndex, const ui slotIndex, const ComponentTypeID tagID);
+			void setTag(const ui chunkIndex, const ui slotIndex, const ComponentTypeID tagID, const VersionType version);
 
 			// MARK: Member Functions
 
@@ -180,18 +180,18 @@ namespace Dimensia::ECS
 				@param[in] slotIndex Slot index of the entity within the chunk.
 				@param[in] tagID Tag component id to clear.
 			*/
-			void clearTag(const ui chunkIndex, const ui slotIndex, const ComponentTypeID tagID);
+			void clearTag(const ui chunkIndex, const ui slotIndex, const ComponentTypeID tagID, const VersionType version);
 
 			/*! @brief Increment the version for a chunk to signal a structural or tag change.
 				@param[in] chunkIndex Chunk index.
 			*/
-			void bumpChunkVersion(const ui chunkIndex);
+			void markChunkChanged(const ui chunkIndex, const VersionType version);
 
 			/*! @brief Increment the version for a specific component within a chunk.
 				@param[in] chunkIndex Chunk index.
 				@param[in] compID Component type id whose version to bump.
 			*/
-			void bumpComponentVersion(const ui chunkIndex, const ComponentTypeID compID);
+			void markComponentChanged(const ui chunkIndex, const ComponentTypeID compID, const VersionType version);
 
 			/*! @brief Add an entity with component data to this archetype.
 				@param[in] entity The `Entity` value to insert.
@@ -200,16 +200,20 @@ namespace Dimensia::ECS
 			   move-constructed from that pointer instead of copy-constructed.
 				@param[in] tags Tag mask for the entity (lower half used for tag bits).
 				@return Pair of `{chunkIndex, slotIndex}` indicating where the entity was placed.
+				@throws std::invalid_argument If a component in the archetype has no copy or move source.
+				@throws Any exception propagated by a registered component copy or move constructor.
+				@post On failure, all component instances constructed for the new row are destroyed and the chunk count is unchanged.
 			*/
 			std::pair<ui, ui> addEntity(const Entity &entity, const std::array<const void *, MAX_COMPONENTS> &copyData,
-										const std::array<void *, MAX_COMPONENTS> &moveData, const ComponentMask &tags = ComponentMask(0));
+										const std::array<void *, MAX_COMPONENTS> &moveData, const ComponentMask &tags = ComponentMask(0),
+										const VersionType version = 1);
 
 			/*! @brief Remove an entity from a chunk and compact storage.
 				@param[in] chunkIndex Index of the chunk containing the entity.
 				@param[in] slotIndex Slot index of the entity in the chunk.
 				@return Pair `{movedEntity, slotIndex}` where `movedEntity` is the entity moved into the vacated slot (if any).
 			*/
-			std::pair<Entity, ui> removeEntity(const ui chunkIndex, const ui slotIndex);
+			std::pair<Entity, ui> removeEntity(const ui chunkIndex, const ui slotIndex, const VersionType version = 1);
 
 			/*! @brief Compact storage by removing empty chunks and updating global entity records.
 				@param[in,out] globalRecords Array of global entity records to update relocated entities' chunk indices.

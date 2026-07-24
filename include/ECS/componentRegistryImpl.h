@@ -46,6 +46,11 @@ namespace Dimensia::Registry
 	template <typename... Ts>
 	constexpr std::array<ComponentInfo, sizeof...(Ts)> makeComponentInfos(const std::tuple<Ts...> & /* componentInfos */)
 	{
+		static_assert((is_chunk_storable_component_v<Ts> && ...),
+					  "Registered ECS components must fit one chunk row and must not require alignment greater than CHUNK_ALIGNMENT");
+		static_assert((has_safe_chunk_lifecycle_v<Ts> && ...),
+					  "Registered ECS components must be nothrow move constructible and nothrow destructible");
+
 		return {{{[](void *ptr) { static_cast<Ts *>(ptr)->~Ts(); },
 				  [](void *dest, const void *src) { new (dest) Ts(*static_cast<const Ts *>(src)); },
 				  [](void *dest, void *src) {

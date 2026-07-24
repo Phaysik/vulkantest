@@ -4,7 +4,8 @@
    per-thread in `ThreadBuffer` instances and merged/consumed by calling `apply(ECS &)` on a single consumer. The implementation partitions
    command lists to process adds first, then removes, destroys, and finally parent assignments to ensure predictable ordering and to
    minimize temporary state during application.
-	@note Thread-safety: multiple threads may push commands concurrently; callers must ensure only one thread calls `apply()` at a time.
+	@note Thread-safe for concurrent recording, playback, and clearing. Playback and clearing are serialized. A command racing with playback
+	may be consumed by the current snapshot or the next snapshot; a command racing with clearing may be cleared or remain queued.
 	@date 02/14/2026
 	@version x.x.x
 	@since x.x.x
@@ -16,6 +17,7 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <shared_mutex>
 #include <thread>
 #include <unordered_map>
@@ -42,7 +44,13 @@ namespace Dimensia::ECS
 	struct ThreadBuffer
 	{
 		public:
+			ThreadBuffer() : mutex(), commands() {}
+
+		private:
+			std::mutex mutex;
 			std::vector<Command> commands;
+
+			friend class CommandBuffer;
 	};
 
 	/*! @class CommandBuffer include/ECS/commandBuffer.h
@@ -54,6 +62,9 @@ namespace Dimensia::ECS
 	class CommandBuffer
 	{
 		public:
+			/*! @brief Constructs an empty command buffer with synchronized producer and consumer state. */
+			CommandBuffer() : mBuffers(), mMapMutex(), mConsumerMutex() {}
+
 			// MARK: Public Member Functions
 
 			/*! @brief Enqueue a `SetParent` command for later application.
@@ -68,15 +79,17 @@ namespace Dimensia::ECS
 			void destroy(const Entity &entity);
 
 			/*! @brief Apply all queued commands to the provided `ECS` instance.
-				@details Moves per-thread command lists out of the internal map while holding a lock, then processes each command list.
-			   Processing order is: 1) Adds, 2) Removes, 3) Destroys, 4) SetParent — this ordering reduces intermediate state and improves
-			   predictability.
+				@details Detaches all per-thread command lists, merges them globally, and sorts them by phase and monotonic recording sequence.
+			   Phase order is: 1) Adds, 2) Removes, 3) Destroys, 4) SetParent. Within a phase, commands execute in recording order. Therefore a
+			   later add replaces an earlier add, remove wins over add in the same playback, destroy wins over component operations, and parent
+			   assignments are attempted last.
 				@param[in,out] ecs The `ECS` instance to mutate.
 			*/
 			void apply(ECS &ecs);
 
-			/*! @brief Clear all stored per-thread buffers and their commands.
-				@post The internal buffers map is cleared.
+			/*! @brief Clears commands currently present in all registered per-thread buffers.
+				@post Registered thread buffers remain allocated for reuse and contain no commands observed by this clear snapshot.
+				@note A command recorded concurrently may be cleared or may remain queued for later playback.
 			*/
 			void clear();
 
@@ -91,10 +104,8 @@ namespace Dimensia::ECS
 			template <typename T>
 			void addComponent(const Entity &entity, T &value)
 			{
-				ThreadBuffer *buf{getThreadBuffer()};
-
 				T copy{value};
-				buf->commands.push_back(Command::makeAdd(entity, std::move(copy)));
+				record(Command::makeAdd(entity, std::move(copy)));
 			}
 
 			/*! @brief Enqueue an `AddComponent` command by forwarding a value.
@@ -105,9 +116,7 @@ namespace Dimensia::ECS
 			template <typename T>
 			void addComponent(const Entity &entity, T &&value)
 			{
-				ThreadBuffer *buf{getThreadBuffer()};
-
-				buf->commands.push_back(Command::makeAdd(entity, std::forward<T>(value)));
+				record(Command::makeAdd(entity, std::forward<T>(value)));
 			}
 
 			/*! @brief Enqueue a `RemoveComponent` command for component type `T`.
@@ -117,9 +126,7 @@ namespace Dimensia::ECS
 			template <typename T>
 			void removeComponent(const Entity &entity)
 			{
-				ThreadBuffer *buf{getThreadBuffer()};
-
-				buf->commands.push_back(Command::makeRemove(entity, componentID<T>()));
+				record(Command::makeRemove(entity, componentID<T>()));
 			}
 
 		private:
@@ -129,6 +136,13 @@ namespace Dimensia::ECS
 				@return Pointer to the caller's `ThreadBuffer`.
 			*/
 			ThreadBuffer *getThreadBuffer();
+
+			/*! @brief Appends a command to the calling thread's buffer.
+				@param[in] command Command value to append.
+				@note Thread-safe with concurrent producers, @ref apply, and @ref clear. A command racing with playback is consumed either by
+			   that playback snapshot or the next one.
+			*/
+			void record(Command command);
 
 			/*! @brief Helper used by `apply()` to perform an add operation on the ECS.
 				@param[in,out] ecs The ECS instance to mutate.
@@ -155,6 +169,16 @@ namespace Dimensia::ECS
 				@brief Mutex protecting `mBuffers` for registration of new threads and `apply()`/`clear()` operations.
 			*/
 			std::shared_mutex mMapMutex;
+
+			/*! @var mConsumerMutex
+				@brief Serializes command playback and clearing operations.
+			*/
+			std::mutex mConsumerMutex;
+
+			/*! @var mNextSequence
+				@brief Monotonic sequence assigned at each command recording linearization point.
+			*/
+			std::atomic<uint64_t> mNextSequence{0};
 
 			/*! @var sNextInstanceID
 				@brief Monotonically increasing counter used to assign unique IDs to `CommandBuffer` instances.

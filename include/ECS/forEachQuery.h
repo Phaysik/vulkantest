@@ -28,15 +28,22 @@
 	@param[in] func User-provided callable that will be invoked for matching entities or chunks.
 */
 template <class Self, typename ReqList, typename AnyList, typename NoneList, typename Func>
-static void forEachQueryImpl(Self &self, ExecutionPolicy &policy, Func &&func)
+static void forEachQueryImpl(Self &self, ExecutionPolicy &policy, Func &&func,
+							 const ComponentMask writeMask
+							 = std::is_const_v<std::remove_reference_t<Self>> ? ComponentMask(0) : buildMaskFromList<ReqList>())
 {
-	const IterationGuard iterGuard{self.mActiveIterations};
+	const IterationGuard iterGuard{self.mStructuralMutex};
 
 	constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
 	constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
 	constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
+	constexpr ComponentMask requiredTags{buildTagMaskFromList<ReqList>()};
+	constexpr ComponentMask anyTags{buildTagMaskFromList<AnyList>()};
+	constexpr ComponentMask noneTags{buildTagMaskFromList<NoneList>()};
+	constexpr bool hasAnyClause{TypeListSize<AnyList>::value != 0};
 
-	QueryKey key{.required = requiredMask, .any = anyMask, .none = noneMask};
+	QueryKey key{
+		.required = requiredMask, .any = anyMask, .none = noneMask, .requiredTags = requiredTags, .anyTags = anyTags, .noneTags = noneTags};
 
 	const std::vector<Archetype *> &matchingArchetypes{
 		getMatchingArchetypesForQueryCalls<Self, AnyList, NoneList>(self, key, requiredMask, anyMask, noneMask)};
@@ -45,22 +52,49 @@ static void forEachQueryImpl(Self &self, ExecutionPolicy &policy, Func &&func)
 
 	// Process each matching archetype (sequential; extend to parallel as needed)
 	auto processChunk = [&](Archetype *arch, const ui chunkIndex, const ui entityCount) {
-		if constexpr (std::is_const_v<Self>)
+		const IterationGuard workerGuard{self.mStructuralMutex};
+		const bool anyRegularMatched{static_cast<bool>(arch->getRegularMask() & anyMask)};
+		bool processedAny{false};
+		auto trackedFunction = [&](auto &&...args) {
+			processedAny = true;
+			forwardedFunction(std::forward<decltype(args)>(args)...);
+		};
+		auto stampWrites = [&] {
+			if constexpr (!std::is_const_v<std::remove_reference_t<Self>>)
+			{
+				if (processedAny)
+				{
+					self.markComponentsChanged(arch, chunkIndex, writeMask);
+				}
+			}
+		};
+		try
 		{
-			const Entity *entities{arch->getEntityArray(chunkIndex)};
+			if constexpr (std::is_const_v<std::remove_reference_t<Self>>)
+			{
+				const Entity *entities{arch->getEntityArray(chunkIndex)};
 
-			[&]<typename... Req>(TypeList<Req...>) {
-				processChunkEntitiesConst<Req...>(entities, entityCount, chunkIndex, arch, forwardedFunction);
-			}(ReqList{});
+				[&]<typename... Req>(TypeList<Req...>) {
+					processChunkEntitiesFilteredConst<Req...>(entities, entityCount, chunkIndex, arch, trackedFunction, requiredTags,
+															  anyTags, noneTags, hasAnyClause, anyRegularMatched);
+				}(ReqList{});
+			}
+			else
+			{
+				Entity *entities{arch->getEntityArray(chunkIndex)};
+
+				[&]<typename... Req>(TypeList<Req...>) {
+					processChunkEntitiesFiltered<Req...>(entities, entityCount, chunkIndex, arch, trackedFunction, requiredTags, anyTags,
+														 noneTags, hasAnyClause, anyRegularMatched);
+				}(ReqList{});
+			}
 		}
-		else
+		catch (...)
 		{
-			Entity *entities{arch->getEntityArray(chunkIndex)};
-
-			[&]<typename... Req>(TypeList<Req...>) {
-				processChunkEntities<Req...>(entities, entityCount, chunkIndex, arch, forwardedFunction);
-			}(ReqList{});
+			stampWrites();
+			throw;
 		}
+		stampWrites();
 	};
 
 	switch (policy)
@@ -349,15 +383,22 @@ ATTR_DEPRECATED void forEach(ExecutionPolicy policy, Func &&func) const
    versions via `forEachSetBit` to ensure version state is consistent after completion.
 */
 template <class Self, typename ReqList, typename AnyList, typename NoneList, typename Func>
-static void forEachQueryVersionImpl(Self &self, const ExecutionPolicy &policy, SystemVersion &version, Func &&func)
+static void forEachQueryVersionImpl(Self &self, const ExecutionPolicy &policy, SystemVersion &version, Func &&func,
+									const ComponentMask writeMask
+									= std::is_const_v<std::remove_reference_t<Self>> ? ComponentMask(0) : buildMaskFromList<ReqList>())
 {
-	const IterationGuard iterGuard{self.mActiveIterations};
+	const IterationGuard iterGuard{self.mStructuralMutex};
 
 	constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
 	constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
 	constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
+	constexpr ComponentMask requiredTags{buildTagMaskFromList<ReqList>()};
+	constexpr ComponentMask anyTags{buildTagMaskFromList<AnyList>()};
+	constexpr ComponentMask noneTags{buildTagMaskFromList<NoneList>()};
+	constexpr bool hasAnyClause{TypeListSize<AnyList>::value != 0};
 
-	QueryKey key{.required = requiredMask, .any = anyMask, .none = noneMask};
+	QueryKey key{
+		.required = requiredMask, .any = anyMask, .none = noneMask, .requiredTags = requiredTags, .anyTags = anyTags, .noneTags = noneTags};
 
 	const std::vector<Archetype *> &matchingArchetypes{
 		getMatchingArchetypesForQueryCalls<Self, AnyList, NoneList>(self, key, requiredMask, anyMask, noneMask)};
@@ -376,26 +417,57 @@ static void forEachQueryVersionImpl(Self &self, const ExecutionPolicy &policy, S
 	const FuncT processChunkFunction{std::forward<Func>(func)};
 
 	auto processChunk = [&, processChunkFunction](Archetype *arch, const ui chunkIndex) {
+		const IterationGuard workerGuard{self.mStructuralMutex};
 		const ui count{arch->getEntityCount(chunkIndex)};
+		const bool anyRegularMatched{static_cast<bool>(arch->getRegularMask() & anyMask)};
+		bool processedAny{false};
+		auto stampWrites = [&] {
+			if constexpr (!std::is_const_v<std::remove_reference_t<Self>>)
+			{
+				if (processedAny)
+				{
+					self.markComponentsChanged(arch, chunkIndex, writeMask);
+				}
+			}
+		};
 
-		if constexpr (std::is_const_v<Self>)
+		try
 		{
-			const Entity *entities{arch->getEntityArray(chunkIndex)};
+			if constexpr (std::is_const_v<std::remove_reference_t<Self>>)
+			{
+				const Entity *entities{arch->getEntityArray(chunkIndex)};
 
-			[&]<typename... Req>(TypeList<Req...>) {
-				processChunkEntitiesConst<Req...>(entities, count, chunkIndex, arch,
-												  [&](Entity &entity, const auto &...comps) { processChunkFunction(entity, comps...); });
-			}(ReqList{});
+				[&]<typename... Req>(TypeList<Req...>) {
+					processChunkEntitiesFilteredConst<Req...>(
+						entities, count, chunkIndex, arch,
+						[&](Entity &entity, const auto &...comps) {
+							processedAny = true;
+							processChunkFunction(entity, comps...);
+						},
+						requiredTags, anyTags, noneTags, hasAnyClause, anyRegularMatched);
+				}(ReqList{});
+			}
+			else
+			{
+				Entity *entities{arch->getEntityArray(chunkIndex)};
+
+				[&]<typename... Req>(TypeList<Req...>) {
+					processChunkEntitiesFiltered<Req...>(
+						entities, count, chunkIndex, arch,
+						[&](Entity &entity, auto &&...comps) {
+							processedAny = true;
+							processChunkFunction(entity, comps...);
+						},
+						requiredTags, anyTags, noneTags, hasAnyClause, anyRegularMatched);
+				}(ReqList{});
+			}
 		}
-		else
+		catch (...)
 		{
-			Entity *entities{arch->getEntityArray(chunkIndex)};
-
-			[&]<typename... Req>(TypeList<Req...>) {
-				processChunkEntities<Req...>(entities, count, chunkIndex, arch,
-											 [&](Entity &entity, auto &...comps) { processChunkFunction(entity, comps...); });
-			}(ReqList{});
+			stampWrites();
+			throw;
 		}
+		stampWrites();
 	};
 
 	auto noOpVersionUpdate = [](const auto &) {};
@@ -684,15 +756,22 @@ ATTR_DEPRECATED void forEach(ExecutionPolicy policy, SystemVersion &version, Fun
 	@note The `cmds` parameter is not forwarded into the callback; callers should capture it by reference in their lambda.
 */
 template <class Self, typename ReqList, typename AnyList, typename NoneList, typename Func>
-static void forEachQueryCommandImpl(Self &self, ExecutionPolicy &policy, CommandBuffer & /*cmds*/, Func &&func)
+static void forEachQueryCommandImpl(Self &self, ExecutionPolicy &policy, CommandBuffer & /*cmds*/, Func &&func,
+									const ComponentMask writeMask
+									= std::is_const_v<std::remove_reference_t<Self>> ? ComponentMask(0) : buildMaskFromList<ReqList>())
 {
-	const IterationGuard iterGuard{self.mActiveIterations};
+	const IterationGuard iterGuard{self.mStructuralMutex};
 
 	constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
 	constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
 	constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
+	constexpr ComponentMask requiredTags{buildTagMaskFromList<ReqList>()};
+	constexpr ComponentMask anyTags{buildTagMaskFromList<AnyList>()};
+	constexpr ComponentMask noneTags{buildTagMaskFromList<NoneList>()};
+	constexpr bool hasAnyClause{TypeListSize<AnyList>::value != 0};
 
-	QueryKey key{.required = requiredMask, .any = anyMask, .none = noneMask};
+	QueryKey key{
+		.required = requiredMask, .any = anyMask, .none = noneMask, .requiredTags = requiredTags, .anyTags = anyTags, .noneTags = noneTags};
 
 	const std::vector<Archetype *> &matchingArchetypes{
 		getMatchingArchetypesForQueryCalls<Self, AnyList, NoneList>(self, key, requiredMask, anyMask, noneMask)};
@@ -702,25 +781,55 @@ static void forEachQueryCommandImpl(Self &self, ExecutionPolicy &policy, Command
 
 	// Process each matching archetype (sequential; extend to parallel as needed)
 	auto processChunk = [&, processChunkFunction](Archetype *arch, const ui chunkIndex, const ui entityCount) {
-		if constexpr (std::is_const_v<Self>)
+		const IterationGuard workerGuard{self.mStructuralMutex};
+		const bool anyRegularMatched{static_cast<bool>(arch->getRegularMask() & anyMask)};
+		bool processedAny{false};
+		auto stampWrites = [&] {
+			if constexpr (!std::is_const_v<std::remove_reference_t<Self>>)
+			{
+				if (processedAny)
+				{
+					self.markComponentsChanged(arch, chunkIndex, writeMask);
+				}
+			}
+		};
+		try
 		{
-			const Entity *entities{arch->getEntityArray(chunkIndex)};
+			if constexpr (std::is_const_v<std::remove_reference_t<Self>>)
+			{
+				const Entity *entities{arch->getEntityArray(chunkIndex)};
 
-			[&]<typename... Req>(TypeList<Req...>) {
-				processChunkEntitiesConst<Req...>(entities, entityCount, chunkIndex, arch, [&](const Entity &entity, const auto &...comps) {
-					processChunkFunction(entity, comps...);
-				});
-			}(ReqList{});
+				[&]<typename... Req>(TypeList<Req...>) {
+					processChunkEntitiesFilteredConst<Req...>(
+						entities, entityCount, chunkIndex, arch,
+						[&](const Entity &entity, const auto &...comps) {
+							processedAny = true;
+							processChunkFunction(entity, comps...);
+						},
+						requiredTags, anyTags, noneTags, hasAnyClause, anyRegularMatched);
+				}(ReqList{});
+			}
+			else
+			{
+				Entity *entities{arch->getEntityArray(chunkIndex)};
+
+				[&]<typename... Req>(TypeList<Req...>) {
+					processChunkEntitiesFiltered<Req...>(
+						entities, entityCount, chunkIndex, arch,
+						[&](Entity &entity, auto &&...comps) {
+							processedAny = true;
+							processChunkFunction(entity, comps...);
+						},
+						requiredTags, anyTags, noneTags, hasAnyClause, anyRegularMatched);
+				}(ReqList{});
+			}
 		}
-		else
+		catch (...)
 		{
-			Entity *entities{arch->getEntityArray(chunkIndex)};
-
-			[&]<typename... Req>(TypeList<Req...>) {
-				processChunkEntities<Req...>(entities, entityCount, chunkIndex, arch,
-											 [&](Entity &entity, auto &...comps) { processChunkFunction(entity, comps...); });
-			}(ReqList{});
+			stampWrites();
+			throw;
 		}
+		stampWrites();
 	};
 
 	switch (policy)
@@ -1021,15 +1130,23 @@ ATTR_DEPRECATED void forEach(ExecutionPolicy policy, CommandBuffer &cmds, Func &
 */
 template <class Self, typename ReqList, typename AnyList, typename NoneList, typename Func>
 static void forEachQueryVersionCommandImpl(Self &self, ExecutionPolicy &policy, SystemVersion &version, CommandBuffer & /*cmds*/,
-										   Func &&func)
+										   Func &&func,
+										   const ComponentMask writeMask = std::is_const_v<std::remove_reference_t<Self>>
+																			 ? ComponentMask(0)
+																			 : buildMaskFromList<ReqList>())
 {
-	const IterationGuard iterGuard{self.mActiveIterations};
+	const IterationGuard iterGuard{self.mStructuralMutex};
 
 	constexpr ComponentMask requiredMask{buildMaskFromList<ReqList>()};
 	constexpr ComponentMask anyMask{buildMaskFromList<AnyList>()};
 	constexpr ComponentMask noneMask{buildMaskFromList<NoneList>()};
+	constexpr ComponentMask requiredTags{buildTagMaskFromList<ReqList>()};
+	constexpr ComponentMask anyTags{buildTagMaskFromList<AnyList>()};
+	constexpr ComponentMask noneTags{buildTagMaskFromList<NoneList>()};
+	constexpr bool hasAnyClause{TypeListSize<AnyList>::value != 0};
 
-	QueryKey key{.required = requiredMask, .any = anyMask, .none = noneMask};
+	QueryKey key{
+		.required = requiredMask, .any = anyMask, .none = noneMask, .requiredTags = requiredTags, .anyTags = anyTags, .noneTags = noneTags};
 
 	const std::vector<Archetype *> &matchingArchetypes{
 		getMatchingArchetypesForQueryCalls<Self, AnyList, NoneList>(self, key, requiredMask, anyMask, noneMask)};
@@ -1048,26 +1165,58 @@ static void forEachQueryVersionCommandImpl(Self &self, ExecutionPolicy &policy, 
 	const FuncT processChunkFunction{std::forward<Func>(func)};
 
 	auto processChunk = [&, processChunkFunction](Archetype *arch, const ui chunkIndex) {
+		const IterationGuard workerGuard{self.mStructuralMutex};
 		const ui count{arch->getEntityCount(chunkIndex)};
+		const bool anyRegularMatched{static_cast<bool>(arch->getRegularMask() & anyMask)};
+		bool processedAny{false};
+		auto stampWrites = [&] {
+			if constexpr (!std::is_const_v<std::remove_reference_t<Self>>)
+			{
+				if (processedAny)
+				{
+					self.markComponentsChanged(arch, chunkIndex, writeMask);
+				}
+			}
+		};
 
-		if constexpr (std::is_const_v<Self>)
+		try
 		{
-			const Entity *entities{arch->getEntityArray(chunkIndex)};
 
-			[&]<typename... Req>(TypeList<Req...>) {
-				processChunkEntitiesConst<Req...>(entities, count, chunkIndex, arch,
-												  [&](Entity &entity, const auto &...comps) { processChunkFunction(entity, comps...); });
-			}(ReqList{});
+			if constexpr (std::is_const_v<std::remove_reference_t<Self>>)
+			{
+				const Entity *entities{arch->getEntityArray(chunkIndex)};
+
+				[&]<typename... Req>(TypeList<Req...>) {
+					processChunkEntitiesFilteredConst<Req...>(
+						entities, count, chunkIndex, arch,
+						[&](Entity &entity, const auto &...comps) {
+							processedAny = true;
+							processChunkFunction(entity, comps...);
+						},
+						requiredTags, anyTags, noneTags, hasAnyClause, anyRegularMatched);
+				}(ReqList{});
+			}
+			else
+			{
+				Entity *entities{arch->getEntityArray(chunkIndex)};
+
+				[&]<typename... Req>(TypeList<Req...>) {
+					processChunkEntitiesFiltered<Req...>(
+						entities, count, chunkIndex, arch,
+						[&](Entity &entity, auto &&...comps) {
+							processedAny = true;
+							processChunkFunction(entity, comps...);
+						},
+						requiredTags, anyTags, noneTags, hasAnyClause, anyRegularMatched);
+				}(ReqList{});
+			}
 		}
-		else
+		catch (...)
 		{
-			Entity *entities{arch->getEntityArray(chunkIndex)};
-
-			[&]<typename... Req>(TypeList<Req...>) {
-				processChunkEntities<Req...>(entities, count, chunkIndex, arch,
-											 [&](Entity &entity, auto &...comps) { processChunkFunction(entity, comps...); });
-			}(ReqList{});
+			stampWrites();
+			throw;
 		}
+		stampWrites();
 	};
 
 	auto noOpVersionUpdate = [](const auto &) {};

@@ -1,6 +1,6 @@
 /*! @file systemVersion.h
 	@brief Tracks version state used by systems to determine chunk processing.
-	@details Provides `SystemVersion` which stores a system-wide version and per-component versions used to detect whether a `ChunkVersion`
+	@details Provides `SystemVersion` which stores the greatest world-global structural and component epochs successfully processed by a system.
    requires reprocessing by the system. See the `SystemVersion` member documentation for usage notes and thread-safety remarks.
 	@date 02/14/2026
 	@version x.x.x
@@ -28,9 +28,7 @@ namespace Dimensia::ECS
 
 	/*! @class SystemVersion include/ECS/systemVersion.h
 		@brief Tracks the processed version state for a system and its components.
-		@details Stores a global system `mVersion` and a per-component array `mComponentVersions` used to determine whether a given
-	   `ChunkVersion` requires processing by the system. The per-component versions are updated externally on a per-chunk basis after
-	   processing; calling `update()` updates only the system version (see @ref update()).
+		@details Stores the greatest processed structural epoch and per-component epochs. Independent systems own independent baselines.
 		@pre ComponentTypeID values passed to accessors must be less than @ref MAX_COMPONENTS.
 		@note Not thread-safe for concurrent writes. Thread-safety for reads depends on external synchronization of version updates.
 		@date 02/14/2026
@@ -46,7 +44,7 @@ namespace Dimensia::ECS
 				@details Initializes all per-component versions to zero and leaves the system
 				version initialized to zero via in-class member initializer.
 			*/
-			explicit constexpr SystemVersion()
+			explicit SystemVersion()
 			{
 				mComponentVersions.fill(0);
 			}
@@ -116,7 +114,7 @@ namespace Dimensia::ECS
 				@note Uses manual bit iteration with short-circuit evaluation for early exit.
 				@return `true` if processing is required; otherwise `false`.
 			*/
-			ATTR_NODISCARD constexpr bool needsUpdate(const ChunkVersion &chunk, const ComponentMask &requiredComponents) const
+			ATTR_NODISCARD bool needsUpdate(const ChunkVersion &chunk, const ComponentMask &requiredComponents) const
 			{
 				if (chunk.getVersion() > mVersion)
 				{
@@ -151,7 +149,7 @@ namespace Dimensia::ECS
 			   intentionally not updated here; they are updated separately after processing each chunk.
 				@param[in] chunk The `ChunkVersion` whose version will be stored.
 			*/
-			constexpr void update(const ChunkVersion &chunk) noexcept
+			void update(const ChunkVersion &chunk) noexcept
 			{
 				mVersion = chunk.getVersion();
 			}

@@ -14,9 +14,13 @@
 #include <algorithm>
 #include <atomic>
 #include <latch>
+#include <limits>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <shared_mutex>
+#include <stdexcept>
+#include <thread>
 #include <tuple>
 #include <type_traits>
 #include <unordered_map>
@@ -61,17 +65,167 @@ namespace Dimensia::ECS
 		ParStealing
 	};
 
+	namespace Detail
+	{
+		struct ThreadAccessState
+		{
+				std::shared_mutex *mutex;
+				std::size_t readDepth;
+				std::size_t writeDepth;
+				std::shared_lock<std::shared_mutex> readLock;
+				std::unique_lock<std::shared_mutex> writeLock;
+		};
+
+		inline std::vector<ThreadAccessState> &threadAccessStates()
+		{
+			thread_local std::vector<ThreadAccessState> states;
+			return states;
+		}
+
+		inline auto findThreadAccessState(std::shared_mutex &mutex)
+		{
+			auto &states{threadAccessStates()};
+			return std::ranges::find_if(states, [&](const ThreadAccessState &state) { return state.mutex == &mutex; });
+		}
+
+		class IterationGuard
+		{
+			public:
+				explicit IterationGuard(std::shared_mutex &mutex) : mMutex(&mutex)
+				{
+					auto &states{threadAccessStates()};
+					auto state{findThreadAccessState(mutex)};
+					if (state != states.end())
+					{
+						if (state->writeDepth > 0)
+						{
+							throw std::logic_error("Cannot iterate the ECS during a structural mutation");
+						}
+
+						++state->readDepth;
+						mActive = true;
+						return;
+					}
+
+					states.push_back({.mutex = &mutex,
+									  .readDepth = 1,
+									  .writeDepth = 0,
+									  .readLock = std::shared_lock<std::shared_mutex>(mutex),
+									  .writeLock = {}});
+					mActive = true;
+				}
+
+				IterationGuard(IterationGuard &&other) noexcept
+					: mMutex(std::exchange(other.mMutex, nullptr)), mActive(std::exchange(other.mActive, false))
+				{}
+
+				~IterationGuard() noexcept
+				{
+					release();
+				}
+
+				IterationGuard(const IterationGuard &) = delete;
+				IterationGuard &operator=(const IterationGuard &) = delete;
+				IterationGuard &operator=(IterationGuard &&) = delete;
+
+			private:
+				void release() noexcept
+				{
+					if (!mActive || mMutex == nullptr)
+					{
+						return;
+					}
+
+					auto &states{threadAccessStates()};
+					auto state{findThreadAccessState(*mMutex)};
+					assert(state != states.end());
+					assert(state->readDepth > 0);
+					--state->readDepth;
+
+					if (state->readDepth == 0)
+					{
+						states.erase(state);
+					}
+
+					mActive = false;
+				}
+
+				std::shared_mutex *mMutex;
+				bool mActive{false};
+		};
+
+		class StructuralGuard
+		{
+			public:
+				explicit StructuralGuard(std::shared_mutex &mutex) : mMutex(&mutex)
+				{
+					auto &states{threadAccessStates()};
+					auto state{findThreadAccessState(mutex)};
+					if (state != states.end())
+					{
+						if (state->readDepth > 0 && state->writeDepth == 0)
+						{
+							throw std::logic_error("Cannot structurally mutate the ECS during iteration");
+						}
+
+						++state->writeDepth;
+						mActive = true;
+						return;
+					}
+
+					states.push_back({.mutex = &mutex,
+									  .readDepth = 0,
+									  .writeDepth = 1,
+									  .readLock = {},
+									  .writeLock = std::unique_lock<std::shared_mutex>(mutex)});
+					mActive = true;
+				}
+
+				~StructuralGuard() noexcept
+				{
+					if (!mActive || mMutex == nullptr)
+					{
+						return;
+					}
+
+					auto &states{threadAccessStates()};
+					auto state{findThreadAccessState(*mMutex)};
+					assert(state != states.end());
+					assert(state->writeDepth > 0);
+					--state->writeDepth;
+
+					if (state->writeDepth == 0)
+					{
+						states.erase(state);
+					}
+				}
+
+				StructuralGuard(const StructuralGuard &) = delete;
+				StructuralGuard &operator=(const StructuralGuard &) = delete;
+				StructuralGuard(StructuralGuard &&) = delete;
+				StructuralGuard &operator=(StructuralGuard &&) = delete;
+
+			private:
+				std::shared_mutex *mMutex;
+				bool mActive{false};
+		};
+	} // namespace Detail
+
 	/*! @class ECS include/ECS/ecs.h
 		@brief Central Entity-Component-System managing entities, components, and queries.
 		@details Provides creation/destruction of entities, component and tag management, query-driven iteration with configurable execution
 	   policies, and versioned processing for systems. Threading pools are used for parallel execution paths. Caller is responsible for
 	   valid entity handles.
-		@note Thread-safety: many operations assume external synchronization for concurrent writes; read-only forEach variants are
-	   thread-safe when using parallel execution policies.
+		@note Structural writes are serialized against active queries and views. Same-thread structural mutation during iteration throws
+	   `std::logic_error`; writers on other threads wait for active read leases. Component data conflicts between systems still require
+	   caller-managed scheduling or synchronization.
 		@author Matthew Moore
 	*/
 	class ECS
 	{
+			using IterationGuard = Detail::IterationGuard;
+			using StructuralGuard = Detail::StructuralGuard;
+
 		public:
 			// MARK: Constructor, Assignment Operators, and Destructor
 
@@ -138,7 +292,7 @@ namespace Dimensia::ECS
 			static std::size_t getBatchSize(const std::size_t allChunkSize) noexcept
 			{
 				// Adaptive batch size based on hardware concurrency
-				const std::size_t numThreads{std::thread::hardware_concurrency()};
+				const std::size_t numThreads{std::max<std::size_t>(std::thread::hardware_concurrency(), 1)};
 				const std::size_t targetTasks{numThreads * 4};
 
 				const std::size_t batchSize{(allChunkSize + targetTasks - 1) / targetTasks};
@@ -203,6 +357,8 @@ namespace Dimensia::ECS
 			template <typename... Ts>
 			Entity createEntityWith(Ts &&...components)
 			{
+				const StructuralGuard structuralGuard{mStructuralMutex};
+				const VersionType version{nextVersion()};
 				std::array<ComponentTypeID, sizeof...(Ts)> compIds{componentID<std::decay_t<Ts>>()...};
 
 				ComponentMask regularMask{0, 0};
@@ -239,7 +395,7 @@ namespace Dimensia::ECS
 				// Place directly in the target archetype, bypassing the empty archetype
 				Archetype *targetArch{getOrCreateArchetype(regularMask)};
 
-				auto [chunk, slot]{targetArch->addEntity(entity, copyData, moveData, tagMask)};
+				auto [chunk, slot]{targetArch->addEntity(entity, copyData, moveData, tagMask, version)};
 
 				assert(entity.index < mRecords.size());
 
@@ -263,6 +419,7 @@ namespace Dimensia::ECS
 			template <typename T>
 			void addComponent(Entity entity, T value)
 			{
+				const StructuralGuard structuralGuard{mStructuralMutex};
 				if (!alive(entity))
 				{
 					return;
@@ -284,7 +441,7 @@ namespace Dimensia::ECS
 
 					assert(rec.archetypeID < mArchetypePtrs.size());
 
-					mArchetypePtrs[rec.archetypeID]->setTag(rec.chunkIndex, rec.slotIndex, compID);
+					mArchetypePtrs[rec.archetypeID]->setTag(rec.chunkIndex, rec.slotIndex, compID, nextVersion());
 					// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 
 					return;
@@ -314,7 +471,8 @@ namespace Dimensia::ECS
 					assert(mRecords[entity.index].archetypeID < mArchetypePtrs.size());
 
 					// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-					mArchetypePtrs[mRecords[entity.index].archetypeID]->bumpComponentVersion(mRecords[entity.index].chunkIndex, compID);
+					mArchetypePtrs[mRecords[entity.index].archetypeID]->markComponentChanged(mRecords[entity.index].chunkIndex, compID,
+																				 nextVersion());
 
 					return;
 				}
@@ -337,6 +495,7 @@ namespace Dimensia::ECS
 			template <typename T>
 			void removeComponent(Entity entity)
 			{
+				const StructuralGuard structuralGuard{mStructuralMutex};
 				if (!alive(entity))
 				{
 					return;
@@ -358,7 +517,7 @@ namespace Dimensia::ECS
 
 					assert(rec.archetypeID < mArchetypePtrs.size());
 
-					mArchetypePtrs[rec.archetypeID]->clearTag(rec.chunkIndex, rec.slotIndex, compID);
+					mArchetypePtrs[rec.archetypeID]->clearTag(rec.chunkIndex, rec.slotIndex, compID, nextVersion());
 					// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 
 					return;
@@ -396,6 +555,7 @@ namespace Dimensia::ECS
 			template <typename Tag>
 			void addTag(Entity entity)
 			{
+				const StructuralGuard structuralGuard{mStructuralMutex};
 				if (!alive(entity))
 				{
 					return;
@@ -418,7 +578,7 @@ namespace Dimensia::ECS
 
 				assert(rec.archetypeID < mArchetypePtrs.size());
 
-				mArchetypePtrs[rec.archetypeID]->setTag(rec.chunkIndex, rec.slotIndex, tagID);
+				mArchetypePtrs[rec.archetypeID]->setTag(rec.chunkIndex, rec.slotIndex, tagID, nextVersion());
 				// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			}
 
@@ -429,6 +589,7 @@ namespace Dimensia::ECS
 			template <typename Tag>
 			void removeTag(Entity entity)
 			{
+				const StructuralGuard structuralGuard{mStructuralMutex};
 				if (!alive(entity))
 				{
 					return;
@@ -451,7 +612,7 @@ namespace Dimensia::ECS
 
 				assert(rec.archetypeID < mArchetypePtrs.size());
 
-				mArchetypePtrs[rec.archetypeID]->clearTag(rec.chunkIndex, rec.slotIndex, tagID);
+				mArchetypePtrs[rec.archetypeID]->clearTag(rec.chunkIndex, rec.slotIndex, tagID, nextVersion());
 				// NOLINTEND(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 			}
 
@@ -545,6 +706,44 @@ namespace Dimensia::ECS
 			*/
 			Entity allocateEntityID();
 
+			/*! @brief Allocates the next strictly increasing world change epoch.
+				@return Nonzero epoch newer than every epoch previously issued by this ECS.
+				@throws std::overflow_error If the version timeline is exhausted.
+			*/
+			VersionType nextVersion()
+			{
+				VersionType current{mWorldVersion.load(std::memory_order_relaxed)};
+				for (;;)
+				{
+					if (current == std::numeric_limits<VersionType>::max())
+					{
+						throw std::overflow_error("ECS world version exhausted");
+					}
+
+					const VersionType next{current + 1};
+					if (mWorldVersion.compare_exchange_weak(current, next, std::memory_order_relaxed))
+					{
+						return next;
+					}
+				}
+			}
+
+			/*! @brief Stamps component columns written by a query or view.
+				@param[in,out] archetype Archetype containing the written chunk.
+				@param[in] chunkIndex Written chunk index.
+				@param[in] writeMask Regular component columns that may have been written.
+			*/
+			void markComponentsChanged(Archetype *archetype, const ui chunkIndex, const ComponentMask writeMask)
+			{
+				if (!writeMask)
+				{
+					return;
+				}
+				const VersionType version{nextVersion()};
+				forEachSetBit(writeMask,
+							  [&](const ComponentTypeID componentTypeID) { archetype->markComponentChanged(chunkIndex, componentTypeID, version); });
+			}
+
 			/*! @brief Moves an entity to a new archetype, copying/moving component data as specified.
 				@param[in] entity Entity to move.
 				@param[in] newRegularMask Regular component mask for the destination archetype.
@@ -553,12 +752,20 @@ namespace Dimensia::ECS
 				@param[in] newTags Optional tag mask to set on the destination chunk.
 			*/
 			void moveEntity(const Entity &entity, ComponentMask newRegularMask, const std::array<const void *, MAX_COMPONENTS> &copyData,
-							const std::array<void *, MAX_COMPONENTS> &moveData, ComponentMask newTags = ComponentMask(0));
+							const std::array<void *, MAX_COMPONENTS> &moveData, std::optional<ComponentMask> newTags = std::nullopt);
 
 			/*! @brief Recursively destroys the hierarchy rooted at @p entity.
 				@param[in] entity Root entity of the hierarchy to destroy.
 			*/
 			void destroyHierarchy(const Entity &entity);
+
+			/*! @brief Determines whether assigning @p parent to @p child would create or enter a hierarchy cycle.
+				@param[in] child Prospective child entity.
+				@param[in] parent Prospective parent entity.
+				@return `true` if the assignment is cyclic or encounters an existing cyclic parent chain.
+				@pre `mHierarchyMutex` is held by the caller.
+			*/
+			bool wouldCreateHierarchyCycle(const Entity &child, const Entity &parent) const;
 
 			/*! @brief Compute override masks from provided copy/move arrays.
 				@details Scans only the entries that are actually set (non-null) rather than iterating all MAX_COMPONENTS slots.
@@ -663,6 +870,7 @@ namespace Dimensia::ECS
 																					  const ComponentMask &anyMask,
 																					  const ComponentMask &noneMask)
 			{
+				constexpr ComponentMask anyTags{buildTagMaskFromList<AnyList>()};
 				// Fast path: check under shared lock
 				{
 					const std::shared_lock readLock(self.mMultiQueryMutex);
@@ -696,7 +904,7 @@ namespace Dimensia::ECS
 						continue;
 					}
 
-					if constexpr (TypeListSize<AnyList>::value != 0)
+					if constexpr (TypeListSize<AnyList>::value != 0 && !static_cast<bool>(anyTags))
 					{
 						if (!(archMask & anyMask))
 						{
@@ -815,43 +1023,16 @@ namespace Dimensia::ECS
 
 			friend class CommandBuffer;
 
-			/*! @struct IterationGuard include/ECS/ecs.h
-				@brief RAII guard that increments/decrements the active-iteration counter.
-				@details Used by `forEach` dispatch functions to track whether any iteration is in progress.
-			   Structural mutators (e.g. `getOrCreateArchetype`) assert the counter is zero to detect
-			   concurrent structural changes during iteration.
-			*/
-			class IterationGuard
-			{
-				public:
-					// Do not allow moves for this class
-					IterationGuard(IterationGuard &&) = delete ("IterationGuard is not movable");
-					IterationGuard &operator=(IterationGuard &&) = delete ("IterationGuard is not movable");
-
-					explicit IterationGuard(std::atomic<int32_t> &counter) noexcept : mCounter(counter)
-					{
-						mCounter.fetch_add(1, std::memory_order_acquire);
-					}
-
-					~IterationGuard() noexcept
-					{
-						mCounter.fetch_sub(1, std::memory_order_release);
-					}
-
-					IterationGuard(const IterationGuard &) = delete;
-					IterationGuard &operator=(const IterationGuard &) = delete;
-
-				private:
-					std::atomic<int32_t> &mCounter;
-			};
-
 		private:
-			/*! @var mActiveIterations
-				@brief Atomic counter tracking the number of active `forEach` iterations.
-				@details Incremented by `IterationGuard` when a `forEach` dispatch begins and decremented
-			   when it completes. Structural mutators assert this is zero to detect data races.
+			/*! @var mStructuralMutex
+				@brief Shared/exclusive access gate protecting ECS storage addresses from structural invalidation.
 			*/
-			mutable std::atomic<int32_t> mActiveIterations{0};
+			mutable std::shared_mutex mStructuralMutex{};
+
+			/*! @var mWorldVersion
+				@brief Monotonic timeline shared by all chunk and component changes in this ECS.
+			*/
+			std::atomic<VersionType> mWorldVersion{1};
 
 			/*! @var mQueryCache
 				@brief Cache mapping required component masks to matching archetype lists for fast query resolution.
