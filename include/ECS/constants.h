@@ -20,40 +20,40 @@ namespace Dimensia::ECS
 	   the mask becomes empty.
 		@note Treated as an unsigned count of bit positions.
 	*/
-	constexpr ul UPPER_HALF_BIT_MASK{128};
+	inline constexpr ul UPPER_HALF_BIT_MASK{128};
 
 	/*! @brief Number of bits in the lower half of the `ComponentMask`.
 		@details Represents the width of the lower-order half (number of bit positions stored in `mLow`). Many bit-manipulation helpers use
 	   this value when moving bits between halves.
 	*/
-	constexpr ul LOWER_HALF_BIT_MASK{64};
+	inline constexpr ul LOWER_HALF_BIT_MASK{64};
 
 	/*! @brief Default chunk size (in bytes) used for ECS storage allocations.
 		@details Controls the size of memory chunks used by ECS containers. The value `16'384` corresponds to 16 KiB and is chosen as a
 	   cache-friendly default; it can be tuned for specific workloads to improve locality.
 		@note Units: bytes.
 	*/
-	constexpr std::size_t CHUNK_SIZE{16'384};
+	inline constexpr std::size_t CHUNK_SIZE{16'384};
 
 	/*! @brief Memory alignment (in bytes) used for chunk allocations.
 		@details Chunks and component storage are aligned to this boundary to improve performance on modern CPUs and to satisfy alignment
 	   requirements for types stored in ECS containers.
 		@note Units: bytes.
 	*/
-	constexpr ul CHUNK_ALIGNMENT{64};
+	inline constexpr ul CHUNK_ALIGNMENT{64};
 
 	/*! @brief Number of `ul` words used per entity to store tag bits in chunk tag bitsets.
 		@details Two words (2 * 64 = 128 bits) match the full width of `ComponentMask`.
 	*/
-	constexpr std::size_t TAG_WORDS_PER_ENTITY{2};
+	inline constexpr std::size_t TAG_WORDS_PER_ENTITY{2};
 
 	/*! @brief Constant used in hash mixing for `ComponentMask` and other ECS types.
 		@details This value is derived from the golden ratio and is commonly used in hash combination functions to reduce collisions. It is
 	   used when combining the hashes of multiple values (e.g., lower and upper halves of a mask) into a single hash value.
 	*/
-	constexpr std::size_t HASH_MIX_CONSTANT{0x9e3779b9};
+	inline constexpr std::size_t HASH_MIX_CONSTANT{0x9e3779b9};
 
-	constexpr Core::ub LEFT_SHIFT_VALUE{6U};
+	inline constexpr Core::ub LEFT_SHIFT_VALUE{6U};
 
 } // namespace Dimensia::ECS
 

@@ -44,7 +44,7 @@ namespace Dimensia::ECS
 	struct AddData
 	{
 		public:
-			ComponentStorage storage;
+			ComponentStorage storage{};
 	};
 
 	/*! @struct RemoveData include/ECS/command.h
@@ -198,7 +198,7 @@ namespace Dimensia::ECS
 			/*! @var mData
 				@brief Variant holding the command-specific payload.
 			*/
-			std::variant<AddData, RemoveData, SetParentData> mData;
+			std::variant<AddData, RemoveData, SetParentData> mData{};
 
 			/*! @var mEntity
 				@brief Target entity for this command.

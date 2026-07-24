@@ -18,7 +18,7 @@ namespace Dimensia::Components
 	struct Buff
 	{
 		public:
-			std::string name;
+			std::string name{};
 			Dimensia::Core::si duration{};
 	};
 } // namespace Dimensia::Components

@@ -339,28 +339,28 @@ namespace Dimensia::ECS
 				@details Each element is a `unique_ptr<Chunk>` owning the contiguous buffer used for a set of entity slots. Chunks may be
 			   moved between indices during compaction.
 			*/
-			std::vector<std::unique_ptr<Chunk>> mChunks;
+			std::vector<std::unique_ptr<Chunk>> mChunks{};
 
 			/*! @var mFreeChunks
 				@brief Indices of chunks that are currently empty and available for reuse.
 				@details Values are indexes into `mChunks`. When a chunk becomes empty it is appended to this vector so its storage can be
 			   recycled without allocating anew.
 			*/
-			std::vector<ui> mFreeChunks;
+			std::vector<ui> mFreeChunks{};
 
 			/*! @var mSortedRegular
 				@brief Sorted list of regular component type ids stored by this archetype.
 				@details Only component types with non-zero `ComponentInfo::size` are included. The ordering is used for deterministic
 			   layout and iteration when constructing/destructing component instances inside chunks.
 			*/
-			std::vector<ComponentTypeID> mSortedRegular;
+			std::vector<ComponentTypeID> mSortedRegular{};
 
 			/*! @var mChunkVersions
 				@brief Per-chunk version metadata used for change tracking.
 				@details Each chunk has a corresponding `ChunkVersion` instance which records structural and per-component-version bumps to
 			   allow systems to efficiently detect changes.
 			*/
-			std::vector<ChunkVersion> mChunkVersions;
+			std::vector<ChunkVersion> mChunkVersions{};
 
 			/*! @var mComponentOffsets
 				@brief Byte offsets into a chunk's buffer for each component type.

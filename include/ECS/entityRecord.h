@@ -23,7 +23,7 @@ namespace Dimensia::ECS
 		@details Set to `UINT32_MAX`. Consumers should compare against this constant
 		when an archetype lookup fails or an entity is not assigned to any archetype.
 	*/
-	static constexpr ui INVALID_ARCHETYPE_ID{UINT32_MAX};
+	inline constexpr ui INVALID_ARCHETYPE_ID{UINT32_MAX};
 
 	/*! @enum State
 		@brief Lifecycle state of an entity, stored in `EntityRecord`.

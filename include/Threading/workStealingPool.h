@@ -183,7 +183,7 @@ namespace Dimensia::Threading
 				@brief Worker threads owned by the pool.
 				@details Each element runs `workerLoop` and is joined in the destructor.
 			*/
-			std::vector<std::thread> mWorkers;
+			std::vector<std::thread> mWorkers{};
 
 			/*! @var mQueues
 				@brief Per-worker `WorkStealingQueue` instances.

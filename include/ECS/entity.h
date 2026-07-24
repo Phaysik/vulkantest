@@ -70,7 +70,7 @@ namespace Dimensia::ECS
 		@details Uses `UINT32_MAX` for `index` and zero for `generation` so it cannot collide with any valid entity handle
 	   (valid entities start at index 0 with generation >= 1). Use this value to represent an empty handle where appropriate.
 	*/
-	constexpr Entity NULL_ENTITY{.index = UINT32_MAX, .generation = 0};
+	inline constexpr Entity NULL_ENTITY{.index = UINT32_MAX, .generation = 0};
 } // namespace Dimensia::ECS
 
 #endif

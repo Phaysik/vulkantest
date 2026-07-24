@@ -81,7 +81,7 @@ namespace Dimensia::Registry
 	/*! @brief Maximum number of distinct component types the registry supports.
 		@note This is a conservative upper bound and is independent from `ComponentTypes` size.
 	*/
-	constexpr std::size_t MAX_COMPONENTS{128};
+	inline constexpr std::size_t MAX_COMPONENTS{128};
 
 	/*! @brief Integer type used to represent component type IDs at runtime. */
 	using ComponentTypeID = Dimensia::Core::ui;

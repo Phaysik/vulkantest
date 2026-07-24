@@ -93,14 +93,14 @@ namespace Dimensia::Threading
 				pop/steal semantics. The queue owns the stored `Task` objects.
 				@showinitializer
 			*/
-			std::deque<Task> mQueue;
+			std::deque<Task> mQueue{};
 
 			/*! @var mMutex
 				@brief Mutex protecting the `mQueue` for all public operations.
 				@details Marked `mutable` to allow `size()` to be `const` while still synchronizing access.
 				@note Ownership: the class manages this mutex internally; callers must not attempt to lock it.
 			*/
-			mutable std::mutex mMutex;
+			mutable std::mutex mMutex{};
 	};
 } // namespace Dimensia::Threading
 

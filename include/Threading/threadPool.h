@@ -189,23 +189,23 @@ namespace Dimensia::Threading
 				@brief FIFO queue holding pending tasks as `std::function<void()>`.
 				@note Access is synchronized by `mQueueMutex`.
 			*/
-			mutable std::queue<std::function<void()>> mTasks;
+			mutable std::queue<std::function<void()>> mTasks{};
 
 			/*! @var mQueueMutex
 				@brief Mutex protecting access to `mTasks` and related state.
 			*/
-			mutable std::mutex mQueueMutex;
+			mutable std::mutex mQueueMutex{};
 
 			/*! @var mCondition
 				@brief Condition variable used to notify worker threads of new tasks
 				or shutdown requests.
 			*/
-			mutable std::condition_variable mCondition;
+			mutable std::condition_variable mCondition{};
 
 			/*! @var mWorkers
 				@brief Container owning the worker `std::thread` instances.
 			*/
-			std::vector<std::thread> mWorkers;
+			std::vector<std::thread> mWorkers{};
 
 			/*! @var mStop
 				@brief Atomic flag indicating the pool is stopping. When set to true,

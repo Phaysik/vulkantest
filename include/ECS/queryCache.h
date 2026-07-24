@@ -75,19 +75,19 @@ namespace Dimensia::ECS
 				@brief Registered archetypes paired with their regular component masks.
 				@details Each element is a pair of the archetype's `ComponentMask` and a non-owning pointer to the `Archetype` instance.
 			*/
-			std::vector<std::pair<ComponentMask, Archetype *>> mArchetypes;
+			std::vector<std::pair<ComponentMask, Archetype *>> mArchetypes{};
 
 			/*! @var mResults
 				@brief Mutable cache mapping query masks to matching archetypes.
 				@details Marked `mutable` so `get()` may populate the cache from const contexts. Keys are `ComponentMask` values and mapped
 			   vectors are stored inside the container; references returned by `get()` point into these vectors.
 			*/
-			mutable std::unordered_map<ComponentMask, std::vector<Archetype *>> mResults;
+			mutable std::unordered_map<ComponentMask, std::vector<Archetype *>> mResults{};
 
 			/*! @var mMutex
 				@brief Shared mutex protecting `mResults` for concurrent reads and exclusive writes.
 			*/
-			mutable std::shared_mutex mMutex;
+			mutable std::shared_mutex mMutex{};
 	};
 } // namespace Dimensia::ECS
 

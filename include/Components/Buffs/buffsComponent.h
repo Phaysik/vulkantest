@@ -18,7 +18,7 @@ namespace Dimensia::Components
 	struct Buffs
 	{
 		public:
-			std::vector<Buff> activeBuffs;
+			std::vector<Buff> activeBuffs{};
 	};
 } // namespace Dimensia::Components
 

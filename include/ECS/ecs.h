@@ -13,7 +13,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <latch>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -29,7 +28,6 @@
 
 #include "Core/cconcepts.h"
 #include "Core/typedefs.h"
-#include "ECS/constants.h"
 #include "Threading/threadPool.h"
 #include "Threading/workStealingPool.h"
 
@@ -472,7 +470,7 @@ namespace Dimensia::ECS
 
 					// NOLINTNEXTLINE(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
 					mArchetypePtrs[mRecords[entity.index].archetypeID]->markComponentChanged(mRecords[entity.index].chunkIndex, compID,
-																				 nextVersion());
+																							 nextVersion());
 
 					return;
 				}
@@ -740,8 +738,9 @@ namespace Dimensia::ECS
 					return;
 				}
 				const VersionType version{nextVersion()};
-				forEachSetBit(writeMask,
-							  [&](const ComponentTypeID componentTypeID) { archetype->markComponentChanged(chunkIndex, componentTypeID, version); });
+				forEachSetBit(writeMask, [&](const ComponentTypeID componentTypeID) {
+					archetype->markComponentChanged(chunkIndex, componentTypeID, version);
+				});
 			}
 
 			/*! @brief Moves an entity to a new archetype, copying/moving component data as specified.
@@ -1039,12 +1038,12 @@ namespace Dimensia::ECS
 			*/
 			QueryCache mQueryCache{};
 
-			mutable std::unordered_map<QueryKey, std::vector<Archetype *>> mMultiQueryCache;
+			mutable std::unordered_map<QueryKey, std::vector<Archetype *>> mMultiQueryCache{};
 
 			/*! @var mMultiQueryMutex
 				@brief Shared mutex protecting `mMultiQueryCache` for concurrent reads and exclusive writes.
 			*/
-			mutable std::shared_mutex mMultiQueryMutex;
+			mutable std::shared_mutex mMultiQueryMutex{};
 
 			/*! @var mThreadPool
 				@brief Mutable thread pool used for parallel `forEach`/system execution where threads are needed.
