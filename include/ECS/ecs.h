@@ -26,10 +26,6 @@
 #include <utility>
 #include <vector>
 
-#ifdef catch2
-	#include <new>
-#endif
-
 #include "Core/cconcepts.h"
 #include "Core/typedefs.h"
 #include "Threading/threadPool.h"
@@ -58,6 +54,54 @@ namespace Dimensia::ECS
 	using Dimensia::Core::InvocableWithArgs;
 
 	using Dimensia::Core::ui;
+
+	/*! @struct EntityInsertionHook include/ECS/ecs.h
+		@brief Holds an optional non-owning callback invoked before an entity enters archetype storage.
+		@details The hook supports instrumentation and deterministic fault injection at the entity-reservation commit boundary. An empty hook
+	   has no effect. The bound callable must outlive every `ECS` instance that stores the hook.
+		@date 07/24/2026
+		@version x.x.x
+		@since x.x.x
+		@author Matthew Moore
+	*/
+	struct EntityInsertionHook
+	{
+			/*! @brief Constructs an empty hook that performs no work. */
+			EntityInsertionHook() noexcept = default;
+
+			/*! @brief Binds a callable as a non-owning insertion hook.
+				@tparam Hook Callable type invocable without arguments.
+				@param[in,out] hook Callable that must outlive the receiving `ECS` instance.
+				@return Type-erased hook referencing @p hook without allocating.
+			*/
+			template <typename Hook>
+			static EntityInsertionHook bind(Hook &hook) noexcept
+			{
+				return EntityInsertionHook{&hook, [](void *context) { (*static_cast<Hook *>(context))(); }};
+			}
+
+			/*! @brief Invokes the bound callback when present.
+				@throws Any exception propagated by the bound callable.
+			*/
+			void operator()() const
+			{
+				if (invoke != nullptr)
+				{
+					invoke(context);
+				}
+			}
+
+		private:
+			explicit EntityInsertionHook(void *hookContext, void (*hookInvoke)(void *)) noexcept
+				: context(hookContext), invoke(hookInvoke)
+			{}
+
+			/*! @brief Non-owning pointer passed to the callback. */
+			void *context{nullptr};
+
+			/*! @brief Type-erased callback, or `nullptr` when no hook is bound. */
+			void (*invoke)(void *){nullptr};
+	};
 
 	enum class ExecutionPolicy : Dimensia::Core::ub
 	{
@@ -236,7 +280,7 @@ namespace Dimensia::ECS
 				@post The ECS is ready to create entities and register components.
 				@author Matthew Moore
 			*/
-			explicit ECS();
+			explicit ECS(EntityInsertionHook insertionHook = {});
 
 			/*! @brief Copy constructor (deleted).
 				@details `ECS` owns non-copyable resources (thread pools, unique archetype storage). Copying would result in shallow copies
@@ -348,26 +392,6 @@ namespace Dimensia::ECS
 
 			void invalidateQueries();
 
-#ifdef catch2
-			/*! @brief Arms a one-shot entity insertion failure for rollback tests.
-				@details The next entity creation or clone throws `std::bad_alloc` after reserving its entity identifier and before archetype insertion.
-				@qualifier test
-			*/
-			void failNextEntityInsertionForTest() noexcept
-			{
-				mEntityInsertionsBeforeFailure = 0;
-			}
-
-			/*! @brief Arms an insertion failure after a number of successful insertions.
-				@param[in] successfulInsertions Number of entity insertions allowed before the one-shot failure.
-				@qualifier test
-			*/
-			void failEntityInsertionAfterForTest(const std::size_t successfulInsertions) noexcept
-			{
-				mEntityInsertionsBeforeFailure = successfulInsertions;
-			}
-#endif
-
 			// MARK: Template Member Functions
 
 			/*! @brief Create an entity and emplace provided components/tags.
@@ -416,9 +440,7 @@ namespace Dimensia::ECS
 
 				try
 				{
-#ifdef catch2
-					throwIfEntityInsertionFailureArmed();
-#endif
+					mEntityInsertionHook();
 					// Place directly in the target archetype, bypassing the empty archetype
 					Archetype *targetArch{getOrCreateArchetype(regularMask)};
 
@@ -745,28 +767,6 @@ namespace Dimensia::ECS
 				@post The entity index is available to a subsequent creation operation.
 			*/
 			void releaseReservedEntityID(const Entity &entity) noexcept;
-
-#ifdef catch2
-			/*! @brief Throws the armed one-shot insertion failure.
-				@throws std::bad_alloc When the per-world insertion failure is armed.
-				@qualifier test
-			*/
-			void throwIfEntityInsertionFailureArmed()
-			{
-				if (!mEntityInsertionsBeforeFailure.has_value())
-				{
-					return;
-				}
-
-				if (*mEntityInsertionsBeforeFailure == 0)
-				{
-					mEntityInsertionsBeforeFailure.reset();
-					throw std::bad_alloc{};
-				}
-
-				--*mEntityInsertionsBeforeFailure;
-			}
-#endif
 
 			/*! @brief Tests whether an archetype has no live rows in any chunk.
 				@param[in] archetype Archetype to inspect.
@@ -1148,6 +1148,11 @@ namespace Dimensia::ECS
 			*/
 			mutable std::mutex mHierarchyMutex{};
 
+			/*! @var mEntityInsertionHook
+				@brief Optional non-owning callback invoked after ID reservation and before archetype insertion.
+			*/
+			EntityInsertionHook mEntityInsertionHook{};
+
 			/*! @var mArchetypeMaskToID
 				@brief Map from component masks to archetype identifiers for quick lookup.
 			*/
@@ -1182,13 +1187,6 @@ namespace Dimensia::ECS
 				@brief Monotonically increasing counter used to assign new entity indices when free-list is empty.
 			*/
 			ui mNextEntityIndex{0};
-
-#ifdef catch2
-			/*! @brief Stores the successful insertion countdown before a test-build failure.
-				@qualifier test
-			*/
-			std::optional<std::size_t> mEntityInsertionsBeforeFailure{};
-#endif
 	};
 } // namespace Dimensia::ECS
 

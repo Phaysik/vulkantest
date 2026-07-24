@@ -31,7 +31,8 @@ namespace Dimensia::ECS
 {
 	// MARK: Constructor
 
-	ECS::ECS() : mRecords(0), mFreeIndices(0), mArchetypePtrs(0), mParent(0), mChildren(0)
+	ECS::ECS(const EntityInsertionHook insertionHook)
+		: mEntityInsertionHook(insertionHook), mRecords(0), mFreeIndices(0), mArchetypePtrs(0), mParent(0), mChildren(0)
 	{
 		getOrCreateArchetype(ComponentMask(0));
 	}
@@ -247,9 +248,7 @@ namespace Dimensia::ECS
 
 		try
 		{
-#ifdef catch2
-			throwIfEntityInsertionFailureArmed();
-#endif
+			mEntityInsertionHook();
 			Archetype *const emptyArch{getOrCreateArchetype(ComponentMask(0))};
 			std::array<const void *, MAX_COMPONENTS> noCopy{};
 			std::array<void *, MAX_COMPONENTS> noMove{};
@@ -398,9 +397,7 @@ namespace Dimensia::ECS
 		Entity dst{allocateEntityID()};
 		try
 		{
-#ifdef catch2
-			throwIfEntityInsertionFailureArmed();
-#endif
+			mEntityInsertionHook();
 			auto [chunk, slot]{srcArch->addEntity(dst, copyData, noMove, srcTags, nextVersion())};
 
 			assert(dst.index < mRecords.size());

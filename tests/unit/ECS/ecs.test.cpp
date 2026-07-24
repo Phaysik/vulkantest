@@ -1,7 +1,3 @@
-#ifndef catch2
-	#define catch2
-#endif
-
 #include <catch2/catch_test_macros.hpp>
 
 #include "ECS/ecs.h"
@@ -9,6 +5,7 @@
 #include <cstddef>
 #include <latch>
 #include <new>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -20,6 +17,37 @@
 #include "ECS/componentRegistry.h"
 #include "ECS/entity.h"
 #include "Tags/Alive/aliveTag.h"
+
+namespace
+{
+	class FailingEntityInsertionHook
+	{
+		public:
+			void failAfter(const std::size_t successfulInsertions) noexcept
+			{
+				mSuccessfulInsertionsBeforeFailure = successfulInsertions;
+			}
+
+			void operator()()
+			{
+				if (!mSuccessfulInsertionsBeforeFailure.has_value())
+				{
+					return;
+				}
+
+				if (*mSuccessfulInsertionsBeforeFailure == 0)
+				{
+					mSuccessfulInsertionsBeforeFailure.reset();
+					throw std::bad_alloc{};
+				}
+
+				--*mSuccessfulInsertionsBeforeFailure;
+			}
+
+		private:
+			std::optional<std::size_t> mSuccessfulInsertionsBeforeFailure{};
+	};
+} // namespace
 
 // NOLINTBEGIN(misc-const-correctness,cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers,readability-function-cognitive-complexity)
 
@@ -176,16 +204,18 @@ SCENARIO("ECS entity creation rollback")
 	using Dimensia::Components::Health;
 	using Dimensia::ECS::ECS;
 	using Dimensia::ECS::Entity;
+	using Dimensia::ECS::EntityInsertionHook;
 
 	GIVEN("a reusable entity index and a failing archetype allocation")
 	{
-		ECS ecs;
+		FailingEntityInsertionHook failingInsertion;
+		ECS ecs{EntityInsertionHook::bind(failingInsertion)};
 		Entity releasedEntity{ecs.createEntity()};
 		ecs.destroyEntity(releasedEntity, false);
 
 		WHEN("component entity creation throws after reserving the index")
 		{
-			ecs.failNextEntityInsertionForTest();
+			failingInsertion.failAfter(0);
 			CHECK_THROWS_AS(ecs.createEntityWith(Health{10.0F}), std::bad_alloc);
 			Entity replacement{ecs.createEntity()};
 
@@ -200,11 +230,12 @@ SCENARIO("ECS entity creation rollback")
 
 	GIVEN("a fresh entity index and a failing archetype allocation")
 	{
-		ECS ecs;
+		FailingEntityInsertionHook failingInsertion;
+		ECS ecs{EntityInsertionHook::bind(failingInsertion)};
 
 		WHEN("component entity creation throws after reserving the first index")
 		{
-			ecs.failNextEntityInsertionForTest();
+			failingInsertion.failAfter(0);
 			CHECK_THROWS_AS(ecs.createEntityWith(Health{10.0F}), std::bad_alloc);
 			Entity replacement{ecs.createEntity()};
 
@@ -223,10 +254,12 @@ SCENARIO("ECS clone rollback")
 	using Dimensia::Components::Name;
 	using Dimensia::ECS::ECS;
 	using Dimensia::ECS::Entity;
+	using Dimensia::ECS::EntityInsertionHook;
 
 	GIVEN("a source with an allocating component and a reusable entity index")
 	{
-		ECS ecs;
+		FailingEntityInsertionHook failingInsertion;
+		ECS ecs{EntityInsertionHook::bind(failingInsertion)};
 		std::string sourceName(256, 'n');
 		Entity source{ecs.createEntityWith(Name{sourceName})};
 		Entity releasedEntity{ecs.createEntity()};
@@ -234,7 +267,7 @@ SCENARIO("ECS clone rollback")
 
 		WHEN("copying the clone component throws")
 		{
-			ecs.failNextEntityInsertionForTest();
+			failingInsertion.failAfter(0);
 			CHECK_THROWS_AS(ecs.cloneEntity(source), std::bad_alloc);
 			Entity replacement{ecs.createEntity()};
 			std::size_t namedEntities{};
@@ -253,14 +286,15 @@ SCENARIO("ECS clone rollback")
 
 	GIVEN("a source hierarchy whose child clone insertion will fail")
 	{
-		ECS ecs;
+		FailingEntityInsertionHook failingInsertion;
+		ECS ecs{EntityInsertionHook::bind(failingInsertion)};
 		Entity sourceRoot{ecs.createEntityWith(Name{"root"})};
 		Entity sourceChild{ecs.createEntityWith(Name{"child"})};
 		ecs.setParent(sourceChild, sourceRoot);
 
 		WHEN("hierarchy cloning fails after inserting the cloned root")
 		{
-			ecs.failEntityInsertionAfterForTest(1);
+			failingInsertion.failAfter(1);
 			CHECK_THROWS_AS(ecs.cloneEntity(sourceRoot, true), std::bad_alloc);
 			std::size_t namedEntities{};
 			ecs.forEach<Name>([&](Entity, Name &) { ++namedEntities; });
