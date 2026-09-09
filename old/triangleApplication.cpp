@@ -15,7 +15,6 @@
 #include <cstring>
 #include <limits>
 #include <memory>
-#include <stb_image.h>
 #include <string>
 #include <tiny_obj_loader.h>
 #include <unordered_map>
@@ -31,6 +30,7 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <stb/stb_image.h>
 #include <vulkan/vulkan_raii.hpp>
 
 void VulkanApplication::run()
@@ -1193,7 +1193,5 @@ void VulkanApplication::drawFrame()
 
 void VulkanApplication::cleanup()
 {
-	glfwDestroyWindow(mWindow.get());
-
 	glfwTerminate();
 }
