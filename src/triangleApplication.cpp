@@ -560,23 +560,19 @@ void HelloTriangleApplication::createRenderPass()
 
 void HelloTriangleApplication::createGraphicsPipeline()
 {
-	const std::vector<char> vertShaderCode = readFile("resources/shaders/vertex/triangle.vert.spv");
-	const std::vector<char> fragShaderCode = readFile("resources/shaders/fragment/triangle.frag.spv");
-
-	VkShaderModule vertShaderModule{createShaderModule(vertShaderCode)};
-	VkShaderModule fragShaderModule{createShaderModule(fragShaderCode)};
+	VkShaderModule shaderModule{createShaderModule(readFile("resources/shaders/shader.spv"))};
 
 	VkPipelineShaderStageCreateInfo vertShaderStageInfo;
 	vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-	vertShaderStageInfo.module = vertShaderModule;
-	vertShaderStageInfo.pName = "main";
+	vertShaderStageInfo.module = shaderModule;
+	vertShaderStageInfo.pName = "vertMain";
 
 	VkPipelineShaderStageCreateInfo fragShaderStageInfo;
 	fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-	fragShaderStageInfo.module = fragShaderModule;
-	fragShaderStageInfo.pName = "main";
+	fragShaderStageInfo.module = shaderModule;
+	fragShaderStageInfo.pName = "fragMain";
 
 	std::array<VkPipelineShaderStageCreateInfo, 2> shaderStages = {vertShaderStageInfo, fragShaderStageInfo};
 
@@ -685,8 +681,7 @@ void HelloTriangleApplication::createGraphicsPipeline()
 		throw std::runtime_error("Failed to create graphics pipeline!");
 	}
 
-	vkDestroyShaderModule(mDevice, fragShaderModule, nullptr);
-	vkDestroyShaderModule(mDevice, vertShaderModule, nullptr);
+	vkDestroyShaderModule(mDevice, shaderModule, nullptr);
 }
 
 void HelloTriangleApplication::createFramebuffers()
